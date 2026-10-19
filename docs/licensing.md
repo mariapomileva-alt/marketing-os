@@ -69,7 +69,7 @@ Expected licences (to be **verified automatically** in Stage B with a licence in
 | PostgreSQL | PostgreSQL Licence |
 | pgvector | PostgreSQL Licence |
 | Supabase client libraries | MIT (hosted Supabase is a commercial service with its own terms and DPA) |
-| Drizzle ORM (if chosen, D-3) | Apache-2.0 |
+| node-postgres (`pg`) | MIT |
 | Inngest SDK / Trigger.dev (D-2) | Apache-2.0 for SDKs; check self-hosting terms if self-hosted |
 | Sentry / PostHog SDKs | MIT for client SDKs; hosted services have their own terms |
 

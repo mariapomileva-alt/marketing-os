@@ -20,4 +20,4 @@ One administration platform for the marketing of several products — Back App, 
 
 ## Planned stack (pending approval)
 
-Next.js (App Router) · TypeScript strict · Supabase (Postgres, Auth, Storage) · pgvector · Drizzle ORM · Tailwind CSS · shadcn/ui · Zod · Inngest · Sentry. AI providers behind an `LLMProvider` interface (mock first).
+Next.js (App Router) · TypeScript strict · Supabase (Postgres, Auth, Storage) · pgvector · node-postgres · Tailwind CSS · shadcn/ui · Zod · Inngest · Sentry. AI providers behind an `LLMProvider` interface (mock first).

@@ -36,7 +36,7 @@ flowchart LR
 |---|---|---|
 | Web framework | Next.js (App Router), TypeScript `strict`, server actions + route handlers | As requested; one deployable for UI and API |
 | Database | PostgreSQL via Supabase (local Supabase in Docker for Stage B; EU-region project for Stage C) | Relational integrity, RLS, pgvector in the same database |
-| Data access | Drizzle ORM for typed queries; SQL migrations committed to the repo; RLS policies and triggers in hand-written SQL migrations (D-3) | Typed code, reviewable SQL, no lock-in to Supabase-specific runtime |
+| Data access | SQL migrations as the single source of truth; repositories with parameterized SQL (`pg`) and Zod-validated rows; every request runs in a transaction as the `authenticated` role with the user's id set, so RLS applies (D-3) | Reviewable SQL, real RLS enforcement, no lock-in to Supabase-specific runtime |
 | Auth | Supabase Auth; single owner; email magic link + TOTP MFA (D-11) | Simple, secure |
 | Files | Supabase Storage, private buckets, signed URLs with short expiry | Knowledge files and creative assets |
 | Search | Postgres full-text search + pgvector, hybrid ranking | No extra infrastructure |
@@ -59,7 +59,7 @@ src/
   adapters/                 implementations of the interfaces in §10
     llm/ (mock, anthropic, openai)   channels/ (export, threads, website, planned/*)
     metrics/ (manual, csv)   ingest/ (markdown, text, json, csv)   research/ (manual)
-  server/                   repositories (Drizzle), RLS-aware DB client, secrets, jobs
+  server/                   repositories (typed SQL), RLS-aware DB client, secrets, jobs
   workflows/                the sequential content pipeline (§8)
   lib/                      zod schemas, stats, dates, ids
 db/

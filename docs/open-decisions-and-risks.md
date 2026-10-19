@@ -10,7 +10,7 @@ Stage A · 2026-10-19. Each decision has a recommendation; Stage B starts with t
 |---|---|---|---|
 | D-1 | Where the repository lives and where the app runs | Private GitHub repository; local Supabase (Docker) during Stage B; Supabase project in an **EU region** plus an EU-region host for Next.js from Stage C | Security, cost |
 | D-2 | Background jobs: Inngest or Trigger.dev | Inngest (runs inside the Next.js deployment, local dev server, enough for embeddings/imports/AI runs) | Architecture |
-| D-3 | Data access layer | Drizzle ORM + committed SQL migrations; RLS and triggers in hand-written SQL | Architecture |
+| D-3 | Data access layer | **Changed in Stage B:** SQL migrations are the single source of truth; repositories use parameterized SQL (`pg`) with Zod-validated rows. Drizzle was tried and dropped: introspecting this schema (composite keys, arrays, bytea, tsvector) generated invalid code, and keeping a second hand-written schema in sync is a correctness risk | Architecture |
 | D-4 | Secret encryption | Application-level AES-256-GCM envelope encryption with versioned master key held in server env / KMS; Supabase Vault as alternative | Security |
 | D-5 | AI providers and models | Mock provider through Stage B; in Stage C one provider for generation and reviews (Anthropic or OpenAI — your choice, based on which accounts and data-processing terms you have); a multilingual embedding model chosen once languages are known | Cost, security |
 | D-6 | Languages and countries for Back App (and the other two products) | Needed from you; drives embeddings, guardrail lexicons and crisis lines | Architecture |
