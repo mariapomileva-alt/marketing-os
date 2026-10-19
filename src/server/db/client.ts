@@ -50,7 +50,7 @@ function wrap(client: PoolClient): Tx {
     },
     async maybeOne<T extends QueryResultRow>(text: string, params?: unknown[]) {
       const rows = (await client.query<T>(text, params as unknown[])).rows;
-      return rows[0] ?? null;
+      return (rows[0] as T | undefined) ?? null;
     },
   };
 }

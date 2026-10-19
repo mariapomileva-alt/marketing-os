@@ -1,26 +1,86 @@
 @import "tailwindcss";
 
+/*
+  Marketing OS design tokens (docs/design-system.md).
+  Calm light paper, graphite ink, deep green for action, sage for support, warm neutral lines.
+  Separation by hairlines and space, not by shadows; tables are the primary data view.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f5f6f2;
+  --surface: #ffffff;
+  --ink: #1e2622;
+  --muted: #5d6862;
+  --faint: #8a938d;
+  --line: #e3e4dd;
+  --line-strong: #cfd2c8;
+  --green: #1f4a3a;
+  --green-hover: #173a2d;
+  --green-soft: #e2ebe0;
+  --sage: #8fa98d;
+  --sage-tint: #eef3ec;
+  --amber: #8a5d0e;
+  --amber-tint: #f6eddb;
+  --red: #9b3a2e;
+  --red-tint: #f6e3df;
+  --slate: #34586e;
+  --slate-tint: #e3ecf1;
+  --focus: #2f6f57;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-green: var(--green);
+  --color-green-hover: var(--green-hover);
+  --color-green-soft: var(--green-soft);
+  --color-sage: var(--sage);
+  --color-sage-tint: var(--sage-tint);
+  --color-amber: var(--amber);
+  --color-amber-tint: var(--amber-tint);
+  --color-red: var(--red);
+  --color-red-tint: var(--red-tint);
+  --color-slate: var(--slate);
+  --color-slate-tint: var(--slate-tint);
+  --font-sans: "Schibsted Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --radius-control: 6px;
+  --radius-panel: 10px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Type scale (minor third from 14px): 12 · 13 · 14 · 16 · 20 · 26 · 34 */
+h1 { font-size: 26px; line-height: 1.2; font-weight: 640; letter-spacing: -0.015em; }
+h2 { font-size: 20px; line-height: 1.3; font-weight: 620; letter-spacing: -0.01em; }
+h3 { font-size: 16px; line-height: 1.4; font-weight: 600; }
+
+.num { font-variant-numeric: tabular-nums; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* Long-form text (rationales, knowledge chunks) keeps a readable measure. */
+.prose-measure { max-width: 72ch; }

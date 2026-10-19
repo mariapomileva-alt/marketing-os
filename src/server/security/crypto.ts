@@ -5,6 +5,8 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
  * (ENCRYPTION_KEY_V<n>, base64, 32 bytes); ENCRYPTION_ACTIVE_KEY_VERSION selects the key for new
  * secrets. Old versions stay readable for rotation. Plaintext never leaves the server.
  */
+type Env = Record<string, string | undefined>;
+
 export interface EncryptedSecret {
   ciphertext: Buffer;
   iv: Buffer;
@@ -12,7 +14,7 @@ export interface EncryptedSecret {
   keyVersion: number;
 }
 
-function keyFor(version: number, env: NodeJS.ProcessEnv = process.env): Buffer {
+function keyFor(version: number, env: Env = process.env): Buffer {
   const raw = env[`ENCRYPTION_KEY_V${version}`];
   if (!raw) throw new Error(`Encryption key version ${version} is not configured`);
   const key = Buffer.from(raw, "base64");
@@ -20,13 +22,13 @@ function keyFor(version: number, env: NodeJS.ProcessEnv = process.env): Buffer {
   return key;
 }
 
-export function activeKeyVersion(env: NodeJS.ProcessEnv = process.env): number {
+export function activeKeyVersion(env: Env = process.env): number {
   const v = Number(env.ENCRYPTION_ACTIVE_KEY_VERSION ?? "1");
   if (!Number.isInteger(v) || v < 1) throw new Error("ENCRYPTION_ACTIVE_KEY_VERSION must be a positive integer");
   return v;
 }
 
-export function encryptSecret(plaintext: string, env: NodeJS.ProcessEnv = process.env, aad = "marketing-os"): EncryptedSecret {
+export function encryptSecret(plaintext: string, env: Env = process.env, aad = "marketing-os"): EncryptedSecret {
   const keyVersion = activeKeyVersion(env);
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", keyFor(keyVersion, env), iv);
@@ -35,7 +37,7 @@ export function encryptSecret(plaintext: string, env: NodeJS.ProcessEnv = proces
   return { ciphertext, iv, authTag: cipher.getAuthTag(), keyVersion };
 }
 
-export function decryptSecret(secret: EncryptedSecret, env: NodeJS.ProcessEnv = process.env, aad = "marketing-os"): string {
+export function decryptSecret(secret: EncryptedSecret, env: Env = process.env, aad = "marketing-os"): string {
   const decipher = createDecipheriv("aes-256-gcm", keyFor(secret.keyVersion, env), secret.iv);
   decipher.setAAD(Buffer.from(aad));
   decipher.setAuthTag(secret.authTag);

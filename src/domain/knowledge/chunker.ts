@@ -79,7 +79,7 @@ function mergeBlocks(blocks: Block[]): Chunk[] {
   for (const b of blocks) {
     for (const piece of splitLong(b)) {
       if (cur && cur.headingPath.join("/") === piece.headingPath.join("/") && cur.text.length + piece.text.length + 2 <= MAX_CHARS) {
-        cur = { ...cur, text: `${cur.text}\n\n${piece.text}`, lineEnd: piece.lineEnd };
+        cur = { text: `${cur.text}\n\n${piece.text}`, lineStart: cur.lineStart, lineEnd: piece.lineEnd, headingPath: cur.headingPath };
       } else {
         if (cur) push(cur);
         cur = piece;

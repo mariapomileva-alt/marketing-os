@@ -13,7 +13,8 @@ export default defineConfig({
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
-    command: `npm run start -- -p ${PORT}`,
+    // Dev server: AUTH_MODE=dev (local owner sign-in) is refused in production builds by design.
+    command: `npx next dev -p ${PORT}`,
     port: PORT,
     reuseExistingServer: true,
     timeout: 120000,
