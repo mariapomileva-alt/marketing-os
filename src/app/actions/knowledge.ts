@@ -46,7 +46,7 @@ export async function uploadSourceAction(productSlug: string, _: ActionResult | 
       { reason: "knowledge upload" },
     );
     revalidatePath(`/p/${productSlug}/knowledge`);
-    return r.duplicate ? ok("This exact file is already in the knowledge base.") : ok(`Imported ${r.chunks} passages with provenance.`);
+    return r.duplicate ? ok("This exact file is already in this product's knowledge base.") : ok(`Imported ${r.chunks} passages with provenance.`);
   } catch (e) {
     if (e instanceof IngestError) return fail(e.message);
     return toFailure(e, describeDbError);

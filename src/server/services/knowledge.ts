@@ -74,7 +74,10 @@ export async function ingestSource(tx: Tx, input: IngestInput): Promise<{ id: st
   }
   if (input.bytes.byteLength > MAX_UPLOAD_BYTES) throw new IngestError(`${input.filename} is larger than 5 MB.`);
   const sha256 = createHash("sha256").update(input.bytes).digest("hex");
-  const dup = await tx.maybeOne<{ id: string }>("select id from knowledge_sources where workspace_id = $1 and sha256 = $2", [input.workspaceId, sha256]);
+  const dup = await tx.maybeOne<{ id: string }>(
+    "select id from knowledge_sources where workspace_id = $1 and product_id is not distinct from $2 and sha256 = $3",
+    [input.workspaceId, input.productId, sha256],
+  );
   if (dup) return { id: dup.id, chunks: 0, duplicate: true };
 
   let text = input.textOverride ?? new TextDecoder("utf-8", { fatal: false }).decode(input.bytes);
@@ -87,7 +90,7 @@ export async function ingestSource(tx: Tx, input: IngestInput): Promise<{ id: st
   }
   if (!chunks.length) throw new IngestError(`${input.filename} has no readable text.`);
 
-  const key = `${input.workspaceId}/${input.productId ?? "workspace"}/${sha256}${ext}`;
+  const key = `${input.workspaceId}/${input.productId ?? "workspace"}/${sha256}${ext}`; // per product, matching the dedupe rule
   // Pseudonymised imports store the processed text, never the raw original with real names.
   const stored = input.textOverride !== undefined ? new TextEncoder().encode(input.textOverride) : input.bytes;
   await fileStore().put(key, stored, input.mimeType || "text/plain");

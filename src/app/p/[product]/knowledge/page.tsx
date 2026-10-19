@@ -62,8 +62,8 @@ export default async function KnowledgePage({ params, searchParams }: PageProps<
                 Upload interviews, call notes, reviews or research. Customer quotes, segments and facts for {product.name} can only come from here.
               </EmptyState>
             )}
-            <details className="mt-3 rounded-[var(--radius-panel)] border border-line bg-surface p-4" open={!productSources.length}>
-              <summary className="cursor-pointer text-[14px] font-medium">Upload a document</summary>
+            <div className="mt-3 rounded-[var(--radius-panel)] border border-line bg-surface p-4">
+              <h3 className="text-[14px]">Upload a document</h3>
               <ActionForm action={uploadSourceAction.bind(null, slug)} submitLabel="Upload" pendingLabel="Importing…" resetOnSuccess className="mt-4 grid gap-3 md:grid-cols-3">
                 <Field label="File" htmlFor="file" hint="Markdown, TXT, JSON or CSV, up to 5 MB." className="md:col-span-3">
                   <Input id="file" name="file" type="file" accept=".md,.markdown,.txt,.json,.csv" required className="h-auto py-1.5" />
@@ -86,7 +86,7 @@ export default async function KnowledgePage({ params, searchParams }: PageProps<
                   <label className="flex items-center gap-2"><input type="checkbox" name="consent_recorded" /> Consent recorded</label>
                 </div>
               </ActionForm>
-            </details>
+            </div>
           </Section>
 
           <Section title="Methodology (all products)" description="Course materials and AJTBD files. They guide how the system works; they are never evidence about your customers. Participant names are pseudonymised.">
@@ -95,14 +95,14 @@ export default async function KnowledgePage({ params, searchParams }: PageProps<
             ) : (
               <EmptyState title="Methodology is not imported yet">Import the course archive and the AJTBD files below. Raw files are stored privately and never added to Git.</EmptyState>
             )}
-            <details className="mt-3 rounded-[var(--radius-panel)] border border-line bg-surface p-4" open={!methodology.length}>
-              <summary className="cursor-pointer text-[14px] font-medium">Import course materials</summary>
+            <div className="mt-3 rounded-[var(--radius-panel)] border border-line bg-surface p-4">
+              <h3 className="text-[14px]">Import course materials</h3>
               <ActionForm action={importCourseAction.bind(null, slug)} submitLabel="Import" pendingLabel="Importing…" className="mt-4 flex flex-col gap-3">
                 <Field label="Files" htmlFor="files" hint="The vault .zip and, optionally, AJTBD prompt.md, 03-schema-call-record.json, 04-codebook-template.md. Already imported files are skipped.">
                   <Input id="files" name="files" type="file" multiple accept=".zip,.md,.json" required className="h-auto py-1.5" />
                 </Field>
               </ActionForm>
-            </details>
+            </div>
           </Section>
         </>
       ) : null}
