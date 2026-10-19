@@ -28,6 +28,8 @@ export function getPool(connectionString = process.env.DATABASE_URL): Pool {
   let pool = pools.get(connectionString);
   if (!pool) {
     pool = new Pool({ connectionString, max: 10, idleTimeoutMillis: 30_000 });
+    // An idle client dropped by the server (restart, failover) must not crash the process.
+    pool.on("error", (err) => console.error(`[db] idle client error: ${err.message}`));
     pools.set(connectionString, pool);
   }
   return pool;
