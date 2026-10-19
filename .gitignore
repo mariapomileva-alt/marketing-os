@@ -13,3 +13,4 @@ test-results/
 knowledge-imports/
 supabase/.temp/
 .data/
+*.tsbuildinfo
