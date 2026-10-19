@@ -60,7 +60,7 @@ export default async function IdeaPage({ params }: PageProps<"/p/[product]/ideas
                   </li>
                 ))}
               </ol>
-            ) : <EmptyState title="No hooks yet">Generate variants from this idea's segment, Job, quotes and sources.</EmptyState>}
+            ) : <EmptyState title="No hooks yet">Generate variants from this idea’s segment, Job, quotes and sources.</EmptyState>}
             <ActionForm action={generateHooksAction.bind(null, slug, ideaId)} submitLabel={d.hooks.length ? "Generate more hooks" : "Generate hooks"} pendingLabel="Generating…" className="mt-3 flex flex-wrap items-end gap-3" submitVariant={d.hooks.length ? "secondary" : "primary"}>
               <Field label="How many" htmlFor="count"><Select id="count" name="count" defaultValue="3" className="w-24">{[1, 2, 3, 4].map((n) => <option key={n}>{n}</option>)}</Select></Field>
             </ActionForm>

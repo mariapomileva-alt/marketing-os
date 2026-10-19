@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { NAV } from "./nav";
 
-function NavList({ productSlug, approvals }: { productSlug: string; approvals: number }) {
+function NavList({ productSlug, approvals, onNavigate }: { productSlug: string; approvals: number; onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
     <nav aria-label="Sections" className="flex flex-col gap-5 px-3 py-4">
@@ -23,6 +23,7 @@ function NavList({ productSlug, approvals }: { productSlug: string; approvals: n
                 <li key={item.slug}>
                   <Link
                     href={href}
+                    onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex h-8 items-center gap-2.5 rounded-[var(--radius-control)] px-2 text-[13.5px] text-ink/85 hover:bg-sage-tint hover:text-ink",
@@ -56,9 +57,7 @@ export function DesktopNav(props: { productSlug: string; approvals: number }) {
 }
 
 export function MobileNav(props: { productSlug: string; approvals: number }) {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  useEffect(() => setOpen(false), [pathname]);
   return (
     <>
       <button
@@ -74,7 +73,7 @@ export function MobileNav(props: { productSlug: string; approvals: number }) {
         <div className="fixed inset-0 top-14 z-40 lg:hidden">
           <div className="absolute inset-0 bg-ink/20" onClick={() => setOpen(false)} />
           <aside className="relative h-full w-[272px] overflow-y-auto border-r border-line bg-paper">
-            <NavList {...props} />
+            <NavList {...props} onNavigate={() => setOpen(false)} />
           </aside>
         </div>
       ) : null}

@@ -458,10 +458,17 @@ export async function submitForApproval(tx: Tx, actor: Actor, productId: string,
 }
 
 export async function decideApproval(tx: Tx, actor: Actor, productId: string, approvalId: string, decision: "approved" | "rejected" | "changes_requested", note: string) {
-  const a = await tx.one<{ id: string; content_version_id: string; payload_hash: string; state: string }>(
-    "select id, content_version_id, payload_hash, state from approval_items where id = $1 and product_id = $2 for update",
+  const a = await tx.one<{ id: string; content_version_id: string; payload_hash: string; state: string; item_type: string; conversation_message_id: string | null }>(
+    "select id, content_version_id, payload_hash, state, item_type, conversation_message_id from approval_items where id = $1 and product_id = $2 for update",
     [approvalId, productId],
   );
+  if (a.item_type === "reply") {
+    await tx.query("insert into approval_decisions (workspace_id, product_id, approval_item_id, decision, payload_hash, note) values ($1,$2,$3,$4,$5,$6)", [
+      actor.workspaceId, productId, a.id, decision, a.payload_hash, note,
+    ]);
+    await tx.query("update conversation_messages set status = $2 where id = $1", [a.conversation_message_id, decision === "approved" ? "approved" : "rejected"]);
+    return decision;
+  }
   const item = await tx.one<{ id: string; current_version_id: string }>("select id, current_version_id from content_items where current_version_id = $1", [a.content_version_id]).catch(() => null);
   if (!item) throw new Error("The content changed after it was queued. Review the new version.");
   // Recompute: what is approved must equal what would be sent now.
