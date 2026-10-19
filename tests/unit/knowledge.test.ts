@@ -65,3 +65,15 @@ describe("course import", () => {
     expect([...assignPseudonyms("secret", idx.participants).values()]).toEqual([...assigned.values()]);
   });
 });
+
+describe("front-matter with preamble", () => {
+  it("reads front-matter after a short preamble line and keeps the preamble in the body", () => {
+    const { data, body } = parseFrontmatter('**🎥 Запись:** https://x\n\n---\nid: s1\ntitle: "Session"\nspeakers:\n  - Рома Кумар\n---\n## Summary');
+    expect(data).toMatchObject({ id: "s1", title: "Session", speakers: ["Рома Кумар"] });
+    expect(body).toContain("Запись");
+    expect(body).toContain("## Summary");
+  });
+  it("does not treat a markdown horizontal rule as front-matter", () => {
+    expect(parseFrontmatter("# Title\n\n---\n\ntext\n\n---\n").data).toEqual({});
+  });
+});

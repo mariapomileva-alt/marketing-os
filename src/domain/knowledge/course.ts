@@ -47,8 +47,9 @@ export function classifyCourseFile(path: string): CourseFileKind {
 
 /** Minimal YAML front-matter reader: `key: value` and `key:` followed by `  - item` lists. */
 export function parseFrontmatter(md: string): { data: Record<string, unknown>; body: string } {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(md);
-  if (!m) return { data: {}, body: md };
+  // Some exported cards start with a short preamble line (e.g. a recording link) before the front-matter.
+  const m = /^(?:[^\n]{0,300}\n){0,3}?---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(md);
+  if (!m || !/^[A-Za-z_][\w-]*:/m.test(m[1])) return { data: {}, body: md };
   const data: Record<string, unknown> = {};
   let listKey: string | null = null;
   for (const line of m[1].split(/\r?\n/)) {
@@ -67,7 +68,8 @@ export function parseFrontmatter(md: string): { data: Record<string, unknown>; b
       data[kv[1]] = unquote(kv[2]);
     }
   }
-  return { data, body: md.slice(m[0].length) };
+  const preamble = md.slice(0, m.index + m[0].indexOf("---")).trim();
+  return { data, body: (preamble ? `${preamble}\n\n` : "") + md.slice(m.index + m[0].length) };
 }
 
 function unquote(v: string): string {

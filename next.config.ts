@@ -14,6 +14,8 @@ const nextConfig: NextConfig = {
   cacheComponents: false,
   poweredByHeader: false,
   serverExternalPackages: ["pg"],
+  // Knowledge uploads (documents, the course archive) go through server actions; files are also checked in code.
+  experimental: { serverActions: { bodySizeLimit: "6mb" } },
   turbopack: {
     rules: {
       "*.css": {
