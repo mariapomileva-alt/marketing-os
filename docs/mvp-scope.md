@@ -23,6 +23,7 @@ The MVP is complete when all 15 points of the Definition of Done in the brief pa
 | Connections | Integration status page; LLM provider key connection (encrypted, revocable, rotatable); disconnect without losing history | OAuth to social platforms (v0.2 with D-7) |
 | UTM | Builder with templates; unique link per publication; copy; history | Link shortener, click tracking redirect (v0.2) |
 | Metrics | Manual entry and CSV import with column mapping; import batches; undo batch | API metrics pulls |
+| Paid ads | Meta Ads and Google Ads: CSV report import (campaigns, ad sets/groups, ads, daily spend and results); link ads to creatives, experiments and UTM links; paid vs organic comparison; CPL/CAC from real spend | API sync and any write action (v0.2 read-only API, v0.4 changes with approval) |
 | Conversions | CSV import of registrations / trials / payments / refunds keyed by UTM or link id; unmatched rows reported | Store/MMP integrations |
 | Analytics | Dashboard from §12 of the brief; group by product, channel, segment, hook, angle, format, CTA; Wilson intervals; `Not enough data`; CPL/CAC only when spend exists; demo dataset labelled | Cohorts, LTV curves, multi-touch attribution |
 | Experiments | Auto-created per item; pre-registration; review screen; human conclusion; recommendation cards citing data | Automated rule updates (fast loop) |
@@ -84,7 +85,7 @@ Each step ends with: type check, lint, tests green, CHANGELOG entry, short repor
 | B10 | Guardrail engine + review steps (mock AI review, real deterministic rules) | Golden-set tests for Back App red lines |
 | B11 | Approval Queue with hash binding; Calendar | Edit-after-approval invalidates approval |
 | B12 | UTM builder; export packages (Instagram, Threads) | Unique links; export contents test |
-| B13 | Metrics manual + CSV import; Analytics dashboard on **demo data** (flagged); stats module | Wilson + "Not enough data" unit tests |
+| B13 | Metrics manual + CSV import; Meta Ads / Google Ads report import; Analytics dashboard on **demo data** (flagged); stats module | Wilson + "Not enough data" unit tests |
 | B14 | Activity Log, agent run viewer, Connections page (LLM key connect/disconnect/rotate) | DoD #15 test |
 
 ### Stage C — first live workflow (Back App)

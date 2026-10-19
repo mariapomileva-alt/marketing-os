@@ -239,7 +239,26 @@ interface AssetGenerator {                                  // MVP: none impleme
 }
 ```
 
-Channel registry in MVP: **Instagram** (export only), **Threads** (export/copy; official API publishing is decision D-7), **Website** (UTM destinations + article export), and **planned** stubs for YouTube, TikTok, X, LinkedIn, Snapchat, Pinterest, Blog/SEO, Email — each displayed as "Planned, not connected". A **browser-automation adapter** is not built; the type `adapterKind: 'official_api' | 'export' | 'browser_automation'` exists so that any future one is labelled and gated with a risk disclosure.
+Channel registry in MVP: **Instagram** (export only), **Facebook Page** (export only), **Threads** (export/copy; official API publishing is decision D-7), **Website** (UTM destinations + article export), and **planned** stubs for YouTube, TikTok, X, LinkedIn, Snapchat, Pinterest, Blog/SEO, Email — each displayed as "Planned, not connected". A **browser-automation adapter** is not built; the type `adapterKind: 'official_api' | 'export' | 'browser_automation'` exists so that any future one is labelled and gated with a risk disclosure.
+
+
+### 10.1 Paid advertising (owner decision 2026-10-19)
+
+Marketing OS manages **paid campaigns as well as organic content**: Meta Ads (Facebook + Instagram) and Google Ads first, others later. Paid ads use the same flywheel: an ad creative is a `content_item` with an `experiment`; spend and results attach to it.
+
+```ts
+interface AdsConnector {
+  platform: 'meta_ads' | 'google_ads' | 'tiktok_ads' | 'linkedin_ads' | ...;
+  capabilities: { importCsv: boolean; readApi: boolean; writeApi: boolean };
+  importReport(file | apiQuery): Promise<AdsImportResult>;     // campaigns, ad sets/groups, ads, daily spend + results
+  proposeChange?(change: AdsChange): Promise<AdsChangePreview>; // pause, budget, new ad — preview only
+  applyChange?(change: AdsChange, ctx: ApprovedActionContext): Promise<AdsChangeResult>; // via policy engine, after approval
+}
+```
+
+New tables: `ad_accounts`, `ad_campaigns`, `ad_groups` (ad set / ad group), `ads` (linked to `content_items` / `creative_assets` and `utm_links`), `ad_daily_stats` (append-only, per ad per day: spend, impressions, clicks, platform conversions, currency), `ad_change_requests` (proposed change → approval → result). `spend_entries` is fed from `ad_daily_stats`.
+
+Rules: platform-reported conversions are stored as **platform claims**, separate from our own conversions; every write (pause, budget, launch) goes through the Approval Queue and policy engine; automatic rules (kill / test / scale from the course guide) are proposals only until v0.8.
 
 ## 11. Knowledge base and search
 

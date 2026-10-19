@@ -13,3 +13,5 @@
 - Owner decision: the AI Mindset course vault and the AJTBD files are the methodology knowledge base (private, attributed, participants pseudonymised, kept out of Git). Updated `licensing.md` §2–3, `product-architecture.md` §11.1 (methodology layer + Playbook), `mvp-scope.md` (B6a, B6b), `reusable-patterns.md`, D-12.
 - Owner approved the architecture and accepted the recommendations for open decisions.
 - Added `.gitignore` (blocks `knowledge-imports/`).
+
+- Paid advertising (Meta Ads, Google Ads) added to scope: `AdsConnector`, ads tables, CSV import in v0.1, API later (D-17). Facebook Page added as an export channel. Owner's existing tools recorded (D-18).

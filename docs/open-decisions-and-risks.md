@@ -23,6 +23,8 @@ Stage A · 2026-10-19. Each decision has a recommendation; Stage B starts with t
 | D-13 | Back App compliance owner and crisis wording | You (or a clinician/legal adviser you name) approve: prohibited-claims list, safety line for crisis-adjacent content, emergency resources per country | Safety |
 | D-14 | Ask com-factory's author for a licence | Not needed: independent implementation covers all patterns we need | Licensing |
 | D-15 | Personal and health data in AI calls | Store interviews only with consent flag; pseudonymous lead ids; redact names, emails and phone numbers before sending text to an AI provider; use provider settings that exclude data from training; EU hosting | Security, legal |
+| D-17 | Paid advertising scope | **Resolved 2026-10-19:** Meta Ads + Google Ads are in scope. v0.1: CSV report import; v0.2: read-only API; v0.4: changes with approval | Scope |
+| D-18 | Owner's existing tools | Accounts: Instagram + Facebook Page (existing), Canva, Kling, ChatGPT, Claude, Cursor subscriptions. **Consumer subscriptions (ChatGPT Plus, Claude Pro) do not include API access**: the app needs separate API keys (platform.openai.com / console.anthropic.com, pay-as-you-go). Canva and Kling APIs have their own developer access terms; to be checked at v0.7 | Cost |
 | D-16 | Visual identity for the app itself | Calm palette from the brief; final typeface chosen in B4 from openly licensed fonts | UI |
 
 ## Key risks
@@ -41,6 +43,7 @@ Stage A · 2026-10-19. Each decision has a recommendation; Stage B starts with t
 | R-10 | **Secret leakage** | Low / High | Server-only secrets, encryption at rest, log redaction, rotation, revocation |
 | R-11 | **Licensing**: accidental reuse of com-factory code, or course text leaking into public content | Low / Medium | Independent implementation of com-factory patterns; course files kept out of Git; generated content checked for long verbatim overlaps with methodology sources (n-gram check) before approval |
 | R-12 | **Meta app review delays** for Threads/Instagram APIs | Medium / Medium | v0.1 does not depend on them; start the app setup in parallel if you want v0.2 soon |
+| R-14 | **Ads API access**: Google Ads API needs a developer token with approval; Meta Marketing API needs a Business-verified app | Medium / Medium | v0.1 works from CSV exports; apply for access in parallel |
 | R-13 | **Missing inputs**: Back App brief, approved facts, interviews, analytics exports | High / Medium | Stage C uses only what you provide, labelled by evidence level; empty fields stay empty, not invented |
 
 ## What I need from you to start Stage B
