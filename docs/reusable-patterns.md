@@ -2,6 +2,8 @@
 
 Stage A · 2026-10-19
 
+**The AI Mindset course materials are the methodological base of Marketing OS** (owner decision, 2026-10-19): they are imported into the knowledge base and distilled into a cited Playbook (see `product-architecture.md` §11.1). The tables below are the first cut of that Playbook.
+
 Every pattern below is re-expressed in our own words and will be implemented independently. Nothing here is copied code or copied text. "Source" names where the idea was observed; `licensing.md` explains why reuse of the idea is acceptable.
 
 Legend: **Adopt** = use as is · **Adapt** = use with changes listed · **Defer** = roadmap · **Reject** = do not use.

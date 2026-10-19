@@ -250,6 +250,21 @@ Channel registry in MVP: **Instagram** (export only), **Threads** (export/copy; 
 5. Hybrid search: full-text rank + vector similarity, filtered by product and scope. Results always return source + locator.
 6. Customer quotes are extracted **by a human selecting text** in a source (MVP), stored verbatim with source and offsets; AI-suggested quotes are verified by exact string match against the chunk before they can be saved.
 
+### 11.1 Methodology knowledge base (course materials)
+
+The AI Mindset course vault and the AJTBD files are the **methodological foundation** of the system (owner decision, 2026-10-19). They are kept apart from customer evidence:
+
+| Layer | Scope | Examples | May support |
+|---|---|---|---|
+| **Methodology** | workspace (all products) | course cards, transcripts, materials, AJTBD pipeline, schema, codebook template | playbook rules, prompt instructions, review checklists, recommendations ("why this approach") |
+| **Product evidence** | one product | interviews, reviews, analytics exports, approved facts | facts, quotes, segments, jobs, experiment results |
+
+- **Playbook:** `playbook_rules` (versioned, owner-approved) distil the methodology into operational rules — e.g. "a flywheel exists only if outcomes change the next decision", "criteria order defines a segment", "never count with the model", "tag creatives by persona/hook/angle/format/CTA". Each rule links to its source chunks, has a `kind` (`principle | checklist_item | creative_formula | review_rule | anti_pattern`), and per-product applicability (a product can mark a rule *not applicable*, e.g. FOMO tactics for Back App).
+- Generation and review steps retrieve relevant playbook rules **and** product evidence separately; the prompt labels them differently, and outputs cite both.
+- Methodology chunks can never be linked as evidence for an assertion of kind `fact`, `quote` or `confirmed_result` about a product (check constraint on `assertion_evidence` via source scope).
+- Import pipeline for the vault: decode filenames → parse front-matter (session id, title, date, speaker, type) → classify file (card / transcript / chat / material / pdf) → pseudonymise participants (deterministic map stored encrypted) → chunk (cards by topic headings, transcripts by timestamped blocks, materials by headings) → embed. Raw files are kept in a private Storage bucket, not in Git.
+- Language: the methodology is in Russian while content may be produced in other languages, so the embedding model must be multilingual (D-5).
+
 ## 12. AJTBD module
 
 Universal entities, no example-company content:
@@ -367,7 +382,7 @@ erDiagram
     uuid id PK
     uuid product_id FK "null only when scope=workspace"
     text scope "product | workspace"
-    text source_type "doc | transcript | interview | call | note | report | creative | url | image | methodology_note"
+    text source_type "doc | transcript | interview | call | note | report | creative | url | image | methodology"
     text original_filename
     text title
     text author
@@ -760,6 +775,7 @@ Added and why:
 | funnel_stages, drop_offs, hypotheses | Funnel stage, drop-off point, RAT hypotheses (§8) |
 | profile_field_definitions | Per-product causal fields instead of hardcoded ones |
 | ideas | "Create one content idea" (Stage C) before hooks and items |
+| playbook_rules, playbook_rule_sources, product_rule_overrides | Course methodology turned into versioned, cited, owner-approved rules; per-product applicability |
 | content_reviews | Structured brand/compliance findings per version |
 | content_version_assets | Many-to-many versions ↔ creative assets |
 | approval_decisions | Who decided what, when, on which hash |

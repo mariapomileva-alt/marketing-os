@@ -9,7 +9,7 @@ Stage A · 2026-10-19
 | Source | Licence found | What we may do | What we must not do |
 |---|---|---|---|
 | com-factory | **None** | Study product and architectural ideas; implement independently | Copy, translate or adapt its code, prompts, regexes or UI text |
-| AI Mindset course vault | **None stated**; course material distributed to participants | Learn methodology; cite sources in our docs; store **your own** notes about it | Republish course text in the product; import transcripts/chats into the knowledge base; use participants' names or messages |
+| AI Mindset course vault | **None stated**; course material distributed to participants | **Owner decision 2026-10-19:** import the whole vault into your private workspace as the methodology knowledge base, with attribution and participant names pseudonymised | Commit raw course files to Git; publish course text externally; show participants' real names; present course examples as facts about our products |
 | AJTBD prompt, call schema, codebook template | **None stated**; methodology attributed to Ivan Zamesin (Next Move Theory) | Adapt the structure into product entities, as you asked; keep attribution of the methodology | Hardcode the example company, products or forbidden phrases; reproduce canon texts we do not have |
 | Default stack (Next.js, Tailwind, shadcn/ui, Zod, PostgreSQL, pgvector, Supabase client libs, job runner, Sentry/PostHog SDKs) | Permissive open-source licences expected | Use as dependencies | Ship without a licence inventory; Stage B adds an automated licence check |
 | Platform APIs (Meta: Instagram, Threads; others later) | Platform terms | Use official APIs within granted permissions and rate limits | Browser automation presented as safe; scraping that bypasses API permissions |
@@ -35,13 +35,17 @@ Stage A · 2026-10-19
 
 **Evidence checked:** README, programme, all summary cards and written materials; text search across all 73 files for licence, copyright and redistribution terms. None found. The README states the vault is assembled from the course platform (`learn.aimindset.org/marketing`).
 
-**Conclusion.**
+**Owner decision (2026-10-19):** the course materials are the methodological foundation of Marketing OS and are imported into the knowledge base.
 
-- Treat as proprietary course material provided to you as a participant. Ideas and methods may be learned and applied; the text itself should not be republished inside the product or in a public repository.
-- Speaker materials (frameworks AIM-PDF-01, AIM-B2C-ONB-01, guides, skills) are referenced in our docs by title and summarised in our own words. **No passages are copied into prompts, UI or seed data.**
-- **Transcripts and chat exports contain personal data of third parties** (participant names, messages). They will not be imported into the knowledge base.
-- The 13 "AI Visibility Report" PDFs describe other companies; not imported.
-- If you want course frameworks available inside Marketing OS as workspace-level methodology, the safe route is **your own summary notes** (which you write or approve), imported as `source_type = methodology_note` with attribution to the original framework.
+**How we do this safely:**
+
+- **Private use only.** The materials live in your private workspace database and private Storage bucket. They are **not committed to Git** (the raw files stay outside the repository; `.gitignore` blocks the import folder) and are never published externally.
+- **Attribution.** Every source keeps its course, session, speaker, date and file name in provenance, and every answer that uses it cites it.
+- **Third-party personal data.** Transcripts and Zoom chats contain names and messages of other participants. On import, participant names and handles are replaced with stable pseudonyms (`Participant-07`); lecturers and guest speakers stay named as authors. Chat messages are kept as low-confidence context.
+- **Methodology, not evidence.** Course sources are `scope = workspace`, `source_type = methodology`. They can support rules, playbooks and recommendations, but can never be cited as a fact or quote about Back App, MyTeam Space or Momentrami customers.
+- **No verbatim copying into outputs.** Generated content for your channels uses methods from the course, not its sentences. Short quotes appear only inside the internal knowledge view with a citation.
+- **Third-party company data.** The 13 "AI Visibility Report" PDFs describe other companies; they are imported as methodology examples (report structure), clearly labelled, when PDF parsing arrives (v0.2).
+- **Contradictions with our rules.** Where the course recommends tactics forbidden for a product (for example, discount + deadline + FOMO for Back App), the product guardrails win; the playbook marks the rule as "not applicable to this product".
 
 ## 3. AJTBD prompt, call-record schema, codebook template
 
@@ -53,7 +57,7 @@ Stage A · 2026-10-19
 - Methodology terms (Core Job, Big Job, consideration activators, RAT cards, etc.) will be used with attribution in docs and in the UI help text ("based on Advanced JTBD by Ivan Zamesin").
 - The schema JSON and codebook Markdown will not be shipped verbatim. Field names are re-specified in English in our migrations.
 - All example content is excluded: the example company, courses, country, funnel steps, prices and phrase lists.
-- **Open question for you:** confirm that you have the right to use these three files for building your own tool (for example, they came from the course or from your own work). If they came from a client project, confirm no client data is embedded beyond the examples already identified.
+- **Owner confirmed (2026-10-19):** these files are course materials and form part of the methodology base. They are imported as workspace-level methodology sources; the example company content stays in the source text but is never used as data about our products.
 
 ## 4. Planned stack dependencies
 

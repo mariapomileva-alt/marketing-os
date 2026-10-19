@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+# Course materials and any imported raw knowledge files never go into Git
+knowledge-imports/
+supabase/.temp/

@@ -10,7 +10,7 @@ The MVP is complete when all 15 points of the Definition of Done in the brief pa
 |---|---|---|
 | Accounts | One owner, one workspace; magic link + TOTP | Team members, roles, invitations |
 | Products | CRUD, full profile (§6 of the brief), guardrails, claims, links, UTM templates, taxonomy terms; Back App seeded with its rules | Product templates marketplace |
-| Knowledge | Upload Markdown, TXT, JSON, CSV; provenance on every source; chunking; full-text + vector search; manual quote extraction | PDF, DOCX, URL fetch, images/OCR, audio transcription (v0.2) |
+| Knowledge | Upload Markdown, TXT, JSON, CSV; provenance on every source; chunking; full-text + vector search; manual quote extraction; **course methodology base imported and searchable; Playbook v1** | PDF, DOCX, URL fetch, images/OCR, audio transcription (v0.2) |
 | Audience & AJTBD | Manual CRUD: audiences, segments, jobs (levels), success criteria (ordered), fears, barriers, triggers, quotes, interviews, leads; codebook v1 create/activate; segment change history; import of already-structured JSON records (schema v1, adapted) | LLM call unpacking, AI re-clustering, period reports, winback (v0.3) |
 | Competitors & signals | Manual competitor list; manual signal entry with all structure fields; comparison table for ≥ 20 creatives with filters and sort | Scraping, automatic extraction, Ads Library harvest (never via web-UI scraping) |
 | Hooks & ideas | Ideas linked to segment/job/sources; hook and angle variants (AI) with rationale | Hook library analytics beyond MVP analytics |
@@ -76,6 +76,8 @@ Each step ends with: type check, lint, tests green, CHANGELOG entry, short repor
 | B4 | App shell: 19-section navigation, product selector in header, empty states, design tokens, responsive | Visual check desktop + 375 px |
 | B5 | Product CRUD with full profile, guardrails, claims, links, taxonomy | e2e: create 3 products |
 | B6 | Knowledge library: upload MD/TXT/JSON/CSV, provenance, chunking, FTS; embedding job (mock embeddings in B) | Search returns source + locator |
+| B6a | **Course methodology import:** bulk import of the vault (60 Markdown files: cards, transcripts, chats, materials) and the 3 AJTBD files as workspace methodology sources; deterministic pseudonymisation of participants; provenance from file metadata (section, session, speaker, date) | Every chunk cites session + file; no participant real names in DB (test) |
+| B6b | **Playbook v1:** distilled, versioned rules extracted from the methodology (Data Flywheel rules, AJTBD iron rules, creative tagging, honesty rules), each linked to source chunks and approved by you | Each rule has ≥ 1 citation; product guardrails override |
 | B7 | Audience & AJTBD manual CRUD, codebook v1, segment history | Segment change audited |
 | B8 | Signals & competitors manual table (≥ 20 rows usable) | Sort/filter test |
 | B9 | Content Studio with **Mock LLM provider** (deterministic, labelled "MOCK"), ideas → hooks → variants → versions | Every variant has rationale + evidence links |
@@ -91,7 +93,7 @@ Each step ends with: type check, lint, tests green, CHANGELOG entry, short repor
 |---|---|
 | C1 | EU-hosted Supabase project; real LLM provider connected (D-5); budget caps set |
 | C2 | Back App profile completed with your approved facts, prohibited claims, tone, crisis line |
-| C3 | Import selected materials with full provenance (your own notes; no course transcripts) |
+| C3 | Import Back App materials with full provenance (product-scoped evidence), separate from the course methodology base |
 | C4 | One segment + one Job entered from your evidence (labelled by evidence level) |
 | C5 | One idea → three hooks → Instagram caption, Threads post, Reels script |
 | C6 | Brand + compliance review; fix blocking findings |

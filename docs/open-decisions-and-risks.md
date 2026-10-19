@@ -1,6 +1,8 @@
 # Open decisions and key risks
 
-Stage A · 2026-10-19. Each decision has a recommendation; Stage B starts with the recommendation unless you choose otherwise. Decisions that affect security, cost or architecture are marked.
+Stage A · 2026-10-19. Each decision has a recommendation; Stage B starts with the recommendation unless you choose otherwise.
+
+**2026-10-19: owner approved the architecture and chose "use recommendations" for all open decisions.** D-6 (languages, countries) and the provider choice inside D-5 have no default that can be assumed; they are needed before Stage C and do not block Stage B (mock AI provider). Decisions that affect security, cost or architecture are marked.
 
 ## Open decisions
 
@@ -17,7 +19,7 @@ Stage A · 2026-10-19. Each decision has a recommendation; Stage B starts with t
 | D-9 | Attribution object and model | Object: trial start (fallback: registration). Primary model: last non-direct click. One model team-wide | Analytics |
 | D-10 | "Not enough data" thresholds | Rates: ≥ 5 publications **and** ≥ 1,000 impressions per group; shares: N ≥ 20 per cell; winner only if Wilson 95% intervals do not overlap. All configurable in Settings | Analytics |
 | D-11 | Owner authentication | Email magic link + mandatory TOTP | Security |
-| D-12 | Course and AJTBD materials inside the product | Do not import transcripts or chats. Import only your own summary notes as workspace-level methodology. Confirm you may use the AJTBD files | Licensing, privacy |
+| D-12 | Course and AJTBD materials inside the product | **Resolved 2026-10-19:** the whole course vault and the AJTBD files become the workspace methodology knowledge base (private, attributed, participant names pseudonymised, not in Git). See `licensing.md` §2 | Licensing, privacy |
 | D-13 | Back App compliance owner and crisis wording | You (or a clinician/legal adviser you name) approve: prohibited-claims list, safety line for crisis-adjacent content, emergency resources per country | Safety |
 | D-14 | Ask com-factory's author for a licence | Not needed: independent implementation covers all patterns we need | Licensing |
 | D-15 | Personal and health data in AI calls | Store interviews only with consent flag; pseudonymous lead ids; redact names, emails and phone numbers before sending text to an AI provider; use provider settings that exclude data from training; EU hosting | Security, legal |
@@ -37,7 +39,7 @@ Stage A · 2026-10-19. Each decision has a recommendation; Stage B starts with t
 | R-8 | **Prompt injection** via imported documents, signals or comments | Medium / Medium | Data delimiting, no tools in generation steps, schema-validated outputs, human approval, audit |
 | R-9 | **AI cost overruns** | Medium / Low | Per-run and per-day budget caps, mock provider in development, token and cost logging per run |
 | R-10 | **Secret leakage** | Low / High | Server-only secrets, encryption at rest, log redaction, rotation, revocation |
-| R-11 | **Licensing**: accidental reuse of com-factory code or course text | Low / Medium | Independent implementation from our specs; no source open while writing policy engine; no course text in prompts or seed data |
+| R-11 | **Licensing**: accidental reuse of com-factory code, or course text leaking into public content | Low / Medium | Independent implementation of com-factory patterns; course files kept out of Git; generated content checked for long verbatim overlaps with methodology sources (n-gram check) before approval |
 | R-12 | **Meta app review delays** for Threads/Instagram APIs | Medium / Medium | v0.1 does not depend on them; start the app setup in parallel if you want v0.2 soon |
 | R-13 | **Missing inputs**: Back App brief, approved facts, interviews, analytics exports | High / Medium | Stage C uses only what you provide, labelled by evidence level; empty fields stay empty, not invented |
 
@@ -45,6 +47,6 @@ Stage A · 2026-10-19. Each decision has a recommendation; Stage B starts with t
 
 1. Approval of the architecture (or changes).
 2. Answers to D-1, D-5, D-6, D-7 (or "use recommendations").
-3. Confirmation on D-12 (rights to the AJTBD files).
+3. ~~Confirmation on D-12~~ — resolved: course materials are the knowledge base.
 
 Stage C additionally needs D-8, D-13 and the Back App materials listed in R-13.
