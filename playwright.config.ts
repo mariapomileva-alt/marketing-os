@@ -1,9 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
+import { e2eDatabaseUrl } from "./tests/e2e-global-setup";
 
-const PORT = Number(process.env.E2E_PORT ?? 3100);
+const PORT = Number(process.env.E2E_PORT ?? 3200);
 
 export default defineConfig({
   testDir: "tests/e2e",
+  globalSetup: "./tests/e2e-global-setup.ts",
   fullyParallel: false,
   workers: 1,
   reporter: [["list"]],
@@ -14,9 +16,11 @@ export default defineConfig({
   ],
   webServer: {
     // Dev server: AUTH_MODE=dev (local owner sign-in) is refused in production builds by design.
+    // It gets its own database; stop any other `next dev` in this folder first (Next allows one per project).
     command: `npx next dev -p ${PORT}`,
     port: PORT,
-    reuseExistingServer: true,
-    timeout: 120000,
+    reuseExistingServer: false,
+    timeout: 180000,
+    env: { DATABASE_URL: e2eDatabaseUrl(), AUTH_MODE: "dev" },
   },
 });

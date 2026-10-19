@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getPool } from "@/server/db/client";
 
@@ -54,6 +55,7 @@ async function supabaseClient() {
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
+  await connection(); // per-request only: never evaluated while building
   if (authMode() === "dev") {
     const raw = (await cookies()).get(DEV_COOKIE)?.value;
     if (!raw) return null;

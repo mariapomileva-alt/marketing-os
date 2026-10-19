@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Stage B — 2026-10-19
+
+- Application foundation: Next.js 16, PostgreSQL + pgvector with row-level security, seven migrations (products, knowledge, AJTBD, research and content, distribution and measurement, AI evidence, per-product source dedupe).
+- Sign-in (dev owner or Supabase magic link), product selector, all 19 sections; the Overview shows the flywheel for the selected product.
+- Products: profile, languages, links, claims, safety rules, UTM templates; Back App seed with its red lines and a golden test set.
+- Knowledge: uploads with provenance, chunking, hybrid search; course import with pseudonymised participants; Playbook v1 with 21 cited rules.
+- Audience & AJTBD: codebook versions, segments, Jobs, success criteria, verbatim quotes checked against their source, fears, barriers.
+- Content Studio on mock AI: idea → hooks → content variants → code safety rules + AI reviews (mock reviews always ask for a human) → edits as new versions → UTM link → Approval Queue bound to the exact text → calendar → export → mark as published.
+- Measurement: manual metrics, CSV imports for post metrics, conversions and Meta / Google Ads with column mapping, preview and revert.
+- Analytics: comparisons by channel, format, segment, hook, angle, CTA and topic with 95% intervals; “Not enough data” below thresholds; recommendations labelled as hypotheses.
+- Experiments, Conversations (manual log, replies through approval), Creative Library, Connections (encrypted keys, rotation, revocation), Automations (limits shown, nothing automatic), Settings, Activity Log.
+- Tests: 74 unit/integration + Definition-of-Done integration suite (three products, CSV import, comparisons, disconnect keeps history, activity log); Playwright full flow plus all 19 sections on desktop and phone.
+- `npm run licenses` checks production dependency licences. ADR-12…16 added.
+
 ### Stage A — 2026-10-19
 
 - Audited the com-factory repository (commit `fc55f71`), the AI Mindset Marketing Sprint vault, the AJTBD pipeline prompt v2, the call-record schema v1 and the codebook template. Nothing was executed.

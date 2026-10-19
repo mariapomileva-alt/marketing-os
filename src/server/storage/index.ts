@@ -54,7 +54,7 @@ export function fileStore(): FileStore {
     if (!url || !key) throw new Error("STORAGE_DRIVER=supabase needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
     store = new SupabaseStore(url, key, process.env.SUPABASE_STORAGE_BUCKET ?? "knowledge");
   } else {
-    store = new LocalStore(path.resolve(process.cwd(), process.env.STORAGE_LOCAL_DIR ?? ".data/storage"));
+    store = new LocalStore(path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.STORAGE_LOCAL_DIR ?? ".data/storage"));
   }
   return store;
 }

@@ -821,3 +821,8 @@ Added and why:
 | ADR-9 | Secrets encrypted at application level, separate table | Token columns on connections | Revocation = delete ciphertext; history keeps metadata |
 | ADR-10 | Planned channels as declared stubs with `status = planned` | Not listing them | Architecture ready, UI honest |
 | ADR-11 | Internal event log instead of a third-party analytics SDK | PostHog from day one | Sensitive health-adjacent data; can add later |
+| ADR-12 | Next.js Cache Components off (`cacheComponents: false`); every page is rendered per request | Partial prerendering with `"use cache"` | Every screen is behind sign-in and reads row-level-secured data; caching per user adds risk of leaking one product's data into another for no visible gain at this scale |
+| ADR-13 | SQL-first data access: hand-written migrations, `pg`, Zod at the edges | Drizzle ORM | `drizzle-kit pull` produced invalid code for composite keys and generated columns; the guarantees live in SQL anyway (D-3) |
+| ADR-14 | Jobs run synchronously inside the request in v0.1 | Inngest from day one | Mock AI and CSV imports finish in seconds; Inngest arrives with real provider calls and API syncs (Stage C / v0.2). Every AI call already records an `agent_runs` row, so moving it to a queue changes no data |
+| ADR-15 | Calendar scheduling through a date-and-time field | Drag and drop | Same data, works on phones and with a keyboard; drag and drop can be added on top later |
+| ADR-16 | MFA comes with Supabase Auth in Stage C | MFA in the dev sign-in | Dev sign-in is refused in production builds; the production sign-in path is Supabase magic link + TOTP |

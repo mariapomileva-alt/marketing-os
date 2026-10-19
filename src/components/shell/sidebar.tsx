@@ -57,7 +57,11 @@ export function DesktopNav(props: { productSlug: string; approvals: number }) {
 }
 
 export function MobileNav(props: { productSlug: string; approvals: number }) {
-  const [open, setOpen] = useState(false);
+  // The menu belongs to the page it was opened on: navigating anywhere closes it, with no effect needed.
+  const pathname = usePathname();
+  const [openOn, setOpenOn] = useState<string | null>(null);
+  const open = openOn === pathname;
+  const setOpen = (v: boolean | ((o: boolean) => boolean)) => setOpenOn((typeof v === "function" ? v(open) : v) ? pathname : null);
   return (
     <>
       <button
