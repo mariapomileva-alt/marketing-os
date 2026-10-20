@@ -19,10 +19,25 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin noinherit bypassrls; end if;
 end $$;
 
-grant anon, authenticated, service_role to current_user;
+-- The application connects as the database owner and switches role per transaction (SET LOCAL ROLE).
+-- On Supabase the owner (postgres) is already a member of these roles; granting again may be refused there.
+do $$
+declare r text;
+begin
+  foreach r in array array['anon', 'authenticated', 'service_role'] loop
+    if not pg_has_role(current_user, r, 'MEMBER') then
+      execute format('grant %I to %I', r, current_user);
+    end if;
+  end loop;
+end $$;
 
 create schema if not exists auth;
-grant usage on schema auth to anon, authenticated, service_role;
+do $$
+begin
+  grant usage on schema auth to anon, authenticated, service_role;
+exception when insufficient_privilege then
+  null; -- Supabase owns the auth schema and already grants this.
+end $$;
 
 do $$
 begin

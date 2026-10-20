@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
+import { seedDemo } from "@/server/services/demo";
 import { createBackApp, createProduct, productInputSchema, profileUpdateSchema, slugify, updateProfile } from "@/server/services/products";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 
@@ -31,6 +32,12 @@ export async function createBackAppAction() {
   const p = await db((tx, ctx) => createBackApp(tx, ctx.workspaceId), { reason: "Back App created with brief §6 rules" });
   revalidatePath("/", "layout");
   redirect(`/p/${p.slug}/products`);
+}
+
+export async function createDemoProductAction() {
+  await db((tx, ctx) => seedDemo(tx, ctx.workspaceId), { reason: "demo product with invented, labelled data" });
+  revalidatePath("/", "layout");
+  redirect("/p/demo-calm/analytics");
 }
 
 export async function updateProfileAction(productSlug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {

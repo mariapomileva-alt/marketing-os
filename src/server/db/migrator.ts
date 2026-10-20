@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "pg";
+import { pgConfig } from "./config";
 
 export const MIGRATIONS_DIR = path.resolve(process.cwd(), "db/migrations");
 
@@ -16,7 +17,8 @@ export interface MigrationResult {
  * applied migrations are never edited, a new file is added instead.
  */
 export async function migrate(connectionString: string, dir = MIGRATIONS_DIR): Promise<MigrationResult> {
-  const client = new Client({ connectionString });
+  const { max: _max, ...config } = pgConfig(connectionString);
+  const client = new Client(config);
   await client.connect();
   const result: MigrationResult = { applied: [], skipped: [] };
   try {

@@ -153,3 +153,20 @@ describe("activity log", () => {
     await expect(as((tx) => tx.query("delete from audit_logs where product_id = $1", [p.id]))).rejects.toThrow(/permission denied/);
   });
 });
+
+describe("demo product", () => {
+  it("is created by a signed-in owner under row-level security, entirely flagged as demo", async () => {
+    const { seedDemo } = await import("@/server/services/demo");
+    const r = await as((tx) => seedDemo(tx, owner.workspaceId));
+    expect(r).toEqual({ created: true, publications: 17 });
+    const flags = await as((tx) =>
+      tx.one<{ products: boolean; pubs: number; real: number }>(
+        `select bool_and(p.is_demo) products, count(x.id)::int pubs, count(x.id) filter (where not x.is_demo)::int real
+           from products p join publications x on x.product_id = p.id where p.slug = 'demo-calm' and p.workspace_id = $1`,
+        [owner.workspaceId],
+      ),
+    );
+    expect(flags).toEqual({ products: true, pubs: 17, real: 0 });
+    expect(await as((tx) => seedDemo(tx, owner.workspaceId))).toEqual({ created: false, publications: 0 });
+  });
+});

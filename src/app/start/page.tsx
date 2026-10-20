@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getAppContext, listProducts } from "@/server/context";
-import { createBackAppAction, createProductAction } from "@/app/actions/products";
+import { createBackAppAction, createDemoProductAction, createProductAction } from "@/app/actions/products";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/form";
@@ -11,6 +11,7 @@ export default async function StartPage() {
   await getAppContext();
   const products = await listProducts();
   const hasBackApp = products.some((p) => p.slug === "back-app");
+  const hasDemo = products.some((p) => p.slug === "demo-calm");
   return (
     <main className="mx-auto max-w-[720px] px-4 py-12">
       <p className="text-[13px] font-medium text-green">Marketing OS</p>
@@ -55,6 +56,19 @@ export default async function StartPage() {
           </Field>
         </ActionForm>
       </section>
+      {!hasDemo ? (
+        <section className="mt-6 rounded-[var(--radius-panel)] border border-dashed border-line-strong p-5">
+          <h2 className="text-[16px]">A demo product to try Analytics</h2>
+          <p className="prose-measure mt-1 text-[13px] text-muted">
+            Adds “Demo: Calm app” with 17 invented publications, metrics and registrations, all marked as demo. It stays separate from your real
+            products, and you can archive it later.
+          </p>
+          <form action={createDemoProductAction} className="mt-4">
+            <Button type="submit">Add demo product</Button>
+          </form>
+        </section>
+      ) : null}
+
       {products.length ? (
         <p className="mt-6 text-[13px]">
           <Link className="text-green underline underline-offset-2" href={`/p/${products[0].slug}/overview`}>
