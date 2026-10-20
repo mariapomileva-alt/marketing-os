@@ -12,6 +12,9 @@ export function pgConfig(url: string): PoolConfig {
   const max = Number(process.env.DB_POOL_MAX ?? (process.env.VERCEL ? 3 : 10));
   if (mode && mode !== "disable") {
     u.searchParams.delete("sslmode");
+    // Parameters added by the Supabase ↔ Vercel integration that are not Postgres settings.
+    u.searchParams.delete("supa");
+    u.searchParams.delete("pgbouncer");
     return { connectionString: u.toString(), ssl: { rejectUnauthorized: false }, max };
   }
   return { connectionString: url, max };

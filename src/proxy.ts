@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { supabaseAnonKey, supabaseUrl } from "@/server/env";
 
 /**
  * Cheap gate: requests without any session cookie go to /login. Real verification happens on the
@@ -11,8 +12,8 @@ export async function proxy(request: NextRequest) {
   const hasSession = request.cookies.getAll().some((c) => c.name === "mos_dev_session" || c.name.startsWith("sb-"));
   if (!hasSession) return NextResponse.redirect(new URL("/login", request.url));
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = supabaseUrl();
+  const key = supabaseAnonKey();
   if (process.env.AUTH_MODE === "dev" || !url || !key) return NextResponse.next();
 
   let response = NextResponse.next({ request });

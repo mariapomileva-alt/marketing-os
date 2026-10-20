@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import { storageDriver, supabaseUrl } from "@/server/env";
 
 /** Private file storage for knowledge sources and creative assets. Never served publicly. */
 export interface FileStore {
@@ -48,10 +49,10 @@ class SupabaseStore implements FileStore {
 let store: FileStore | null = null;
 export function fileStore(): FileStore {
   if (store) return store;
-  if (process.env.STORAGE_DRIVER === "supabase") {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (storageDriver() === "supabase") {
+    const url = supabaseUrl();
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) throw new Error("STORAGE_DRIVER=supabase needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
+    if (!url || !key) throw new Error("Supabase storage needs the Supabase URL and SUPABASE_SERVICE_ROLE_KEY");
     store = new SupabaseStore(url, key, process.env.SUPABASE_STORAGE_BUCKET ?? "knowledge");
   } else {
     store = new LocalStore(path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.STORAGE_LOCAL_DIR ?? ".data/storage"));

@@ -7,6 +7,7 @@ import { chunkCsvRows, chunkJson, chunkMarkdown, chunkPlainText, chunkTranscript
 import { parseCsv } from "@/domain/csv";
 import { assignPseudonyms, collectNames, decodeZipName, parseCourseFile, pseudonymise, type ParsedCourseFile } from "@/domain/knowledge/course";
 import { PLAYBOOK_SEED } from "@/domain/knowledge/playbook";
+import { encryptionKey } from "@/server/security/crypto";
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 export const ACCEPTED = [".md", ".markdown", ".txt", ".json", ".csv"] as const;
@@ -182,9 +183,7 @@ export async function listSources(tx: Tx, workspaceId: string, productId: string
 // ---------------------------------------------------------------------------
 
 function pseudonymKey(): string {
-  const base = process.env.ENCRYPTION_KEY_V1;
-  if (!base) throw new Error("ENCRYPTION_KEY_V1 is required to pseudonymise course participants");
-  return createHmac("sha256", Buffer.from(base, "base64")).update("course-pseudonyms").digest("hex");
+  return createHmac("sha256", encryptionKey(1)).update("course-pseudonyms").digest("hex");
 }
 
 export interface CourseImportResult {

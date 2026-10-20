@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getPool } from "@/server/db/client";
+import { supabaseAnonKey, supabaseUrl } from "@/server/env";
 
 /**
  * Authentication. Two modes:
@@ -37,8 +38,8 @@ function sign(value: string): string {
 
 async function supabaseClient() {
   const store = await cookies();
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = supabaseUrl();
+  const key = supabaseAnonKey();
   if (!url || !key) throw new Error("Supabase URL and anon key are required when AUTH_MODE=supabase");
   return createServerClient(url, key, {
     cookies: {

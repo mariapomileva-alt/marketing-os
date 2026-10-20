@@ -1,5 +1,6 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { pgConfig } from "./config";
+import { databaseUrl } from "@/server/env";
 
 /**
  * Database access. Every application query runs inside `withContext`, which opens a transaction,
@@ -24,7 +25,7 @@ export interface Tx {
 
 const pools = new Map<string, Pool>();
 
-export function getPool(connectionString = process.env.DATABASE_URL): Pool {
+export function getPool(connectionString = databaseUrl()): Pool {
   if (!connectionString) throw new Error("DATABASE_URL is not configured");
   let pool = pools.get(connectionString);
   if (!pool) {
