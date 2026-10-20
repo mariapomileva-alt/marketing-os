@@ -70,6 +70,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const supabase = await supabaseClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) return null;
+  const allowed = allowedEmails();
+  if (allowed && !allowed.includes((data.user.email ?? "").toLowerCase())) return null;
   return { id: data.user.id, email: data.user.email ?? "", mode: "supabase" };
 }
 
@@ -94,9 +96,20 @@ export async function devSignIn(): Promise<void> {
   });
 }
 
+/**
+ * ALLOWED_EMAILS (comma-separated) lists who may use this deployment. A listed address gets an account on its
+ * first sign-in link; anyone else can only sign in if an account was created for them in Supabase, and is refused
+ * by the app when the list is set — even if they signed up through Supabase directly.
+ */
+export function allowedEmails(env: Record<string, string | undefined> = process.env): string[] | null {
+  const list = (env.ALLOWED_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return list.length ? list : null;
+}
+
 export async function sendMagicLink(email: string, redirectTo: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = await supabaseClient();
-  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo, shouldCreateUser: false } });
+  const listed = allowedEmails()?.includes(email.trim().toLowerCase()) ?? false;
+  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo, shouldCreateUser: listed } });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 

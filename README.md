@@ -44,7 +44,7 @@ npm run knowledge:import-course -- <path-to-course.zip>   # methodology knowledg
 2. In Supabase: Project Settings → Integrations → Vercel → connect this Vercel project. It syncs the database URL and Supabase keys; nothing is copied by hand (ADR-17).
 3. Redeploy in Vercel so the build sees the variables.
 4. Supabase → Authentication → URL Configuration: Site URL = the Vercel address, Redirect URLs = `<address>/auth/callback`.
-5. Supabase → Authentication → Users → Add user (your email, Auto Confirm). Only users created there can sign in.
+5. Vercel → Environment Variables: `ALLOWED_EMAILS=<your email>`. That address gets its account on the first sign-in link; nobody else is let in.
 
 ## Checks
 
