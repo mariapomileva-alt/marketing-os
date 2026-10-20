@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
-import { storageDriver, supabaseUrl } from "@/server/env";
+import { storageDriver, supabaseServiceKey, supabaseUrl } from "@/server/env";
 
 /** Private file storage for knowledge sources and creative assets. Never served publicly. */
 export interface FileStore {
@@ -51,7 +51,7 @@ export function fileStore(): FileStore {
   if (store) return store;
   if (storageDriver() === "supabase") {
     const url = supabaseUrl();
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const key = supabaseServiceKey();
     if (!url || !key) throw new Error("Supabase storage needs the Supabase URL and SUPABASE_SERVICE_ROLE_KEY");
     store = new SupabaseStore(url, key, process.env.SUPABASE_STORAGE_BUCKET ?? "knowledge");
   } else {

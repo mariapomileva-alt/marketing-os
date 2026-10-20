@@ -23,7 +23,7 @@ export interface EncryptedSecret {
 export function encryptionKey(version: number, env: Env = process.env): Buffer {
   const raw = env[`ENCRYPTION_KEY_V${version}`];
   if (!raw) {
-    const source = version === 1 ? env.SUPABASE_JWT_SECRET || env.SUPABASE_SERVICE_ROLE_KEY : undefined;
+    const source = version === 1 ? env.SUPABASE_JWT_SECRET || env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY : undefined;
     if (source) return Buffer.from(hkdfSync("sha256", source, "marketing-os", "encryption-key-v1", 32));
     throw new Error(`Encryption key version ${version} is not configured`);
   }
