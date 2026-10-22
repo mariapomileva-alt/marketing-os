@@ -80,3 +80,28 @@ export const experimentReviewSchema = z.object({
   confirming_metric: z.string(),
 });
 export type ExperimentReviewOutput = z.infer<typeof experimentReviewSchema>;
+
+/** YouTube comment drafts: a plain helpful one, and one that mentions the product openly (or skip). */
+export const communityCommentSchema = z.object({
+  responds_to: z.string().min(1).describe("The specific thought from the video the comment reacts to"),
+  skip: z.boolean().describe("true when no comment from the team would be welcome here"),
+  skip_reason: z.string().default(""),
+  variants: z
+    .array(
+      z.object({
+        variant: z.enum(["helpful", "with_mention"]),
+        text: z.string().min(1).max(900),
+      }),
+    )
+    .max(2),
+});
+export type CommunityCommentOutput = z.infer<typeof communityCommentSchema>;
+
+/** A reply in an existing thread, with the drafter's own reading of the situation first. */
+export const communityReplySchema = z.object({
+  understanding: z.string().min(1).describe("What the person is really saying or asking"),
+  may_mention_product: z.boolean(),
+  handoff_to_human: z.boolean().describe("true when a person should decide whether to answer at all"),
+  text: z.string().min(1).max(900),
+});
+export type CommunityReplyOutput = z.infer<typeof communityReplySchema>;

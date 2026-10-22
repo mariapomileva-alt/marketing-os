@@ -76,6 +76,7 @@ export async function markReplyPostedAction(slug: string, messageId: string) {
     if (m.status !== "approved") throw new Error("Only approved replies can be marked as posted.");
     await tx.query("update conversation_messages set status = 'posted', occurred_at = now() where id = $1", [messageId]);
     await tx.query("update conversations set status = 'replied' where id = $1", [m.conversation_id]);
+    await tx.query("update yt_videos set status = 'published' where conversation_id = $1 and product_id = $2", [m.conversation_id, product.id]);
   }, { reason: "reply posted manually" });
   revalidatePath(`/p/${slug}/conversations`);
 }

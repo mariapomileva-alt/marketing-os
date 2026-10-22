@@ -46,6 +46,15 @@ npm run knowledge:import-course -- <path-to-course.zip>   # methodology knowledg
 4. Supabase → Authentication → URL Configuration: Site URL = the Vercel address, Redirect URLs = `<address>/auth/callback`.
 5. Vercel → Environment Variables: `ALLOWED_EMAILS=<your email>`. That address gets its account on the first sign-in link; nobody else is let in.
 
+## YouTube community agent
+
+Conversations → YouTube. Drafts only: every comment and reply waits in the Approval Queue, and publishing stays off until you switch it on after the dry run.
+
+1. Google Cloud console → new project → enable **YouTube Data API v3** → Credentials → **API key** (restrict it to that API). Vercel: `YOUTUBE_API_KEY`.
+2. Vercel: `CRON_SECRET` = a long random string (the daily search at 06:00 UTC uses it).
+3. Optional Telegram alerts: create a bot with @BotFather → `TELEGRAM_BOT_TOKEN`; send the bot a message, then read your chat id from `https://api.telegram.org/bot<token>/getUpdates` → `TELEGRAM_CHAT_ID`.
+4. In the app: Conversations → YouTube → Settings: product name used in comments, search phrases, limits; tick "Search once a day".
+
 ## Checks
 
 ```bash

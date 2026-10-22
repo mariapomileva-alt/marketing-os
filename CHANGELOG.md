@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### YouTube community agent (dry run) — 2026-10-22
+
+- Conversations → YouTube: daily search through the official YouTube Data API (read-only key), filters with a visible reason for every video (topic score, Shorts, comments off, made for kids, crisis / drugs / sensational / political / children content, one comment per channel per 30 days).
+- Drafts in a warm human voice from the team (`community_comment.v1`, `community_reply.v1`): a helpful variant and, only when it fits, an open mention ("We're building Back…"). Every draft is checked for repetition against earlier comments, disclosure, invented experience, medical promises and sales language, plus the product's safety rules; drafts that fail are held back with the reason.
+- Replies: the drafter reads the whole thread and states what the person means. Danger, self-harm, chest pain and similar messages are marked HIGH RISK, get only a fixed, product-free safety note and an urgent Telegram alert; a person decides.
+- Approval Queue for every comment and reply; publishing is off (`YOUTUBE_PUBLISHING_ENABLED=false`) and `publishGate` refuses anything not approved or over the limits. Approved comments are posted from the channel by the owner and marked as posted.
+- Telegram notifications (counts and links only, never comment text). Vercel Cron `/api/cron/youtube` daily at 06:00 UTC with `CRON_SECRET`.
+- Migration 0009 (yt_settings, yt_videos, conversation risk and draft metadata). 29 new tests.
+
 ### Stage B — 2026-10-19
 
 - Application foundation: Next.js 16, PostgreSQL + pgvector with row-level security, seven migrations (products, knowledge, AJTBD, research and content, distribution and measurement, AI evidence, per-product source dedupe).

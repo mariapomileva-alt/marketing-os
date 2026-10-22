@@ -24,7 +24,7 @@ export default async function ApprovalsPage({ params }: PageProps<"/p/[product]/
     ),
     replies: await tx.query<{ id: string; subject_summary: string; payload_snapshot: ApprovalPayload; reason_in_queue: string; inbound: string | null }>(
       `select a.id, a.subject_summary, a.payload_snapshot, a.reason_in_queue,
-              (select m2.text from conversation_messages m2 where m2.conversation_id = m.conversation_id and m2.direction = 'inbound' order by m2.occurred_at limit 1) inbound
+              (select m2.text from conversation_messages m2 where m2.conversation_id = m.conversation_id and m2.direction = 'inbound' and m2.occurred_at <= m.created_at order by m2.occurred_at desc limit 1) inbound
          from approval_items a join conversation_messages m on m.id = a.conversation_message_id
         where a.product_id = $1 and a.state = 'pending' and a.item_type = 'reply' order by a.created_at`,
       [product.id],

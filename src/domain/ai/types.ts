@@ -31,7 +31,7 @@ export interface LLMProvider {
   embed?(texts: string[]): Promise<{ vectors: number[][]; model: string; dims: number }>;
 }
 
-export type AiTask = "hooks" | "content" | "brand_review" | "compliance_review" | "experiment_review";
+export type AiTask = "hooks" | "content" | "brand_review" | "compliance_review" | "experiment_review" | "community_comment" | "community_reply";
 
 export class AiOutputError extends Error {
   constructor(message: string, readonly raw: string) {

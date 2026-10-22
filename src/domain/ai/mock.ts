@@ -127,6 +127,35 @@ function mockExperimentReview() {
   };
 }
 
+function mockCommunityComment(c: Ctx) {
+  const title = s(c.videoTitle, "this video");
+  const product = s(c.productName, "the product");
+  const n = Number(c.seed ?? 0);
+  const openers = [
+    "The part about the first minutes stayed with me",
+    "Thank you for saying that breathing doesn't have to be perfect",
+    "It helps to hear that the alarm in your body isn't the same as danger",
+    "That reminder to slow down before doing anything else is so kind",
+  ];
+  const open = openers[Math.abs(n) % openers.length];
+  return {
+    responds_to: `[MOCK] A thought from "${title}"`,
+    skip: false,
+    skip_reason: "",
+    variants: [
+      { variant: "helpful" as const, text: `[MOCK] ${open}. When everything feels loud, one small step at a time is often all a person can hold. (${title.slice(0, 40)})` },
+      { variant: "with_mention" as const, text: `[MOCK] ${open}. We're building ${product}, a small tool with short steps for exactly those minutes, so this felt very close to what we work on. (${title.slice(0, 40)})` },
+    ],
+  };
+}
+
+function mockCommunityReply(c: Ctx) {
+  const danger = Boolean(c.highRisk);
+  return danger
+    ? { understanding: "[MOCK] The person may be in danger.", may_mention_product: false, handoff_to_human: true, text: "[MOCK] Thank you for telling us. Please contact your local emergency number or a crisis line right now. You don't have to go through this alone." }
+    : { understanding: `[MOCK] The person is responding to our comment: "${s(c.message).slice(0, 60)}"`, may_mention_product: false, handoff_to_human: false, text: "[MOCK] That makes a lot of sense, and thank you for sharing it. What usually helps you a little, even for a minute?" };
+}
+
 export class MockProvider implements LLMProvider {
   readonly id = "mock" as const;
   readonly isMock = true;
@@ -138,6 +167,8 @@ export class MockProvider implements LLMProvider {
       req.task === "hooks" ? mockHooks(c)
       : req.task === "content" ? mockContent(c)
       : req.task === "experiment_review" ? mockExperimentReview()
+      : req.task === "community_comment" ? mockCommunityComment(c)
+      : req.task === "community_reply" ? mockCommunityReply(c)
       : mockReview(req.task);
     const output = req.schema.parse(raw);
     const rawText = JSON.stringify(raw);

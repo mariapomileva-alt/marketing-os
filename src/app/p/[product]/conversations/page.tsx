@@ -6,26 +6,39 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { EmptyState, PageHeader, Section } from "@/components/ui/layout";
 import { Status } from "@/components/ui/status";
 import { formatDateTime } from "@/lib/format";
+import { Tabs, tabParam } from "@/components/ui/tabs";
+import { loadYoutube, YoutubeTab } from "./youtube-tab";
 
 export const metadata = { title: "Conversations" };
 
-export default async function ConversationsPage({ params }: PageProps<"/p/[product]/conversations">) {
+export default async function ConversationsPage({ params, searchParams }: PageProps<"/p/[product]/conversations">) {
   const { product: slug } = await params;
+  const tab = tabParam(await searchParams, ["youtube", "other"], "youtube");
   const product = await getProduct(slug);
+  const header = (
+    <>
+      <PageHeader title="Conversations" description="Comments and replies, drafted by AI where useful and always approved by you. The team writes as itself, never as a customer, and mentions the product only when it truly helps." />
+      <Tabs base={`/p/${slug}/conversations`} current={tab} tabs={[{ id: "youtube", label: "YouTube" }, { id: "other", label: "Instagram, Threads, Facebook" }]} />
+    </>
+  );
+  if (tab === "youtube") {
+    const y = await db((tx, ctx) => loadYoutube(tx, ctx.workspaceId, product.id));
+    return (<>{header}<YoutubeTab slug={slug} data={y} /></>);
+  }
   const d = await db(async (tx) => ({
     convs: await tx.query<{ id: string; channel: string; thread_url: string | null; status: string; sensitive: boolean; created_at: string; post: string | null; messages: Array<{ id: string; direction: string; author_handle: string | null; text: string; status: string; occurred_at: string }> }>(
       `select c.id, c.channel, c.thread_url, c.status, c.sensitive, c.created_at::text, i.title post,
               coalesce((select json_agg(json_build_object('id', m.id, 'direction', m.direction, 'author_handle', m.author_handle, 'text', m.text, 'status', m.status, 'occurred_at', m.occurred_at) order by m.occurred_at)
                           from conversation_messages m where m.conversation_id = c.id), '[]') messages
          from conversations c left join publications p on p.id = c.publication_id left join content_items i on i.id = p.content_item_id
-        where c.product_id = $1 order by c.sensitive desc, c.created_at desc limit 100`,
+        where c.product_id = $1 and c.channel <> 'youtube' order by c.sensitive desc, c.created_at desc limit 100`,
       [product.id],
     ),
     pubs: await tx.query<{ id: string; title: string }>("select p.id, i.title from publications p join content_items i on i.id = p.content_item_id where p.product_id = $1 order by p.published_at desc limit 50", [product.id]),
   }));
   return (
     <>
-      <PageHeader title="Conversations" description="Comments on your posts and your replies. In this version you paste comments in and post approved replies yourself: nothing is read or sent automatically. Never write as a customer; mention the product only when it truly helps." />
+      {header}
       <Section title="Log a comment">
         <ActionForm action={logConversationAction.bind(null, slug)} submitLabel="Log comment" resetOnSuccess className="grid gap-3 rounded-[var(--radius-panel)] border border-line bg-surface p-4 md:grid-cols-3">
           <Field label="Channel" htmlFor="cv-ch"><Select id="cv-ch" name="channel"><option value="instagram">Instagram</option><option value="threads">Threads</option><option value="facebook">Facebook</option></Select></Field>
