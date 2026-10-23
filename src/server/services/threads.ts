@@ -2,7 +2,7 @@ import type { Tx } from "@/server/db/client";
 import { communityCommentSchema } from "@/domain/ai/schemas";
 import { publishableText } from "@/domain/content";
 import type { ContentBody } from "@/domain/ai/schemas";
-import { classifyMessage } from "@/domain/youtube";
+import { classifyMessage, queriesForRun } from "@/domain/youtube";
 import { runAgent, type Actor } from "./content";
 import { brandName, checkDraft, getYtSettings, previousTeamTexts, productRules, queueDraft, receiveReply, startRun, CHANNEL_NAME } from "./youtube";
 import { channelConnection, publishingEnabled, threadsToken, type ThreadsWriteApi } from "./youtube-publish";
@@ -124,7 +124,8 @@ export async function runThreadsDiscovery(tx: Tx, actor: Actor, productId: strin
   const s = await getThreadsSettings(tx, actor.workspaceId, productId);
   const stats: ThreadsDiscoveryStats = { source: source.kind, found: 0, newPosts: 0, eligible: 0, draftsQueued: 0, draftsRejected: 0, errors: [] };
   const seen = new Map<string, { p: FoundPost; query: string }>();
-  for (const query of s.queries) {
+  // Threads allows about 2,200 searches a day per account: up to 60 phrases per run, rotating daily.
+  for (const query of queriesForRun(s.queries, 60, now)) {
     try {
       for (const p of await source.search(query)) if (!seen.has(p.id)) seen.set(p.id, { p, query });
     } catch (e) {

@@ -176,7 +176,7 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
           <Field label="Product name in comments" htmlFor="yt-brand" hint="How the team names it, e.g. Back"><Input id="yt-brand" name="brand_name" defaultValue={s.brand_name ?? ""} /></Field>
           <Field label="Languages" htmlFor="yt-lang" hint="Two-letter codes"><Input id="yt-lang" name="languages" defaultValue={s.languages.join(", ")} /></Field>
           <Field label="Videos from the last, days" htmlFor="yt-days"><Input id="yt-days" name="published_within_days" type="number" min={1} max={90} defaultValue={s.published_within_days} /></Field>
-          <Field label="Search phrases, one per line" htmlFor="yt-q" className="md:col-span-3"><Textarea id="yt-q" name="queries" rows={6} defaultValue={s.queries.join("\n")} /></Field>
+          <Field label="Search phrases, one per line" htmlFor="yt-q" className="md:col-span-3" hint="Up to 150. YouTube's daily quota allows about 15 searches a day, so a longer list is searched 15 phrases a day in turn."><Textarea id="yt-q" name="queries" rows={6} defaultValue={s.queries.join("\n")} /></Field>
           <Field label="Skip videos shorter than, seconds" htmlFor="yt-min"><Input id="yt-min" name="min_duration_seconds" type="number" min={0} defaultValue={s.min_duration_seconds} /></Field>
           <Field label="One comment per channel every, days" htmlFor="yt-cd"><Input id="yt-cd" name="channel_cooldown_days" type="number" min={1} defaultValue={s.channel_cooldown_days} /></Field>
           <Field label="Drafts per search" htmlFor="yt-dr"><Input id="yt-dr" name="drafts_per_run" type="number" min={0} max={10} defaultValue={s.drafts_per_run} /></Field>

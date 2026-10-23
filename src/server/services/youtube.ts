@@ -3,7 +3,7 @@ import type { Tx } from "@/server/db/client";
 import { approvalHash, canonicalJson } from "@/domain/approvals";
 import { checkText, outcomeOf, type GuardrailRule } from "@/domain/guardrails";
 import { communityCommentSchema, communityReplySchema } from "@/domain/ai/schemas";
-import { checkVoice, classifyMessage, safetyDraft, scoreVideo, type VideoCandidate, type VoiceCheck } from "@/domain/youtube";
+import { checkVoice, classifyMessage, queriesForRun, safetyDraft, scoreVideo, type VideoCandidate, type VoiceCheck } from "@/domain/youtube";
 import { decideApproval, runAgent, type Actor } from "./content";
 import type { VideoSource } from "@/server/youtube/source";
 
@@ -186,7 +186,8 @@ export async function runDiscovery(tx: Tx, actor: Actor, productId: string, sour
   const stats: DiscoveryStats = { source: source.kind, found: 0, newVideos: 0, eligible: 0, drafted: 0, draftsQueued: 0, draftsRejected: 0, errors: [] };
   const publishedAfter = new Date(now.getTime() - s.published_within_days * 86_400_000);
   const seen = new Map<string, { v: VideoCandidate; query: string }>();
-  for (const query of s.queries) {
+  // YouTube search costs 100 of 10,000 daily quota units: at most 15 phrases per run, rotating daily.
+  for (const query of queriesForRun(s.queries, 15, now)) {
     const language = /[а-яё]/i.test(query) ? "ru" : s.languages.includes("en") ? "en" : null;
     try {
       for (const v of await source.find(query, { publishedAfter, language, max: 15 })) if (!seen.has(v.videoId)) seen.set(v.videoId, { v, query });

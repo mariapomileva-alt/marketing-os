@@ -17,7 +17,7 @@ const actorOf = (ctx: { workspaceId: string; user: { id: string } }) => ({ works
 
 const settingsSchema = z.object({
   enabled: z.boolean(),
-  queries: z.array(z.string().min(2).max(100)).min(1, "Add at least one search phrase.").max(20),
+  queries: z.array(z.string().min(2).max(100)).min(1, "Add at least one search phrase.").max(150, "At most 150 search phrases."),
   drafts_per_run: z.coerce.number().int().min(0).max(10),
   author_cooldown_days: z.coerce.number().int().min(1).max(365),
 });

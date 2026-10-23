@@ -122,3 +122,17 @@ describe("bot-like phrasing", () => {
     expect(checkVoice("Breathing slowly really helps here #anxiety #panic", []).ok).toBe(false);
   });
 });
+
+describe("query rotation", () => {
+  it("uses every phrase when the list is short and a moving window when it is long", async () => {
+    const { queriesForRun } = await import("@/domain/youtube");
+    const q = Array.from({ length: 40 }, (_, i) => `q${i}`);
+    expect(queriesForRun(q.slice(0, 5), 15)).toHaveLength(5);
+    const d1 = queriesForRun(q, 15, new Date("2026-10-23T06:00:00Z"));
+    const d2 = queriesForRun(q, 15, new Date("2026-10-24T06:00:00Z"));
+    expect(d1).toHaveLength(15);
+    expect(d2[0]).not.toBe(d1[0]);
+    const covered = new Set([0, 1, 2].flatMap((i) => queriesForRun(q, 15, new Date(Date.UTC(2026, 9, 23 + i)))));
+    expect(covered.size).toBe(40); // three days cover the whole list
+  });
+});

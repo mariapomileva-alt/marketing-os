@@ -218,3 +218,14 @@ export function checkVoice(draft: string, previous: string[], productName = "Bac
 
   return { ok: problems.length === 0, problems, warnings, scores: { maxSimilarity, promo, exclamations, emoji, words }, mentionsProduct };
 }
+
+/**
+ * The phrases searched in one run: all of them when the list is short, otherwise a window that moves every day, so
+ * a long list is covered over a few days without exceeding the platform's daily quota.
+ */
+export function queriesForRun(queries: string[], perRun: number, now = new Date()): string[] {
+  if (queries.length <= perRun) return queries;
+  const day = Math.floor(now.getTime() / 86_400_000);
+  const start = (day * perRun) % queries.length;
+  return Array.from({ length: perRun }, (_, i) => queries[(start + i) % queries.length]);
+}

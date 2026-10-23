@@ -131,7 +131,7 @@ export function SocialTab({ slug, channel, data }: { slug: string; channel: Chan
         <Section title="Settings">
           <ActionForm action={saveThreadsSettingsAction.bind(null, slug)} submitLabel="Save settings" className="grid gap-3 rounded-[var(--radius-panel)] border border-line bg-surface p-4 md:grid-cols-3">
             <label className="flex items-center gap-2 text-[13.5px] md:col-span-3"><input type="checkbox" name="enabled" defaultChecked={data.settings.enabled} /> Search Threads once a day and prepare drafts</label>
-            <Field label="Search phrases, one per line" htmlFor="th-q" className="md:col-span-3"><Textarea id="th-q" name="queries" rows={5} defaultValue={data.settings.queries.join("\n")} /></Field>
+            <Field label="Search phrases, one per line" htmlFor="th-q" className="md:col-span-3" hint="Up to 150. Up to 60 are searched each day; a longer list is covered in turn."><Textarea id="th-q" name="queries" rows={5} defaultValue={data.settings.queries.join("\n")} /></Field>
             <Field label="Drafts per search" htmlFor="th-dr"><Input id="th-dr" name="drafts_per_run" type="number" min={0} max={10} defaultValue={data.settings.drafts_per_run} /></Field>
             <Field label="Answer the same person at most every, days" htmlFor="th-cd"><Input id="th-cd" name="author_cooldown_days" type="number" min={1} defaultValue={data.settings.author_cooldown_days} /></Field>
           </ActionForm>

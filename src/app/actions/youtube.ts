@@ -17,7 +17,7 @@ const msg = (x: unknown) => (x instanceof Error && !("code" in x) ? x.message : 
 const settingsSchema = z.object({
   enabled: z.boolean(),
   brand_name: z.string().max(40).nullable(),
-  queries: z.array(z.string().min(2).max(100)).min(1, "Add at least one search phrase.").max(20),
+  queries: z.array(z.string().min(2).max(100)).min(1, "Add at least one search phrase.").max(150, "At most 150 search phrases."),
   languages: z.array(z.string().regex(/^[a-z]{2}$/, "Languages are two-letter codes, e.g. en, ru")).min(1),
   min_duration_seconds: z.coerce.number().int().min(0).max(3600),
   channel_cooldown_days: z.coerce.number().int().min(1).max(365),
