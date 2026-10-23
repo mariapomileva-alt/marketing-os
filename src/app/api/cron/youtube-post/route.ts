@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     tx.query<{ product_id: string; workspace_id: string; owner_id: string }>(
       `select distinct c.product_id, c.workspace_id,
               (select m.user_id from workspace_members m where m.workspace_id = c.workspace_id and m.role = 'owner' order by m.created_at limit 1) owner_id
-         from channel_connections c where c.channel in ('youtube', 'threads') and c.adapter_kind = 'official_api' and c.status in ('connected', 'paused')`,
+         from channel_connections c where c.channel in ('youtube', 'threads', 'instagram') and c.adapter_kind = 'official_api' and c.status in ('connected', 'paused')`,
     ),
   );
   const results = [];

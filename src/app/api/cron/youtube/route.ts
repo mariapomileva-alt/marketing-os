@@ -7,7 +7,8 @@ import { getThreadsSettings, refreshThreadsStats, runThreadsDiscovery, syncThrea
 import { threadsApiSource } from "@/server/threads/source";
 import { refreshCommentStats, syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
 import { commentStats } from "@/server/youtube/write";
-import { liveThreadsApi, liveWriteApi } from "@/server/youtube/live";
+import { liveInstagramApi, liveThreadsApi, liveWriteApi } from "@/server/youtube/live";
+import { syncInstagramComments } from "@/server/services/instagram";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
 
 /**
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
   const source = configuredSource();
   const results: unknown[] = [];
   const threadsResults = await dailyThreads();
+  const instagramResults = await dailyInstagram();
 
   const products = !source ? [] : await withContext({ userId: null, role: "service", actorType: "system" }, (tx) =>
     tx.query<{ product_id: string; workspace_id: string; slug: string; name: string; owner_id: string }>(
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
       results.push({ product: p.slug, error: (e as Error).message });
     }
   }
-  return NextResponse.json({ ran: results.length, results, youtube: source ? "ran" : "YOUTUBE_API_KEY is not set", threads: threadsResults });
+  return NextResponse.json({ ran: results.length, results, youtube: source ? "ran" : "YOUTUBE_API_KEY is not set", threads: threadsResults, instagram: instagramResults });
 }
 
 /** Threads: search (when switched on), replies under our replies and posts, likes and views. Drafts only. */
@@ -92,6 +94,32 @@ async function dailyThreads() {
       if (replies.highRisk) await notifyTelegram(`${p.name}: someone on Threads may need urgent help. Please look now.\n${appUrl(`/p/${p.slug}/conversations?tab=threads`)}`, { urgent: true });
       else if (drafts) await notifyTelegram(`${p.name}: ${drafts} new Threads draft(s) wait for your approval.\n${appUrl(`/p/${p.slug}/conversations?tab=threads`)}`);
       out.push({ product: p.slug, found, replies });
+    } catch (e) {
+      out.push({ product: p.slug, error: (e as Error).message });
+    }
+  }
+  return out;
+}
+
+/** Instagram: comments under our own reels, answers drafted for approval. */
+async function dailyInstagram() {
+  const products = await withContext({ userId: null, role: "service", actorType: "system" }, (tx) =>
+    tx.query<{ product_id: string; workspace_id: string; slug: string; name: string; owner_id: string }>(
+      `select distinct c.product_id, c.workspace_id, p.slug, p.name,
+              (select m.user_id from workspace_members m where m.workspace_id = c.workspace_id and m.role = 'owner' order by m.created_at limit 1) owner_id
+         from channel_connections c join products p on p.id = c.product_id
+        where c.channel = 'instagram' and c.adapter_kind = 'official_api' and c.status = 'connected' and p.status <> 'archived'`,
+    ),
+  );
+  const out = [];
+  for (const p of products) {
+    try {
+      const r = await withContext({ userId: p.owner_id, role: "service", actorType: "ai", reason: "daily Instagram comments check" }, (tx) =>
+        syncInstagramComments(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.product_id, liveInstagramApi()),
+      );
+      if (r.highRisk) await notifyTelegram(`${p.name}: someone on Instagram may need urgent help. Please look now.\n${appUrl(`/p/${p.slug}/conversations?tab=instagram`)}`, { urgent: true });
+      else if (r.fresh) await notifyTelegram(`${p.name}: ${r.fresh} new Instagram comment(s), answers drafted for your approval.\n${appUrl(`/p/${p.slug}/conversations?tab=instagram`)}`);
+      out.push({ product: p.slug, ...r });
     } catch (e) {
       out.push({ product: p.slug, error: (e as Error).message });
     }

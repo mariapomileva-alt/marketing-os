@@ -3,7 +3,7 @@ import { encryptSecret, lastFour } from "@/server/security/crypto";
 
 /** Channel registry: what each channel can do in this build. Planned channels can be seen but not connected. */
 export const CHANNEL_REGISTRY: Array<{ id: string; name: string; status: "available" | "planned"; adapter: "export" | "official_api"; capabilities: string; note?: string }> = [
-  { id: "instagram", name: "Instagram", status: "available", adapter: "export", capabilities: "Export for manual posting; metrics by CSV or manual entry" },
+  { id: "instagram", name: "Instagram", status: "available", adapter: "official_api", capabilities: "Comments under our reels read and answered after your approval (official API); posts exported for manual posting" },
   { id: "facebook", name: "Facebook Page", status: "available", adapter: "export", capabilities: "Export for manual posting; metrics by CSV or manual entry" },
   { id: "threads", name: "Threads", status: "available", adapter: "official_api", capabilities: "Posts and replies published after your approval, replies and insights read back (official API, Meta sign-in)" },
   { id: "website", name: "Website", status: "available", adapter: "export", capabilities: "Landing pages for tracking links; article export" },

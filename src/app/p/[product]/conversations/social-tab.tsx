@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Tx } from "@/server/db/client";
 import { getThreadsSettings } from "@/server/services/threads";
 import { channelConnection, publishingEnabled } from "@/server/services/youtube-publish";
-import { addInstagramReelAction, publishThreadsPostAction, runThreadsDiscoveryAction, saveThreadsSettingsAction, syncThreadsAction } from "@/app/actions/threads";
+import { addInstagramReelAction, publishThreadsPostAction, runThreadsDiscoveryAction, saveThreadsSettingsAction, syncInstagramAction, syncThreadsAction } from "@/app/actions/threads";
 import { CopyButton } from "@/components/content/copy-button";
 import { ActionForm } from "@/components/ui/action-form";
 import { Field, Input, Textarea } from "@/components/ui/form";
@@ -16,7 +16,7 @@ type Channel = "threads" | "instagram";
 export async function loadSocial(tx: Tx, workspaceId: string, productId: string, channel: Channel) {
   return {
     settings: channel === "threads" ? await getThreadsSettings(tx, workspaceId, productId) : null,
-    connection: channel === "threads" ? await channelConnection(tx, productId, "threads") : null,
+    connection: await channelConnection(tx, productId, channel),
     queueRunning: (await tx.maybeOne<{ on: boolean }>("select last_queue_check_at > now() - interval '30 minutes' as on from yt_settings where product_id = $1", [productId]))?.on ?? false,
     lastRun: channel === "threads"
       ? await tx.maybeOne<{ stats: { errors?: string[]; found?: number; draftsQueued?: number }; started_at: string }>(
@@ -55,20 +55,27 @@ export async function loadSocial(tx: Tx, workspaceId: string, productId: string,
 export function SocialTab({ slug, channel, data }: { slug: string; channel: Channel; data: Awaited<ReturnType<typeof loadSocial>> }) {
   const groups = groupThreads(data.threads);
   const connected = data.connection?.status === "connected";
-  const canPost = channel === "threads" && publishingEnabled("threads") && Boolean(data.connection);
+  const canPost = publishingEnabled(channel) && Boolean(data.connection);
   const brand = data.connection?.account_label ?? "Our account";
-  const card = (t: Thread) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} queue={canPost && data.queueRunning} />;
+  // Instagram: only comments under our own reels can be answered from here; other accounts' reels are posted by hand.
+  const card = (t: Thread) => {
+    const auto = canPost && (channel !== "instagram" || Boolean(t.external_thread_id));
+    return <ThreadCard key={t.id} slug={slug} t={t} canPost={auto} brand={brand} connected={connected} queue={auto && data.queueRunning} />;
+  };
   return (
     <>
-      {channel === "threads" ? <ThreadsHeader slug={slug} data={data} canPost={canPost} /> : <InstagramHeader slug={slug} />}
+      {channel === "threads" ? <ThreadsHeader slug={slug} data={data} canPost={canPost} /> : <InstagramHeader slug={slug} data={data} canPost={canPost} />}
 
       <Section title="Live conversations" description="Where people answered us: our comment on top, the replies under it, and the answer the agent drafted.">
+        {channel === "instagram" && connected ? (
+          <ActionForm action={syncInstagramAction.bind(null, slug)} submitLabel="Check comments on our reels" pendingLabel="Reading Instagram…" submitVariant="secondary" className="mb-3 flex flex-col gap-2"><span /></ActionForm>
+        ) : null}
         {channel === "threads" && connected ? (
           <ActionForm action={syncThreadsAction.bind(null, slug)} submitLabel="Check for new replies" pendingLabel="Reading Threads…" submitVariant="secondary" className="mb-3 flex flex-col gap-2"><span /></ActionForm>
         ) : null}
         {groups.live.length ? <ul className="flex flex-col gap-3">{groups.live.map(card)}</ul> : (
           <EmptyState title="No replies yet">
-            {channel === "threads" ? "Replies under our Threads replies and posts appear here with an answer drafted." : "When someone answers our comment on Instagram, paste it into the card (“Someone replied…”) and the agent drafts an answer."}
+            {channel === "threads" ? "Replies under our Threads replies and posts appear here with an answer drafted." : connected ? "Comments under our reels appear here every morning (or press Check comments on our reels), each with an answer drafted." : "Connect Instagram in Connections to read comments under our reels. Replies to our comments on other people's reels can be pasted into the card."}
           </EmptyState>
         )}
       </Section>
@@ -186,12 +193,21 @@ function ThreadsOwnPosts({ slug, posts, canPost }: { slug: string; posts: Awaite
   );
 }
 
-function InstagramHeader({ slug }: { slug: string }) {
+function InstagramHeader({ slug, data, canPost }: { slug: string; data: Awaited<ReturnType<typeof loadSocial>>; canPost: boolean }) {
+  const c = data.connection;
   return (
     <Section
       title="How it works"
-      description="Instagram does not let apps comment on other people's reels, so this is half manual: you add a reel you found, the agent drafts a warm, specific comment, you approve it, copy it and post it from the Back account."
+      description="Comments under our own reels: read every morning, an answer drafted for each, approved by you, posted automatically one by one. Other people's reels: Instagram does not let apps comment there, so you add a reel you found, the agent drafts a warm, specific comment, you approve it, copy it and post it yourself."
     >
+      <KeyValue
+        items={[
+          ["Instagram account", c ? <Status tone={c.status === "connected" ? "green" : "red"}>{c.status === "connected" ? c.account_label : `Paused: ${c.paused_reason ?? c.status}`}</Status> : <span><Status tone="amber">Not connected</Status> <Link href={`/p/${slug}/connections`} className="ml-2 underline">Connect in Connections</Link></span>],
+          ["Replies under our reels", canPost ? <Status tone="green">After your approval only, 10 min apart, 8:00–23:00</Status> : <Status>Off: add INSTAGRAM_PUBLISHING_ENABLED=true and connect the account</Status>],
+          ["Comments on other reels", "Drafted here, posted by you"],
+        ]}
+      />
+      <p className="mb-2 mt-5 text-[13.5px] font-medium">Add someone else&apos;s reel</p>
       <ActionForm action={addInstagramReelAction.bind(null, slug)} submitLabel="Draft a comment" pendingLabel="Reading the reel…" resetOnSuccess className="grid gap-3 rounded-[var(--radius-panel)] border border-line bg-surface p-4 md:grid-cols-[1fr_200px]">
         <Field label="Reel link" htmlFor="ig-url"><Input id="ig-url" name="url" type="url" placeholder="https://www.instagram.com/reel/…" required /></Field>
         <Field label="Author" htmlFor="ig-author"><Input id="ig-author" name="author" placeholder="@account" /></Field>

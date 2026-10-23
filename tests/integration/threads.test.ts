@@ -10,6 +10,7 @@ import type { Actor } from "@/server/services/content";
 import { approveDraft } from "@/server/services/youtube";
 import { addInstagramReel, getThreadsSettings, judgePost, runThreadsDiscovery, syncThreadsReplies, updateThreadsSettings, type FoundPost, type PostSource } from "@/server/services/threads";
 import { postApproved, postGate, saveTokenConnection, type ThreadsWriteApi } from "@/server/services/youtube-publish";
+import { syncInstagramComments } from "@/server/services/instagram";
 import { asUser, createOwner } from "../helpers/db";
 
 let owner: { userId: string; workspaceId: string };
@@ -112,5 +113,42 @@ describe("Instagram", () => {
   it("does not draft for a reel about a crisis", async () => {
     const r = await as((tx) => addInstagramReel(tx, actor, productId, { url: "https://www.instagram.com/reel/def/", author: null, text: "I don't want to live anymore, every day is a panic attack" }));
     expect(r.skipped).toBe(true);
+  });
+});
+
+describe("Instagram, comments under our own reels", () => {
+  const sent: Array<{ commentId: string; text: string }> = [];
+  let comments = [
+    { id: "c1", text: "this is exactly what happens to me on the bus, my hands go numb", username: "mila", timestamp: "2026-10-23T08:00:00Z", like_count: 3, replies: [] as Array<{ id: string; text: string; username: string | null; timestamp: string | null }> },
+    { id: "c2", text: "thanks from the team!", username: "backapp.live", timestamp: "2026-10-23T08:05:00Z", like_count: 0, replies: [] },
+  ];
+  const api = {
+    media: async () => [{ id: "media1", caption: "The first minute of panic", permalink: "https://www.instagram.com/reel/x/", timestamp: null, comments_count: 2, like_count: 10, media_product_type: "REELS" }],
+    comments: async () => comments,
+    reply: async (_t: string, commentId: string, text: string) => { sent.push({ commentId, text }); return { id: `rep${sent.length}` }; },
+    refresh: async () => ({ accessToken: "t2", expiresAt: new Date(Date.now() + 60 * 86_400_000) }),
+  };
+
+  it("drafts answers to people's comments, posts the approved one under their comment, and reads their next reply", async () => {
+    await as((tx) => saveTokenConnection(tx, owner.workspaceId, productId, "instagram", { id: "ig1", label: "@backapp.live" }, "ig-token-123456", new Date(Date.now() + 30 * 86_400_000), ["instagram_business_basic"]));
+    await as((tx) => tx.query(`update channel_connections set limits = limits || '{"min_gap_minutes":0,"active_hours":{"start":0,"end":24,"tz":"UTC"}}'::jsonb where product_id = $1 and channel = 'instagram'`, [productId]));
+    const first = await as((tx) => syncInstagramComments(tx, actor, productId, api));
+    expect(first.fresh).toBe(1); // our own comment is skipped
+    expect((await as((tx) => syncInstagramComments(tx, actor, productId, api))).fresh).toBe(0);
+
+    const draft = await as((tx) => tx.one<{ id: string; conversation_id: string }>(
+      `select m.id, m.conversation_id from conversation_messages m join conversations c on c.id = m.conversation_id
+        where c.product_id = $1 and c.channel = 'instagram' and c.external_thread_id = 'c1' and m.status = 'draft' limit 1`, [productId]));
+    await as((tx) => approveDraft(tx, actor, productId, draft.id, null));
+    process.env.INSTAGRAM_PUBLISHING_ENABLED = "true";
+    try {
+      const r = await as((tx) => postApproved(tx, actor, productId, draft.id, { instagram: api }));
+      expect(r.posted).toBe(true);
+      expect(sent[0].commentId).toBe("c1");
+    } finally {
+      delete process.env.INSTAGRAM_PUBLISHING_ENABLED;
+    }
+    comments = [{ ...comments[0], replies: [{ id: "rep1", text: "ours", username: "backapp.live", timestamp: null }, { id: "c1r", text: "oh that helps, I'll try it tomorrow", username: "mila", timestamp: "2026-10-23T10:00:00Z" }] }];
+    expect((await as((tx) => syncInstagramComments(tx, actor, productId, api))).fresh).toBe(1);
   });
 });

@@ -21,7 +21,10 @@ export interface YoutubeWriteApi {
 }
 
 export const publishingEnabled = (channel: string = "youtube") =>
-  channel === "youtube" ? process.env.YOUTUBE_PUBLISHING_ENABLED === "true" : channel === "threads" ? process.env.THREADS_PUBLISHING_ENABLED === "true" : false;
+  channel === "youtube" ? process.env.YOUTUBE_PUBLISHING_ENABLED === "true"
+  : channel === "threads" ? process.env.THREADS_PUBLISHING_ENABLED === "true"
+  : channel === "instagram" ? process.env.INSTAGRAM_PUBLISHING_ENABLED === "true"
+  : false;
 
 const DEFAULT_LIMITS = (daily: number): Limits => ({ daily_limit: daily, account_daily_cap: daily, min_gap_minutes: 10, author_cooldown_days: 0, active_hours: { start: 8, end: 23, tz: "Europe/Riga" } });
 
@@ -74,9 +77,14 @@ export interface ThreadsWriteApi {
   publish(token: string, userId: string, text: string, replyToId: string | null): Promise<{ id: string; permalink: string | null }>;
   refresh(token: string): Promise<{ accessToken: string; expiresAt: Date }>;
 }
+export interface InstagramWriteApi {
+  reply(token: string, commentId: string, text: string): Promise<{ id: string }>;
+  refresh(token: string): Promise<{ accessToken: string; expiresAt: Date }>;
+}
 export interface WriteApis {
   youtube?: YoutubeWriteApi;
   threads?: ThreadsWriteApi;
+  instagram?: InstagramWriteApi;
 }
 type PostChannel = "youtube" | "threads" | "instagram";
 const CHANNEL_LABEL: Record<PostChannel, string> = { youtube: "YouTube", threads: "Threads", instagram: "Instagram" };
@@ -91,7 +99,7 @@ export async function channelConnection(tx: Tx, productId: string, channel: stri
 
 /** Stores the secret encrypted (service-role readable only) and replaces any earlier connection for this channel. */
 export async function saveTokenConnection(
-  tx: Tx, workspaceId: string, productId: string, channel: "threads",
+  tx: Tx, workspaceId: string, productId: string, channel: "threads" | "instagram",
   account: { id: string; label: string }, token: string, expiresAt: Date | null, scopes: string[],
 ) {
   const old = await tx.maybeOne<{ id: string; secret_id: string | null }>("select id, secret_id from channel_connections where product_id = $1 and channel = $2 and status <> 'revoked'", [productId, channel]);
@@ -128,8 +136,9 @@ export async function threadsToken(tx: Tx, conn: { id: string; secret_id: string
 }
 
 export async function postGate(tx: Tx, productId: string, messageId: string, now = new Date()) {
-  const m = await tx.one<{ text: string; status: string; conversation_id: string; channel: PostChannel }>(
-    `select m.text, m.status, m.conversation_id, c.channel from conversation_messages m join conversations c on c.id = m.conversation_id
+  const m = await tx.one<{ text: string; status: string; conversation_id: string; channel: PostChannel; own_media: boolean }>(
+    `select m.text, m.status, m.conversation_id, c.channel, (c.channel = 'instagram' and c.external_thread_id is not null) own_media
+       from conversation_messages m join conversations c on c.id = m.conversation_id
       where m.id = $1 and m.product_id = $2 and m.direction = 'outbound'`,
     [messageId, productId],
   );
@@ -138,7 +147,9 @@ export async function postGate(tx: Tx, productId: string, messageId: string, now
     [messageId],
   );
   const enabled = publishingEnabled(m.channel);
-  const conn = m.channel === "instagram" ? null : await channelConnection(tx, productId, m.channel);
+  // Instagram: only comments under our own media can be answered through the API; other accounts' reels are manual.
+  const manualOnly = m.channel === "instagram" && !m.own_media;
+  const conn = manualOnly ? null : await channelConnection(tx, productId, m.channel);
   const stats = await tx.one<{ n: number; last: string | null }>(
     `select count(*) filter (where created_at > $2::timestamptz - interval '1 day')::int n, max(created_at)::text last
        from outbound_actions where product_id = $1 and action in ('publish', 'reply') and result = 'executed' and connection_id is not distinct from $3
@@ -161,14 +172,14 @@ export async function postGate(tx: Tx, productId: string, messageId: string, now
     dedupeKeyUsed: m.status === "posted",
   });
   const label = CHANNEL_LABEL[m.channel];
-  const reason = m.channel === "instagram"
+  const reason = manualOnly
     ? "Instagram does not allow apps to comment on other people's reels. Copy the text, post it yourself, then press “I posted it myself”."
     : !enabled
       ? `Posting to ${label} is switched off (${m.channel.toUpperCase()}_PUBLISHING_ENABLED). Post it yourself, then press “I posted it myself”.`
       : !conn
         ? `The ${label} account is not connected yet (Connections → Connect ${label}).`
         : policy.reason;
-  return { allowed: enabled && !!conn && policy.allowed, reason, checks: policy.checks, connection: conn, approvalId: a?.id ?? null, message: m };
+  return { allowed: !manualOnly && enabled && !!conn && policy.allowed, reason, checks: policy.checks, connection: conn, approvalId: a?.id ?? null, message: m };
 }
 
 function asApis(x: WriteApis | YoutubeWriteApi): WriteApis {
@@ -205,6 +216,12 @@ export async function postApproved(tx: Tx, actor: Actor, productId: string, mess
         externalId = r.commentId;
         await tx.query("update conversations set external_thread_id = $2 where id = $1", [g.message.conversation_id, r.threadId]);
       }
+    } else if (channel === "instagram") {
+      const api = apis.instagram;
+      if (!api) throw new Error("Instagram posting is not available here.");
+      const token = await threadsToken(tx, g.connection, api);
+      if (!conv.external_thread_id) throw new Error("This Instagram comment has no id to reply to.");
+      externalId = (await api.reply(token, conv.external_thread_id, g.message.text)).id;
     } else {
       const api = apis.threads;
       if (!api) throw new Error("Threads posting is not available here.");
@@ -260,11 +277,12 @@ export async function drainQueue(tx: Tx, actor: Actor, productId: string, apisIn
   let total = 0;
   let posted = false;
   const reasons: string[] = [];
-  for (const channel of ["youtube", "threads"] as const) {
+  for (const channel of ["youtube", "threads", "instagram"] as const) {
     if (!apis[channel]) continue;
     const queued = await tx.query<{ id: string }>(
       `select m.id from conversation_messages m join conversations c on c.id = m.conversation_id
         where m.product_id = $1 and c.channel = $2 and m.direction = 'outbound' and m.status = 'approved'
+          and (c.channel <> 'instagram' or c.external_thread_id is not null)
           and (select a.state from approval_items a where a.conversation_message_id = m.id order by a.created_at desc limit 1) = 'approved'
         order by (c.risk = 'high') desc, m.created_at limit 20`,
       [productId, channel],

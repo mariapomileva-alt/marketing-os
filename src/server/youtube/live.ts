@@ -3,6 +3,7 @@ import type { WriteApis, YoutubeWriteApi } from "@/server/services/youtube-publi
 import type { ThreadsReadApi } from "@/server/services/threads";
 import { accessToken, listReplies, postComment, postReply } from "./write";
 import { threadsInsights, threadsPublish, threadsRefresh, threadsReplies } from "@/server/threads/api";
+import { instagramComments, instagramMedia, instagramRefresh, instagramReply } from "@/server/instagram/api";
 
 /** The real YouTube calls. Reading replies uses the read-only API key; posting uses the channel's OAuth token. */
 export function liveWriteApi(): YoutubeWriteApi {
@@ -27,7 +28,16 @@ export function liveThreadsApi() {
   } satisfies ThreadsReadApi & NonNullable<WriteApis["threads"]>;
 }
 
+export function liveInstagramApi() {
+  return {
+    reply: (token: string, commentId: string, text: string) => instagramReply(token, commentId, text),
+    refresh: (token: string) => instagramRefresh(token),
+    media: (token: string) => instagramMedia(token),
+    comments: (token: string, mediaId: string) => instagramComments(token, mediaId),
+  };
+}
+
 /** Every platform we can post to, for the posting queue and "Post now". */
 export function liveApis(): WriteApis {
-  return { youtube: liveWriteApi(), threads: liveThreadsApi() };
+  return { youtube: liveWriteApi(), threads: liveThreadsApi(), instagram: liveInstagramApi() };
 }

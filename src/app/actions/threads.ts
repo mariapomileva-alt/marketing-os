@@ -7,7 +7,8 @@ import { describeDbError } from "@/server/db/client";
 import { addInstagramReel, publishThreadsPost, refreshThreadsStats, runThreadsDiscovery, syncThreadsReplies, updateThreadsSettings } from "@/server/services/threads";
 import { channelConnection } from "@/server/services/youtube-publish";
 import { threadsApiSource, threadsDemoSource } from "@/server/threads/source";
-import { liveThreadsApi } from "@/server/youtube/live";
+import { liveInstagramApi, liveThreadsApi } from "@/server/youtube/live";
+import { syncInstagramComments } from "@/server/services/instagram";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 
@@ -108,5 +109,29 @@ export async function disconnectThreadsAction(slug: string) {
     await tx.query("update channel_connections set status = 'revoked', secret_id = null, revoked_at = now() where id = $1", [conn.id]);
     if (conn.secret_id) await tx.query("delete from secrets where id = $1", [conn.secret_id]);
   }, { reason: "Threads account disconnected" });
+  revalidatePath(`/p/${slug}`, "layout");
+}
+
+export async function syncInstagramAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const r = await db((tx, ctx) => syncInstagramComments(tx, actorOf(ctx), product.id, liveInstagramApi()), { reason: "Instagram comments read", actorType: "ai" });
+    if (r.highRisk) await notifyTelegram(`${product.name}: someone on Instagram may need urgent help. Please look now.\n${appUrl(`/p/${slug}/conversations?tab=instagram`)}`, { urgent: true });
+    revalidatePath(`/p/${slug}`, "layout");
+    const errors = r.errors.length ? ` Problems: ${r.errors.slice(0, 2).join(" ")}` : "";
+    return ok(`${r.media} post${r.media === 1 ? "" : "s"} with comments checked, ${r.fresh} new comment${r.fresh === 1 ? "" : "s"}${r.fresh ? ", answers drafted for your approval" : ""}.${errors}`);
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+export async function disconnectInstagramAction(slug: string) {
+  const product = await getProduct(slug);
+  await db(async (tx) => {
+    const conn = await channelConnection(tx, product.id, "instagram");
+    if (!conn) return;
+    await tx.query("update channel_connections set status = 'revoked', secret_id = null, revoked_at = now() where id = $1", [conn.id]);
+    if (conn.secret_id) await tx.query("delete from secrets where id = $1", [conn.secret_id]);
+  }, { reason: "Instagram account disconnected" });
   revalidatePath(`/p/${slug}`, "layout");
 }

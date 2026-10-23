@@ -1,5 +1,9 @@
 # Changelog
 
+## Instagram: comments under our own reels
+- Connect the Instagram professional account (Instagram Login, long-lived token encrypted and refreshed). Comments under our reels are read every morning and on demand; each person's comment becomes a conversation with an answer drafted; approved answers are posted as replies under their comment from the same queue and limits.
+- Other accounts' reels stay manual (the API does not allow it).
+
 ## Threads and Instagram in Conversations
 - Conversations tabs: YouTube, Threads, Instagram, Comments log.
 - Threads: connect the account (Meta OAuth, long-lived token encrypted, refreshed before expiry); keyword search finds posts, every post recorded with a reason (ads, crises, kids, own posts, recent contact skipped); replies drafted for approval and posted from the same queue as YouTube (10 min apart, daytime, daily cap); replies people write back are read daily and on demand; likes and replies on our replies; approved Threads posts from Content Studio published now or at their calendar time, with views, likes and replies as metrics.

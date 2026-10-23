@@ -111,4 +111,9 @@ Keyword search returns only your own posts until Meta approves `threads_keyword_
 
 ## Instagram
 
-The Instagram API does not allow commenting on other accounts' media. Reels are added by hand (link + what it says), the agent drafts a comment, you approve it and post it yourself.
+Comments under our own reels (Instagram API with Instagram Login, professional account):
+1. In the same Meta app add the use case "Manage messaging & content on Instagram" (Instagram API). Permissions: instagram_business_basic, instagram_business_manage_comments.
+2. Business login settings → OAuth redirect URI: `https://<APP_URL>/api/instagram/oauth/callback`. Add the Instagram account as an Instagram Tester (App roles) and accept the invite in Instagram (Settings → Website permissions → Tester invites, or instagram.com/accounts/manage_access).
+3. Vercel: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` (the Instagram app id and secret shown in the Instagram use case, not the Meta app id), `INSTAGRAM_PUBLISHING_ENABLED=true`. Redeploy, then Connections → Connect Instagram.
+
+Other accounts' reels: the API does not allow commenting on other accounts' media. Reels are added by hand (link + what it says), the agent drafts a comment, you approve it and post it yourself.

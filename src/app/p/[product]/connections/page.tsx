@@ -10,7 +10,8 @@ import { formatDateTime } from "@/lib/format";
 import { disconnectYoutubeAction } from "@/app/actions/youtube";
 import { publishingEnabled } from "@/server/services/youtube-publish";
 import { oauthConfigured } from "@/server/youtube/write";
-import { disconnectThreadsAction } from "@/app/actions/threads";
+import { disconnectInstagramAction, disconnectThreadsAction } from "@/app/actions/threads";
+import { instagramOauthConfigured } from "@/server/instagram/api";
 import { threadsOauthConfigured } from "@/server/threads/api";
 
 export const metadata = { title: "Connections" };
@@ -32,6 +33,14 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
     bad_state: "The sign-in link expired or was opened in another browser. Press Connect Threads again.",
     not_configured: "Threads sign-in is not set up yet: THREADS_APP_ID and THREADS_APP_SECRET are missing in Vercel.",
   };
+  const igParam = (await searchParams).ig;
+  const IG: Record<string, string> = {
+    connected: "Instagram account connected. Comments under our reels are read and approved replies can be posted from it.",
+    denied: "Instagram sign-in was cancelled. Nothing was connected.",
+    bad_state: "The sign-in link expired or was opened in another browser. Press Connect Instagram again.",
+    not_configured: "Instagram sign-in is not set up yet: INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET are missing in Vercel.",
+  };
+  const ig = typeof igParam === "string" ? (IG[igParam] ?? (igParam.startsWith("error:") ? `Could not connect Instagram: ${igParam.slice(6)}` : null)) : null;
   const th = typeof thParam === "string" ? (TH[thParam] ?? (thParam.startsWith("error:") ? `Could not connect Threads: ${thParam.slice(6)}` : null)) : null;
   const yt = typeof ytParam === "string" ? (YT_MESSAGES[ytParam] ?? (ytParam.startsWith("error:") ? `Could not connect: ${ytParam.slice(6)}` : null)) : null;
   const product = await getProduct(slug);
@@ -131,6 +140,28 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
         })()}
       </Section>
 
+      <Section title="Instagram account" description="Lets Marketing OS read comments under our own reels and post the replies you approve, as your Instagram professional account. Comments on other people's reels stay manual (Instagram does not allow it).">
+        {ig ? <p className="mb-3 rounded-[var(--radius-panel)] border border-line bg-surface p-3 text-[13px]">{ig}</p> : null}
+        {(() => {
+          const active = d.channels.find((x) => x.channel === "instagram" && x.status !== "revoked" && x.adapter_kind === "official_api");
+          if (active) {
+            return (
+              <div className="flex flex-wrap items-center gap-3">
+                <Status tone={tone(active.status)}>{active.status === "connected" ? `Replying as ${active.account_label}` : `Paused: ${active.paused_reason ?? active.status}`}</Status>
+                {!publishingEnabled("instagram") ? <span className="text-[13px] text-muted">Posting is switched off on the server (INSTAGRAM_PUBLISHING_ENABLED is not true).</span> : null}
+                <a href={`/api/instagram/oauth/start?product=${slug}`} className="text-[13px] underline">Reconnect</a>
+                <form action={disconnectInstagramAction.bind(null, slug)}><Button size="sm" variant="danger">Disconnect Instagram</Button></form>
+              </div>
+            );
+          }
+          return instagramOauthConfigured() ? (
+            <a href={`/api/instagram/oauth/start?product=${slug}`} className="inline-flex h-9 items-center rounded-[var(--radius-control)] bg-green px-4 text-[14px] font-medium text-white hover:bg-green-hover">Connect Instagram</a>
+          ) : (
+            <p className="text-[13px] text-muted">Instagram sign-in is not set up yet. Add INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET in Vercel (see README, “Instagram”), redeploy, then a Connect button appears here.</p>
+          );
+        })()}
+      </Section>
+
       <Section title={`Channels for ${product.name}`}>
         <Table>
           <thead><tr><th>Channel</th><th>What works in this build</th><th>Connection</th><th /></tr></thead>
@@ -142,10 +173,10 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
                 <td className="font-medium">{c.name}</td>
                 <td className="max-w-[360px] text-muted">{c.status === "planned" ? <DataFlag kind="planned" /> : c.capabilities}{c.note ? <div className="text-[12px]">{c.note}</div> : null}</td>
                 <td>
-                  {!active && (c.id === "youtube" || c.id === "threads") ? <span className="text-muted">Connect above</span> : active ? <><Status tone={tone(active.status)}>{active.account_label || "Connected"}</Status><div className="text-[12px] text-muted">{active.mode === "draft_only" ? "Draft only" : "Requires approval"}, {active.pubs} publications{active.paused_reason ? `, paused: ${active.paused_reason}` : ""}</div></> : <span className="text-muted">{c.status === "planned" ? "Not available yet" : "Not connected"}</span>}
+                  {!active && (c.id === "youtube" || c.id === "threads" || c.id === "instagram") ? <span className="text-muted">Connect above</span> : active ? <><Status tone={tone(active.status)}>{active.account_label || "Connected"}</Status><div className="text-[12px] text-muted">{active.mode === "draft_only" ? "Draft only" : "Requires approval"}, {active.pubs} publications{active.paused_reason ? `, paused: ${active.paused_reason}` : ""}</div></> : <span className="text-muted">{c.status === "planned" ? "Not available yet" : "Not connected"}</span>}
                   {conns.filter((x) => x.status === "revoked").map((x) => <div key={x.id} className="text-[12px] text-faint">Disconnected {formatDateTime(x.revoked_at)}, {x.pubs} publications kept</div>)}
                 </td>
-                <td>{active && c.id !== "youtube" && !(c.id === "threads" && active.adapter_kind === "official_api") ? <form action={revokeChannelAction.bind(null, slug, active.id)}><Button size="sm" variant="danger">Disconnect</Button></form> : null}</td>
+                <td>{active && c.id !== "youtube" && !((c.id === "threads" || c.id === "instagram") && active.adapter_kind === "official_api") ? <form action={revokeChannelAction.bind(null, slug, active.id)}><Button size="sm" variant="danger">Disconnect</Button></form> : null}</td>
               </tr>
             );
           })}</tbody>
