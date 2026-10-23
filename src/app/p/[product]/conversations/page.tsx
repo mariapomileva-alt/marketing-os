@@ -10,6 +10,8 @@ import { Tabs, tabParam } from "@/components/ui/tabs";
 import { loadYoutube, YoutubeTab } from "./youtube-tab";
 
 export const metadata = { title: "Conversations" };
+// A search plus a few AI drafts can take a minute; server actions on this page share this limit.
+export const maxDuration = 120;
 
 export default async function ConversationsPage({ params, searchParams }: PageProps<"/p/[product]/conversations">) {
   const { product: slug } = await params;

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
-import { receiveReply, runDiscovery, updateYtSettings } from "@/server/services/youtube";
+import { approveDraft, receiveReply, rejectDraft, runDiscovery, updateYtSettings } from "@/server/services/youtube";
 import { configuredSource, demoSource } from "@/server/youtube/source";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -78,4 +78,22 @@ export async function logYtReplyAction(slug: string, conversationId: string, _: 
   } catch (e) {
     return toFailure(e, msg);
   }
+}
+
+export async function approveYtDraftAction(slug: string, messageId: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const r = await db((tx, ctx) => approveDraft(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, str(data.get("text")) || null), { reason: "YouTube draft approved" });
+    if (!r.ok) return fail(`Not approved: ${r.problems.join(" ")}`);
+    revalidatePath(`/p/${slug}`, "layout");
+    return ok("Approved. Copy the text, open the video and post it from the Back channel, then press “I posted it”.");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+export async function rejectYtDraftAction(slug: string, messageId: string) {
+  const product = await getProduct(slug);
+  await db((tx, ctx) => rejectDraft(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId), { reason: "YouTube draft rejected" });
+  revalidatePath(`/p/${slug}`, "layout");
 }

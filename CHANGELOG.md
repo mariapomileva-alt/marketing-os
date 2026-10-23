@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Real AI voice and simpler approval — 2026-10-23
+
+- Anthropic provider (Claude Sonnet 5.5) behind the provider interface: the workspace's encrypted key from Connections is decrypted server-side and used for every draft; JSON validated against the task schema with one corrective retry; cost recorded per run. Without a key the labelled mock stays.
+- Community prompts v2 with a shared voice guide: short, specific, spoken; reacts to one concrete thing; adds something new; light open questions to keep threads alive; banned bot phrases. Top viewer comments (public, read-only) are given as context so the team adds something new.
+- Voice check now rejects bot phrases and hashtags.
+- YouTube tab: "Start here" steps; approve, edit and reject right in the thread; approved comments get Copy text, Open the video and I posted it. Choosing one variant closes the other. Threads waiting for you come first.
+
 ### YouTube community agent (dry run) — 2026-10-22
 
 - Conversations → YouTube: daily search through the official YouTube Data API (read-only key), filters with a visible reason for every video (topic score, Shorts, comments off, made for kids, crisis / drugs / sensational / political / children content, one comment per channel per 30 days).

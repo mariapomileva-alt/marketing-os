@@ -5,7 +5,7 @@ import { checkText, outcomeOf, type GuardrailRule } from "@/domain/guardrails";
 import { communityCommentSchema, communityReplySchema } from "@/domain/ai/schemas";
 import { checkVoice, classifyMessage, safetyDraft, scoreVideo, type VideoCandidate, type VoiceCheck } from "@/domain/youtube";
 import { evaluatePolicy } from "@/domain/policy";
-import { runAgent, type Actor } from "./content";
+import { decideApproval, runAgent, type Actor } from "./content";
 import type { VideoSource } from "@/server/youtube/source";
 
 export interface YtSettings {
@@ -121,7 +121,7 @@ async function startRun(tx: Tx, actor: Actor, productId: string, step: string) {
 }
 
 /** Drafts the team's comment for one found video: a helpful variant and, when it fits, an open mention. */
-export async function draftVideoComment(tx: Tx, actor: Actor, productId: string, ytVideoId: string, seed = 0) {
+export async function draftVideoComment(tx: Tx, actor: Actor, productId: string, ytVideoId: string, seed = 0, viewerComments: string[] = []) {
   const v = await tx.one<{ id: string; title: string; description: string; channel_title: string; url: string; conversation_id: string | null; video_id: string }>(
     "select id, title, description, channel_title, url, conversation_id, video_id from yt_videos where id = $1 and product_id = $2",
     [ytVideoId, productId],
@@ -133,9 +133,9 @@ export async function draftVideoComment(tx: Tx, actor: Actor, productId: string,
   const rules = await productRules(tx, productId);
   const wf = await startRun(tx, actor, productId, "comment");
   const r = await runAgent(tx, {
-    actor, productId, workflowRunId: wf.id, step: "community_comment", task: "community_comment", promptKey: "community_comment.v1",
+    actor, productId, workflowRunId: wf.id, step: "community_comment", task: "community_comment", promptKey: "community_comment.v2",
     schema: communityCommentSchema, sourceIds: [],
-    input: { productName: name, videoTitle: v.title, videoDescription: v.description.slice(0, 1500), channel: v.channel_title, previousComments: previous.slice(0, 20), seed },
+    input: { productName: name, videoTitle: v.title, videoDescription: v.description.slice(0, 1500), channel: v.channel_title, whatViewersSay: viewerComments.slice(0, 12), previousComments: previous.slice(0, 20), seed },
   });
   await tx.query("update workflow_runs set status = 'waiting_for_human' where id = $1", [wf.id]);
   if (r.output.skip) {
@@ -217,10 +217,18 @@ export async function runDiscovery(tx: Tx, actor: Actor, productId: string, sour
     picked.push(f);
   }
   for (const [i, p] of picked.entries()) {
-    const d = await draftVideoComment(tx, actor, productId, p.id, i + stats.newVideos);
-    if (!d.skipped) stats.drafted++;
-    stats.draftsQueued += d.queued;
-    stats.draftsRejected += d.rejected;
+    const videoId = (await tx.one<{ video_id: string }>("select video_id from yt_videos where id = $1", [p.id])).video_id;
+    const viewers = await source.topComments(videoId, 12).catch(() => []);
+    try {
+      const d = await draftVideoComment(tx, actor, productId, p.id, i + stats.newVideos, viewers);
+      if (!d.skipped) stats.drafted++;
+      stats.draftsQueued += d.queued;
+      stats.draftsRejected += d.rejected;
+    } catch (e) {
+      // One failed draft (e.g. the AI provider is out of credit) must not lose the whole search.
+      stats.errors.push(`Draft for a video failed: ${(e as Error).message}`);
+      if (/401|403|credit|billing|api key/i.test((e as Error).message)) break;
+    }
   }
   await tx.query("update yt_settings set last_run_at = $2 where product_id = $1", [productId, now.toISOString()]);
   await tx.query(
@@ -271,7 +279,7 @@ export async function receiveReply(tx: Tx, actor: Actor, productId: string, conv
   const productMentioned = thread.some((m) => m.direction === "outbound" && new RegExp(`\\b${name}\\b`).test(m.text));
   const wf = await startRun(tx, actor, productId, "reply");
   const r = await runAgent(tx, {
-    actor, productId, workflowRunId: wf.id, step: "community_reply", task: "community_reply", promptKey: "community_reply.v1",
+    actor, productId, workflowRunId: wf.id, step: "community_reply", task: "community_reply", promptKey: "community_reply.v2",
     schema: communityReplySchema, sourceIds: [],
     input: { productName: name, video: conv.subject, thread, message: text, messageKind: cls.kind, productAlreadyMentioned: productMentioned, highRisk: false },
   });
@@ -320,4 +328,58 @@ export async function publishGate(tx: Tx, productId: string, messageId: string, 
   });
   const reason = !enabled ? "Publishing to YouTube is turned off (dry run). Post approved comments yourself from the channel, then mark them as posted." : policy.reason;
   return { allowed: enabled && policy.allowed, reason, checks: policy.checks };
+}
+
+/**
+ * Approve one draft from the thread view. If the owner edited the text, the new text is checked again (voice,
+ * repetition, safety rules), the old queue item is invalidated and the exact new text is what gets approved.
+ */
+export async function approveDraft(tx: Tx, actor: Actor, productId: string, messageId: string, editedText: string | null) {
+  const m = await tx.one<{ id: string; text: string; status: string; conversation_id: string; variant: string | null }>(
+    "select id, text, status, conversation_id, variant from conversation_messages where id = $1 and product_id = $2 and direction = 'outbound'",
+    [messageId, productId],
+  );
+  if (m.status !== "draft") throw new Error("Only drafts waiting for approval can be approved.");
+  const text = editedText?.trim() ?? m.text;
+  let approvalId: string;
+  if (text !== m.text) {
+    const s = await getYtSettings(tx, actor.workspaceId, productId);
+    const name = await brandName(tx, productId, s);
+    const others = (await previousTeamTexts(tx, productId)).filter((t) => t !== m.text);
+    const check = checkDraft(text, m.variant === "safety" ? [] : others, name, await productRules(tx, productId));
+    const blocking = [...check.guardrailBlocks, ...check.voice.problems];
+    if (blocking.length) return { ok: false as const, problems: blocking };
+    await tx.query("update approval_items set state = 'invalidated' where conversation_message_id = $1 and state = 'pending'", [m.id]);
+    await tx.query("update conversation_messages set text = $2, voice = $3, mentions_product = $4 where id = $1", [m.id, text, JSON.stringify({ ...check.voice, edited: true }), check.voice.mentionsProduct]);
+    const conv = await tx.one<{ id: string; thread_url: string | null; subject: string | null }>("select id, thread_url, subject from conversations where id = $1", [m.conversation_id]);
+    const payload = {
+      contentVersionId: m.id, versionHash: createHash("sha256").update(text).digest("hex"), channel: "youtube", format: "comment",
+      destination: { account: "YouTube channel of the team", method: "manual" as const, targetUrl: conv.thread_url }, text, utmUrl: null, media: [],
+    };
+    approvalId = (await tx.one<{ id: string }>(
+      `insert into approval_items (workspace_id, product_id, item_type, conversation_message_id, subject_summary, payload_snapshot, payload_hash, destination, reason_in_queue)
+       values ($1,$2,'reply',$3,$4,$5,$6,$7,'Edited by you in the thread view.') returning id`,
+      [actor.workspaceId, productId, m.id, `YouTube · ${conv.subject ?? "comment"}`.slice(0, 200), canonicalJson(payload), approvalHash(payload), JSON.stringify(payload.destination)],
+    )).id;
+  } else {
+    approvalId = (await tx.one<{ id: string }>("select id from approval_items where conversation_message_id = $1 and state = 'pending' order by created_at desc limit 1", [m.id])).id;
+  }
+  await decideApproval(tx, actor, productId, approvalId, "approved", "Approved in the thread view");
+  // The other variant for the same video is no longer needed.
+  if (m.variant === "helpful" || m.variant === "with_mention") {
+    const siblings = await tx.query<{ id: string }>(
+      `select a.id from approval_items a join conversation_messages x on x.id = a.conversation_message_id
+        where x.conversation_id = $1 and x.id <> $2 and x.variant in ('helpful', 'with_mention') and a.state = 'pending'`,
+      [m.conversation_id, m.id],
+    );
+    for (const sib of siblings) await decideApproval(tx, actor, productId, sib.id, "rejected", "Another variant was chosen");
+  }
+  await tx.query("update yt_videos set status = 'approved' where conversation_id = $1 and status in ('drafted', 'reviewed')", [m.conversation_id]);
+  return { ok: true as const, problems: [] };
+}
+
+export async function rejectDraft(tx: Tx, actor: Actor, productId: string, messageId: string) {
+  const a = await tx.maybeOne<{ id: string }>("select id from approval_items where conversation_message_id = $1 and product_id = $2 and state = 'pending' order by created_at desc limit 1", [messageId, productId]);
+  if (a) await decideApproval(tx, actor, productId, a.id, "rejected", "Rejected in the thread view");
+  else await tx.query("update conversation_messages set status = 'rejected' where id = $1 and product_id = $2 and status = 'draft'", [messageId, productId]);
 }

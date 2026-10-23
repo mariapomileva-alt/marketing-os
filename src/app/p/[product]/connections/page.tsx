@@ -32,16 +32,16 @@ export default async function ConnectionsPage({ params }: PageProps<"/p/[product
     <>
       <PageHeader title="Connections" description="Keys and tokens are stored encrypted on the server, never in the browser or logs. Disconnecting deletes the secret; everything published and measured through it stays in history." />
 
-      <Section title="AI providers (all products)" description="This build generates with the mock provider. A connected key is stored safely now and used once real generation is switched on in Stage C. Note: ChatGPT and Claude subscriptions do not include API access; API keys come from platform.openai.com or console.anthropic.com.">
+      <Section title="AI providers (all products)" description="A connected Anthropic key is used for all drafts (Claude Sonnet 5.5); without it the labelled mock provider writes them. OpenAI keys can be stored but are not used yet. ChatGPT and Claude subscriptions do not include API access; API keys come from platform.claude.com or platform.openai.com.">
         <Table>
           <thead><tr><th>Provider</th><th>Key</th><th>Status</th><th>Connected</th><th>Runs recorded</th><th /></tr></thead>
           <tbody>
-            <tr><td>Mock provider <DataFlag kind="mock" /></td><td>—</td><td><Status tone="green">Active</Status></td><td>Built in</td><td>—</td><td /></tr>
+            <tr><td>Mock provider <DataFlag kind="mock" /></td><td>—</td><td>{d.ai.some((c) => c.provider === "anthropic" && c.status === "connected") ? <Status>Standby</Status> : <Status tone="green">Active</Status>}</td><td>Built in</td><td>—</td><td /></tr>
             {d.ai.map((c) => (
               <tr key={c.id}>
                 <td>{c.provider === "anthropic" ? "Anthropic" : "OpenAI"}{c.label && c.label !== c.provider ? <span className="text-muted"> {c.label}</span> : null}</td>
                 <td className="num">{c.last_four ? `…${c.last_four}` : "deleted"}</td>
-                <td><Status tone={tone(c.status)}>{c.status === "connected" ? "Stored, not used yet" : c.status}</Status></td>
+                <td><Status tone={tone(c.status)}>{c.status === "connected" ? (c.provider === "anthropic" ? "Active: writes all drafts" : "Stored, not used yet") : c.status}</Status></td>
                 <td className="num whitespace-nowrap">{formatDateTime(c.created_at)}{c.rotated_at ? <div className="text-[12px] text-muted">rotated {formatDateTime(c.rotated_at)}</div> : null}{c.revoked_at ? <div className="text-[12px] text-muted">disconnected {formatDateTime(c.revoked_at)}</div> : null}</td>
                 <td className="num">{c.runs}</td>
                 <td className="min-w-[220px]">

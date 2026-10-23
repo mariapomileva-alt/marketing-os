@@ -1,5 +1,5 @@
 import type { Tx } from "@/server/db/client";
-import { aiProvider } from "@/server/ai";
+import { resolveProvider } from "@/server/ai";
 import { PROMPTS } from "@/domain/ai/prompts";
 import { contentOutputSchema, hooksOutputSchema, reviewOutputSchema, type ContentBody } from "@/domain/ai/schemas";
 import { BudgetExceededError, type AiTask } from "@/domain/ai/types";
@@ -60,7 +60,7 @@ interface RunArgs<T> {
 export async function runAgent<T>(tx: Tx, a: RunArgs<T>): Promise<{ output: T; agentRunId: string; isMock: boolean }> {
   await checkBudget(tx, a.actor.workspaceId);
   const pv = await promptVersion(tx, a.actor.workspaceId, a.promptKey);
-  const provider = aiProvider();
+  const provider = await resolveProvider(a.actor.workspaceId);
   const role = PROMPTS.find((p) => p.key === a.promptKey)!.role;
   const started = Date.now();
   try {

@@ -1,7 +1,7 @@
-import Link from "next/link";
 import type { Tx } from "@/server/db/client";
 import { getYtSettings } from "@/server/services/youtube";
-import { logYtReplyAction, runYtDiscoveryAction, saveYtSettingsAction } from "@/app/actions/youtube";
+import { approveYtDraftAction, logYtReplyAction, rejectYtDraftAction, runYtDiscoveryAction, saveYtSettingsAction } from "@/app/actions/youtube";
+import { CopyButton } from "@/components/content/copy-button";
 import { markReplyPostedAction } from "@/app/actions/conversations";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,9 @@ export async function loadYoutube(tx: Tx, workspaceId: string, productId: string
                                                           'variant', m.variant, 'kind', m.kind, 'voice', m.voice) order by m.occurred_at, m.created_at)
                           from conversation_messages m where m.conversation_id = c.id), '[]') messages
          from conversations c where c.product_id = $1 and c.channel = 'youtube'
-        order by (c.risk = 'high') desc, c.created_at desc limit 40`,
+        order by (c.risk = 'high') desc,
+                 exists (select 1 from conversation_messages d where d.conversation_id = c.id and d.direction = 'outbound' and d.status in ('draft', 'approved')) desc,
+                 c.created_at desc limit 40`,
       [productId],
     ),
   };
@@ -39,8 +41,25 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
   const apiKey = Boolean(process.env.YOUTUBE_API_KEY);
   const telegram = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
   const publishing = process.env.YOUTUBE_PUBLISHING_ENABLED === "true";
+  const waiting = data.threads.reduce((n, t) => n + t.messages.filter((m) => m.direction === "outbound" && m.status === "draft").length, 0);
+  const toPost = data.threads.reduce((n, t) => n + t.messages.filter((m) => m.direction === "outbound" && m.status === "approved").length, 0);
   return (
     <>
+      <Section title="Start here">
+        <ol className="grid gap-3 text-[13.5px] md:grid-cols-4">
+          {[
+            ["1. Read", `Below, each card is one video. ${waiting ? `${waiting} draft${waiting === 1 ? "" : "s"} wait for you.` : "Nothing waits for you right now."}`],
+            ["2. Choose", "Pick the variant you like, change any words right in the box, then press Approve. Reject the ones you would not post."],
+            ["3. Post", `${toPost ? `${toPost} approved comment${toPost === 1 ? "" : "s"} to post. ` : ""}Press Copy text, open the video, paste it as the Back channel, then press “I posted it”.`],
+            ["4. Keep talking", "When someone answers us on YouTube, paste their words into the card. The agent drafts a reply that reads the whole thread."],
+          ].map(([h, b]) => (
+            <li key={h} className="rounded-[var(--radius-panel)] border border-line bg-surface p-3">
+              <p className="font-medium">{h}</p>
+              <p className="mt-1 text-muted">{b}</p>
+            </li>
+          ))}
+        </ol>
+      </Section>
       <Section
         title="How it works"
         description="Once a day the agent looks for fresh YouTube videos about panic in the moment, skips the ones where a comment from the team would be wrong, and drafts a warm, specific comment for the best few. Every comment and every reply waits for your approval. The team always says who it is and never pretends to be a viewer."
@@ -93,20 +112,32 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
                         ) : null}
                         {m.text.startsWith("[MOCK]") ? <DataFlag kind="mock" /> : null}
                       </div>
-                      <p className="whitespace-pre-wrap">{m.text}</p>
-                      {m.voice && (m.voice.problems?.length || m.voice.guardrailBlocks?.length || m.voice.warnings?.length) ? (
+                      {m.direction === "outbound" && m.status === "draft" ? (
+                        <>
+                          <ActionForm action={approveYtDraftAction.bind(null, slug, m.id)} submitLabel="Approve" pendingLabel="Checking…" submitVariant="primary" className="mt-1 flex flex-col gap-2">
+                            <Textarea name="text" rows={3} defaultValue={m.text} aria-label="Draft text, edit before approving" />
+                          </ActionForm>
+                          <form action={rejectYtDraftAction.bind(null, slug, m.id)} className="mt-1"><Button size="sm" variant="ghost">Reject</Button></form>
+                        </>
+                      ) : (
+                        <p className={`whitespace-pre-wrap ${m.status === "rejected" ? "text-muted line-through decoration-faint" : ""}`}>{m.text}</p>
+                      )}
+                      {m.voice && (m.voice.problems?.length || m.voice.guardrailBlocks?.length || (m.status === "draft" && m.voice.warnings?.length)) ? (
                         <ul className="mt-1 text-[12px] text-muted">
                           {[...(m.voice.guardrailBlocks ?? []), ...(m.voice.problems ?? [])].map((p) => <li key={p} className="text-red">{p}</li>)}
                           {(m.voice.warnings ?? []).map((p) => <li key={p}>{p}</li>)}
                         </ul>
                       ) : null}
                       {m.direction === "outbound" && m.status === "approved" ? (
-                        <form action={markReplyPostedAction.bind(null, slug, m.id)} className="mt-1"><Button size="sm" variant="ghost">I posted it from the channel</Button></form>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <CopyButton text={m.text} />
+                          {t.thread_url ? <a href={t.thread_url} target="_blank" rel="noreferrer noopener" className="inline-flex h-7 items-center rounded-[var(--radius-control)] border border-line-strong bg-surface px-2.5 text-[13px]">Open the video</a> : null}
+                          <form action={markReplyPostedAction.bind(null, slug, m.id)}><Button size="sm" variant="primary">I posted it</Button></form>
+                        </div>
                       ) : null}
                     </li>
                   ))}
                 </ul>
-                <div className="mt-2 text-[12.5px]"><Link href={`/p/${slug}/approvals`} className="text-green underline underline-offset-2">Approve drafts in the Approval Queue</Link></div>
                 <ActionForm action={logYtReplyAction.bind(null, slug, t.id)} submitLabel="Draft an answer" pendingLabel="Reading the thread…" submitVariant="secondary" resetOnSuccess className="mt-3 grid gap-2 md:grid-cols-[180px_1fr]">
                   <Input name="author" aria-label="Who wrote" placeholder="@name" />
                   <Textarea name="text" rows={2} aria-label="Their reply" placeholder="Paste a reply someone wrote under our comment" />

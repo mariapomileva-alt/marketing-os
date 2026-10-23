@@ -4,6 +4,8 @@ import { getPool, withContext, type Tx } from "@/server/db/client";
 
 for (const f of [".env.local", ".env"]) if (existsSync(f)) process.loadEnvFile(f);
 export const TEST_URL = process.env.TEST_DATABASE_URL!;
+// Code that opens its own connection (e.g. AI provider lookup) must use the test database too.
+process.env.DATABASE_URL = TEST_URL;
 export const pool = () => getPool(TEST_URL);
 
 export function asService<T>(fn: (tx: Tx) => Promise<T>) {

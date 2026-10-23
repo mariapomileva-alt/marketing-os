@@ -113,3 +113,12 @@ describe("human voice and repetition", () => {
     expect(checkVoice("Back then I didn't know any of this, and that's okay. Thank you for explaining it so gently.", []).mentionsProduct).toBe(false);
   });
 });
+
+describe("bot-like phrasing", () => {
+  it.each(["Great point! This resonates so much.", "I appreciate you sharing this.", "It's important to remember you are not alone on this journey."])("flags %s", (t) => {
+    expect(checkVoice(t, []).problems.join(" ")).toMatch(/bot/);
+  });
+  it("flags hashtags", () => {
+    expect(checkVoice("Breathing slowly really helps here #anxiety #panic", []).ok).toBe(false);
+  });
+});

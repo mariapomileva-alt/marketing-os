@@ -184,6 +184,8 @@ export function disclosurePattern(name: string): RegExp {
 const FAKE_EXPERIENCE = /\b(i (had|have|used to have|get) (a )?panic attacks?|when i (had|have) panic|back (saved|helped|cured) me|it helped me|у меня (были|бывают|была) (панич|приступ)|мне помогло|меня спас)/iu;
 const CLAIMS = /\b(cure|cures|guarantee|stops? (a |your )?panic attacks?|replace(s)? (therapy|a therapist|your doctor)|вылеч|гарантир|останавливает приступ|заменяет терап)/iu;
 const EMOJI = /\p{Extended_Pictographic}/gu;
+/** Phrases that make a comment read as written by a bot or a marketing team. */
+const BOT_PHRASES = /\b(great (video|point|content)|i (really )?appreciate|resonates?|it'?s important to (remember|note)|on (this|your) journey|valuable (insights?|content)|delve|in today'?s world|as someone who|absolutely!|game[- ]changer|thanks for sharing this valuable)\b/iu;
 
 export function checkVoice(draft: string, previous: string[], productName = "Back"): VoiceCheck {
   const problems: string[] = [];
@@ -208,6 +210,11 @@ export function checkVoice(draft: string, previous: string[], productName = "Bac
   if (words > 90) warnings.push(`Long for a comment (${words} words); aim for under 70.`);
   if (words < 8) warnings.push("Very short; may read as generic.");
   if (/^(great|nice|awesome|amazing) (video|content)/iu.test(draft.trim())) problems.push("Generic opener; respond to a specific thought from the video instead.");
+  const bot = BOT_PHRASES.exec(draft);
+  if (bot) problems.push(`Sounds like a bot ("${bot[0]}"). Say it the way a person would.`);
+  if (/#\w/.test(draft)) problems.push("Hashtags read as marketing in a comment.");
+  if (/^\s*[-•*]\s/m.test(draft)) warnings.push("Lists look formal in a YouTube comment.");
+  if ((draft.match(/—/g) ?? []).length > 2) warnings.push("Many dashes; real comments rarely have more than one.");
 
   return { ok: problems.length === 0, problems, warnings, scores: { maxSimilarity, promo, exclamations, emoji, words }, mentionsProduct };
 }

@@ -9,6 +9,8 @@ import { parseIsoDuration, type VideoCandidate } from "@/domain/youtube";
 export interface VideoSource {
   readonly kind: "youtube_api" | "demo";
   find(query: string, opts: { publishedAfter: Date; language: string | null; max: number }): Promise<VideoCandidate[]>;
+  /** A few top public comments, so the team's comment adds something new instead of repeating viewers. */
+  topComments(videoId: string, max: number): Promise<string[]>;
 }
 
 export class YouTubeApiError extends Error {
@@ -55,6 +57,19 @@ export function youtubeApiSource(apiKey: string): VideoSource {
       v.search = new URLSearchParams({ part: "snippet,contentDetails,statistics,status", id: ids.join(","), key: apiKey }).toString();
       const details = await getJson(v);
       return ((details.items as ApiVideo[]) ?? []).map(toCandidate);
+    },
+    async topComments(videoId, max) {
+      const u = new URL(`${API}/commentThreads`);
+      u.search = new URLSearchParams({ part: "snippet", videoId, order: "relevance", maxResults: String(Math.min(max, 20)), textFormat: "plainText", key: apiKey }).toString();
+      try {
+        const body = await getJson(u);
+        return ((body.items as Array<{ snippet?: { topLevelComment?: { snippet?: { textDisplay?: string } } } }>) ?? [])
+          .map((i) => i.snippet?.topLevelComment?.snippet?.textDisplay ?? "")
+          .filter(Boolean)
+          .map((t) => t.slice(0, 400));
+      } catch {
+        return []; // comments off or restricted: draft from the video alone
+      }
     },
   };
 }
@@ -103,6 +118,9 @@ export function demoSource(): VideoSource {
         commentsDisabled: false,
         madeForKids: false,
       }));
+    },
+    async topComments() {
+      return ["[DEMO] The breathing part helped, but the first 30 seconds are always the worst for me.", "[DEMO] I never know what to do when it starts on the bus."];
     },
   };
 }

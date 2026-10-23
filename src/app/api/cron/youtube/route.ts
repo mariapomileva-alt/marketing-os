@@ -9,6 +9,8 @@ import { appUrl, notifyTelegram } from "@/server/notify/telegram";
  * Daily YouTube search (Vercel Cron, see vercel.json). Vercel sends `Authorization: Bearer $CRON_SECRET`.
  * Finds videos and prepares drafts only; nothing is posted. Each product runs in its own transaction.
  */
+export const maxDuration = 300;
+
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const given = request.headers.get("authorization") ?? "";

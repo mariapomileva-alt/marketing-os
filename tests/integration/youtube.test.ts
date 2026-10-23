@@ -109,3 +109,27 @@ describe("publishing", () => {
     expect(afterApproval.reason).toMatch(/turned off/);
   });
 });
+
+describe("approving from the thread view", () => {
+  it("re-checks edited text, approves exactly that text and closes the other variant", async () => {
+    const { approveDraft } = await import("@/server/services/youtube");
+    const conv = await as((tx) => tx.one<{ id: string }>(
+      `select c.id from conversations c where c.product_id = $1 and c.channel = 'youtube'
+         and (select count(*) from conversation_messages m where m.conversation_id = c.id and m.status = 'draft' and m.variant in ('helpful','with_mention')) = 2 limit 1`, [productId]));
+    const drafts = await as((tx) => tx.query<{ id: string; variant: string }>("select id, variant from conversation_messages where conversation_id = $1 and status = 'draft' order by variant", [conv.id]));
+    const helpful = drafts.find((d) => d.variant === "helpful")!;
+
+    const bad = await as((tx) => approveDraft(tx, actor, productId, helpful.id, "Great video! Download Back, the best app."));
+    expect(bad.ok).toBe(false);
+
+    const text = "That bit about the first thirty seconds being the hardest is so true. Does anyone else notice it gets a little easier once you name what's happening?";
+    const good = await as((tx) => approveDraft(tx, actor, productId, helpful.id, text));
+    expect(good.ok).toBe(true);
+    const after = await as((tx) => tx.query<{ variant: string; status: string; text: string }>("select variant, status, text from conversation_messages where conversation_id = $1 and variant in ('helpful','with_mention')", [conv.id]));
+    expect(after.find((m) => m.variant === "helpful")).toMatchObject({ status: "approved", text });
+    expect(after.find((m) => m.variant === "with_mention")?.status).toBe("rejected");
+    const approved = await as((tx) => tx.one<{ text: string }>(
+      "select a.payload_snapshot->>'text' text from approval_items a join conversation_messages m on m.id = a.conversation_message_id where m.id = $1 and a.state = 'approved'", [helpful.id]));
+    expect(approved.text).toBe(text);
+  });
+});
