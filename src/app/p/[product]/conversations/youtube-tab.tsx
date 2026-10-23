@@ -16,6 +16,14 @@ type Msg = { id: string; direction: string; author_handle: string | null; text: 
 export async function loadYoutube(tx: Tx, workspaceId: string, productId: string) {
   return {
     settings: await getYtSettings(tx, workspaceId, productId),
+    lastRun: await tx.maybeOne<{ stats: { errors?: string[]; draftsQueued?: number; found?: number }; started_at: string }>(
+      "select stats, started_at::text from automation_runs where product_id = $1 and kind = 'youtube_discovery' order by started_at desc limit 1",
+      [productId],
+    ),
+    aiErrors: await tx.query<{ error: string; created_at: string }>(
+      "select error, created_at::text from agent_runs where product_id = $1 and error is not null and step like 'community%' and created_at > now() - interval '2 days' order by created_at desc limit 3",
+      [productId],
+    ),
     videos: await tx.query<{ id: string; title: string; url: string; channel_title: string; relevance: number; status: string; reason: string; found_at: string; is_demo: boolean }>(
       "select id, title, url, channel_title, relevance, status, reason, found_at::text, is_demo from yt_videos where product_id = $1 order by found_at desc, relevance desc limit 60",
       [productId],
@@ -70,9 +78,18 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
             ["YouTube access", apiKey ? <Status tone="green">API key set (read-only)</Status> : <Status tone="amber">Not set: add YOUTUBE_API_KEY</Status>],
             ["Telegram alerts", telegram ? <Status tone="green">On</Status> : <Status tone="amber">Not set: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID</Status>],
             ["Publishing", publishing ? <Status tone="amber">On, after approval only</Status> : <Status>Off (dry run): you post approved comments from the channel yourself</Status>],
-            ["Last search", s.last_run_at ? formatDateTime(s.last_run_at) : "Never"],
+            ["Last search", s.last_run_at ? `${formatDateTime(s.last_run_at)}${data.lastRun ? ` · ${data.lastRun.stats.found ?? 0} videos, ${data.lastRun.stats.draftsQueued ?? 0} new drafts` : ""}` : "Never"],
           ]}
         />
+        {data.lastRun?.stats.errors?.length || data.aiErrors.length ? (
+          <div className="mt-3 rounded-[var(--radius-control)] bg-red-tint px-3 py-2 text-[12.5px] text-red">
+            <p className="font-medium">Problems in the last runs</p>
+            <ul className="mt-1 list-disc pl-5">
+              {(data.lastRun?.stats.errors ?? []).map((e) => <li key={e}>{e}</li>)}
+              {data.aiErrors.map((e) => <li key={e.created_at}>AI draft failed ({formatDateTime(e.created_at)}): {e.error}</li>)}
+            </ul>
+          </div>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-3">
           <ActionForm action={runYtDiscoveryAction.bind(null, slug, "api")} submitLabel="Find videos now" pendingLabel="Searching…" className="flex flex-col gap-2"><span /></ActionForm>
           <ActionForm action={runYtDiscoveryAction.bind(null, slug, "demo")} submitLabel="Try with demo videos" submitVariant="secondary" pendingLabel="Drafting…" className="flex flex-col gap-2"><span /></ActionForm>
