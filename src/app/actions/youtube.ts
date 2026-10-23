@@ -7,7 +7,7 @@ import { describeDbError } from "@/server/db/client";
 import { approveDraft, receiveReply, rejectDraft, runDiscovery, updateYtSettings } from "@/server/services/youtube";
 import { configuredSource, demoSource } from "@/server/youtube/source";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
-import { postApproved, publishingEnabled, refreshTokenFor, syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
+import { postApproved, postGate, publishingEnabled, refreshTokenFor, syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
 import { liveWriteApi } from "@/server/youtube/live";
 import { revokeToken } from "@/server/youtube/write";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -93,9 +93,13 @@ export async function approveYtDraftAction(slug: string, messageId: string, _: A
       return ok("Approved. Posting from here is switched off, so copy the text, post it as the Back channel and press “I posted it”.");
     }
     // Approval and posting are separate transactions: the approval stays recorded even if YouTube refuses.
-    const p = await db((tx, ctx) => postApproved(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, liveWriteApi()), { reason: "YouTube post after approval" });
+    const p = await db(async (tx, ctx) => {
+      const g = await postGate(tx, product.id, messageId);
+      if (!g.allowed) return { posted: false, reason: g.reason };
+      return postApproved(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, liveWriteApi());
+    }, { reason: "YouTube post after approval" });
     revalidatePath(`/p/${slug}`, "layout");
-    return p.posted ? ok(`Approved and posted. ${p.reason}`) : ok(`Approved, not posted yet: ${p.reason}`);
+    return p.posted ? ok(`Approved and posted. ${p.reason}`) : ok(`Approved and queued. It goes out automatically when the limits allow (${p.reason})`);
   } catch (e) {
     return toFailure(e, msg);
   }

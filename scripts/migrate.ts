@@ -15,3 +15,11 @@ if (!url) {
 console.log(`[migrate] Applying migrations to ${new URL(url).host}`);
 const { applied, skipped } = await migrate(url);
 console.log(`Migrations applied: ${applied.length ? applied.join(", ") : "none"} (already applied: ${skipped.length})`);
+
+if (process.env.VERCEL_ENV === "production") {
+  const app = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "");
+  if (app) {
+    const { ensureQueueScheduler } = await import("./scheduler");
+    await ensureQueueScheduler(url, app);
+  }
+}

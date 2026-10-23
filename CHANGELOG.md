@@ -1,5 +1,10 @@
 # Changelog
 
+## YouTube posting queue
+- Approve as many comments and replies as you like; they go out by themselves, one at a time (10 min apart, 08–23 Riga, daily cap), from a queue checked every 5 minutes.
+- The schedule lives in the database (Supabase pg_cron + pg_net), set up by the production build; the endpoint token is derived from the server key and kept in Supabase Vault. Only approved texts are ever in the queue; the gate re-checks the approval hash before each post.
+- The YouTube tab shows whether the queue is running; "Post now" remains for impatience.
+
 ## Sign in with a password
 - Login page: email + password (the email link stays as an option). The first password comes from `OWNER_PASSWORD` for an address in `ALLOWED_EMAILS`; Supabase stores only its hash.
 

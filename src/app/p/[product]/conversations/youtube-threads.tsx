@@ -80,7 +80,7 @@ function Draft({ slug, m, canPost }: { slug: string; m: Msg; canPost: boolean })
         <span>Draft · {VARIANT[m.variant ?? "reply"] ?? "Draft"}</span>
         {m.text.startsWith("[MOCK]") ? <DataFlag kind="mock" /> : null}
       </div>
-      <ActionForm action={approveYtDraftAction.bind(null, slug, m.id)} submitLabel={canPost ? "Approve and post" : "Approve"} pendingLabel={canPost ? "Posting…" : "Checking…"} submitVariant="primary" className="flex flex-col gap-2">
+      <ActionForm action={approveYtDraftAction.bind(null, slug, m.id)} submitLabel="Approve" pendingLabel="Checking…" submitVariant="primary" className="flex flex-col gap-2">
         <Textarea name="text" rows={3} defaultValue={m.text} aria-label="Draft text, edit before approving" />
       </ActionForm>
       <form action={rejectYtDraftAction.bind(null, slug, m.id)} className="mt-1"><Button size="sm" variant="ghost">Reject</Button></form>
@@ -89,10 +89,13 @@ function Draft({ slug, m, canPost }: { slug: string; m: Msg; canPost: boolean })
   );
 }
 
-function Approved({ slug, m, t, canPost }: { slug: string; m: Msg; t: Thread; canPost: boolean }) {
+function Approved({ slug, m, t, canPost, queue }: { slug: string; m: Msg; t: Thread; canPost: boolean; queue: boolean }) {
   return (
     <div className="rounded-[var(--radius-panel)] border border-line bg-surface p-3">
-      <div className="mb-1 flex items-center gap-2 text-[12px] text-muted"><Status tone="amber">approved, not posted yet</Status></div>
+      <div className="mb-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+        <Status tone="amber">{canPost && queue ? "approved, in the queue" : "approved, not posted yet"}</Status>
+        {canPost && queue ? <span>Goes out on its own: one every 10 minutes, 8:00–23:00. Nothing to press.</span> : null}
+      </div>
       <p className="whitespace-pre-wrap text-[13.5px]">{m.text}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {canPost ? <ActionForm action={postYtNowAction.bind(null, slug, m.id)} submitLabel="Post now" pendingLabel="Posting…" submitVariant="primary" className="flex flex-col gap-1"><span /></ActionForm> : null}
@@ -122,7 +125,7 @@ function Bubble({ m, ours, brand }: { m: Msg; ours: boolean; brand: string }) {
   );
 }
 
-export function ThreadCard({ slug, t, canPost, brand, connected }: { slug: string; t: Thread; canPost: boolean; brand: string; connected: boolean }) {
+export function ThreadCard({ slug, t, canPost, brand, connected, queue = false }: { slug: string; t: Thread; canPost: boolean; brand: string; connected: boolean; queue?: boolean }) {
   const visible = t.messages.filter((m) => !(m.direction === "outbound" && m.status === "rejected"));
   const heldBack = t.messages.filter((m) => m.direction === "outbound" && m.status === "rejected");
   // The first thing we said (posted or not) is the top of the branch; everything after it is the reply line.
@@ -131,7 +134,7 @@ export function ThreadCard({ slug, t, canPost, brand, connected }: { slug: strin
   const render = (m: Msg) =>
     m.direction === "inbound" ? <Bubble key={m.id} m={m} ours={false} brand={brand} />
     : m.status === "draft" ? <Draft key={m.id} slug={slug} m={m} canPost={canPost} />
-    : m.status === "approved" ? <Approved key={m.id} slug={slug} m={m} t={t} canPost={canPost} />
+    : m.status === "approved" ? <Approved key={m.id} slug={slug} m={m} t={t} canPost={canPost} queue={queue} />
     : <Bubble key={m.id} m={m} ours brand={brand} />;
   return (
     <li className={`rounded-[var(--radius-panel)] border bg-surface p-4 ${t.risk === "high" ? "border-red/50" : "border-line"}`}>

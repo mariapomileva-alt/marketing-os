@@ -14,6 +14,11 @@ export async function loadYoutube(tx: Tx, workspaceId: string, productId: string
   return {
     settings: await getYtSettings(tx, workspaceId, productId),
     connection: await youtubeConnection(tx, productId),
+    ...(await tx.one<{ queueCheckedAt: string | null; queueRunning: boolean }>(
+      `select (select last_queue_check_at::text from yt_settings where product_id = $1) "queueCheckedAt",
+              coalesce((select last_queue_check_at > now() - interval '30 minutes' from yt_settings where product_id = $1), false) "queueRunning"`,
+      [productId],
+    )),
     lastRun: await tx.maybeOne<{ stats: { errors?: string[]; draftsQueued?: number; found?: number }; started_at: string }>(
       "select stats, started_at::text from automation_runs where product_id = $1 and kind = 'youtube_discovery' order by started_at desc limit 1",
       [productId],
@@ -49,6 +54,7 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
   const canPost = publishing && Boolean(data.connection);
   const brand = data.connection?.account_label ?? s.brand_name ?? "Our channel";
   const groups = groupThreads(data.threads);
+  const queueRunning = data.queueRunning;
   const waiting = data.threads.reduce((n, t) => n + t.messages.filter((m) => m.direction === "outbound" && m.status === "draft").length, 0);
   const toPost = data.threads.reduce((n, t) => n + t.messages.filter((m) => m.direction === "outbound" && m.status === "approved").length, 0);
   return (
@@ -57,8 +63,8 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
         <ol className="grid gap-3 text-[13.5px] md:grid-cols-4">
           {[
             ["1. Read", `Below, each card is one video. ${waiting ? `${waiting} draft${waiting === 1 ? "" : "s"} wait for you.` : "Nothing waits for you right now."}`],
-            ["2. Choose", canPost ? "Change any words right in the box, then press Approve and post: it goes out from your channel. Reject the ones you would not post." : "Pick the variant you like, change any words right in the box, then press Approve. Reject the ones you would not post."],
-            ["3. Post", canPost ? `Posting is automatic after your approval${toPost ? `; ${toPost} approved, waiting for the next allowed time` : ""}.` : `${toPost ? `${toPost} approved comment${toPost === 1 ? "" : "s"} to post. ` : ""}Copy the text, post it as the channel, press “I posted it myself”. To post from here, connect the channel in Connections.`],
+            ["2. Choose", canPost ? "Change any words right in the box, then press Approve: it goes out from your channel. Reject the ones you would not post." : "Pick the variant you like, change any words right in the box, then press Approve. Reject the ones you would not post."],
+            ["3. Post", canPost ? `Approve as many as you like: they go out on their own, one every 10 minutes, 8:00–23:00${toPost ? `. ${toPost} in the queue now` : ""}.` : `${toPost ? `${toPost} approved comment${toPost === 1 ? "" : "s"} to post. ` : ""}Copy the text, post it as the channel, press “I posted it myself”. To post from here, connect the channel in Connections.`],
             ["4. Keep talking", connected ? "Replies to our comments appear under Live conversations with an answer drafted. Approve it the same way." : "When someone answers us, paste their words into the card; the agent drafts an answer that reads the whole thread."],
           ].map(([h, b]) => (
             <li key={h} className="rounded-[var(--radius-panel)] border border-line bg-surface p-3">
@@ -78,6 +84,7 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
             ["YouTube access", apiKey ? <Status tone="green">API key set (read-only)</Status> : <Status tone="amber">Not set: add YOUTUBE_API_KEY</Status>],
             ["Telegram alerts", telegram ? <Status tone="green">On</Status> : <Status tone="amber">Not set: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID</Status>],
             ["Posting", canPost ? (connected ? <Status tone="green">{`From ${data.connection!.account_label}, after your approval only`}</Status> : <Status tone="red">{`Paused: ${data.connection!.paused_reason ?? "see Connections"}`}</Status>) : publishing ? <Status tone="amber">Channel not connected: Connections → Connect YouTube channel</Status> : <Status>Off: you post approved comments yourself</Status>],
+            ["Posting queue", !canPost ? "Used once the channel is connected" : queueRunning ? <Status tone="green">{`Running: approved texts go out one by one, 10 min apart, 8:00–23:00 (checked ${formatDateTime(data.queueCheckedAt!)})`}</Status> : <Status tone="amber">Not running yet: approved texts wait for “Post now”</Status>],
             ["Last search", s.last_run_at ? `${formatDateTime(s.last_run_at)}${data.lastRun ? ` · ${data.lastRun.stats.found ?? 0} videos, ${data.lastRun.stats.draftsQueued ?? 0} new drafts` : ""}` : "Never"],
           ]}
         />
@@ -104,7 +111,7 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
           <ActionForm action={syncYtRepliesAction.bind(null, slug)} submitLabel="Check for new replies" pendingLabel="Reading YouTube…" submitVariant="secondary" className="mb-3 flex flex-col gap-2"><span /></ActionForm>
         ) : null}
         {groups.live.length ? (
-          <ul className="flex flex-col gap-3">{groups.live.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} />)}</ul>
+          <ul className="flex flex-col gap-3">{groups.live.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} queue={queueRunning} />)}</ul>
         ) : (
           <EmptyState title="No replies yet">{connected ? "Replies are checked every morning and when you press Check for new replies." : "Once comments are posted from here, replies show up on their own."}</EmptyState>
         )}
@@ -112,7 +119,7 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
 
       <Section title="New comments to approve" description="One card per video. Two variants: pick one, edit it if you like, approve. The other closes by itself.">
         {groups.fresh.length ? (
-          <ul className="flex flex-col gap-3">{groups.fresh.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} />)}</ul>
+          <ul className="flex flex-col gap-3">{groups.fresh.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} queue={queueRunning} />)}</ul>
         ) : (
           <EmptyState title="Nothing waits for you">Run a search, or try it with demo videos.</EmptyState>
         )}
@@ -132,7 +139,7 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
           {groups.quiet.length ? (
             <details className="mt-3 text-[12.5px] text-muted">
               <summary className="cursor-pointer">{groups.quiet.length} closed without posting</summary>
-              <ul className="mt-2 flex flex-col gap-3">{groups.quiet.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} />)}</ul>
+              <ul className="mt-2 flex flex-col gap-3">{groups.quiet.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} queue={queueRunning} />)}</ul>
             </details>
           ) : null}
         </Section>

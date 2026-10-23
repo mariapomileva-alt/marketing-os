@@ -156,6 +156,27 @@ export async function postApproved(tx: Tx, actor: Actor, productId: string, mess
   }
 }
 
+/**
+ * The posting queue: approved, not yet posted comments and replies, oldest first. Each run posts at most one per
+ * product, and only when the gate allows it (limits, gap, active hours, channel healthy). Waiting is not an error
+ * and is not written to outbound_actions; only real attempts are.
+ */
+export async function drainQueue(tx: Tx, actor: Actor, productId: string, api: YoutubeWriteApi, now = new Date()) {
+  await tx.query("update yt_settings set last_queue_check_at = now() where product_id = $1", [productId]);
+  const queued = await tx.query<{ id: string }>(
+    `select m.id from conversation_messages m join conversations c on c.id = m.conversation_id
+      where m.product_id = $1 and c.channel = 'youtube' and m.direction = 'outbound' and m.status = 'approved'
+        and (select a.state from approval_items a where a.conversation_message_id = m.id order by a.created_at desc limit 1) = 'approved'
+      order by (c.risk = 'high') desc, m.created_at limit 20`,
+    [productId],
+  );
+  if (!queued.length) return { queued: 0, posted: false, reason: "Nothing approved is waiting." };
+  const gate = await postGate(tx, productId, queued[0].id, now);
+  if (!gate.allowed) return { queued: queued.length, posted: false, reason: gate.reason };
+  const r = await postApproved(tx, actor, productId, queued[0].id, api, now);
+  return { queued: queued.length, ...r };
+}
+
 /** Reads new public replies under our posted comments and drafts answers for approval. */
 export async function syncReplies(tx: Tx, actor: Actor, productId: string, api: Pick<YoutubeWriteApi, "listReplies">) {
   const conn = await youtubeConnection(tx, productId);

@@ -8,7 +8,7 @@ import { closePools, type Tx } from "@/server/db/client";
 import { createBackApp } from "@/server/services/products";
 import { decideApproval, type Actor } from "@/server/services/content";
 import { getYtSettings, receiveReply, runDiscovery, updateYtSettings } from "@/server/services/youtube";
-import { postGate as publishGate, postApproved, saveYoutubeConnection, syncReplies, type YoutubeWriteApi } from "@/server/services/youtube-publish";
+import { drainQueue, postGate as publishGate, postApproved, saveYoutubeConnection, syncReplies, type YoutubeWriteApi } from "@/server/services/youtube-publish";
 import { demoSource } from "@/server/youtube/source";
 import { similarity } from "@/domain/youtube";
 import { asUser, createOwner } from "../helpers/db";
@@ -197,6 +197,37 @@ describe("posting after approval and reading replies", () => {
       expect(r.reason).toMatch(/YouTube refused/);
       const c = await as((tx) => tx.one<{ status: string }>("select status from channel_connections where product_id = $1 and channel = 'youtube' and status <> 'revoked'", [productId]));
       expect(c.status).toBe("paused");
+    } finally {
+      delete process.env.YOUTUBE_PUBLISHING_ENABLED;
+    }
+  });
+
+  it("posts approved texts from the queue one at a time, within the gap", async () => {
+    process.env.YOUTUBE_PUBLISHING_ENABLED = "true";
+    try {
+      await as((tx) => tx.query("update channel_connections set status = 'connected', paused_until = null, paused_reason = null where product_id = $1 and channel = 'youtube' and status <> 'revoked'", [productId]));
+      const conv = await as((tx) => tx.one<{ id: string }>("select id from conversations where product_id = $1 and external_thread_id is not null limit 1", [productId]));
+      const approveNewReply = async (text: string) => {
+        await as((tx) => receiveReply(tx, actor, productId, conv.id, "@lee", text));
+        const d = await as((tx) => tx.one<{ approval: string }>(
+          `select a.id approval from conversation_messages m join approval_items a on a.conversation_message_id = m.id
+            where m.conversation_id = $1 and m.status = 'draft' and a.state = 'pending' order by m.created_at desc limit 1`, [conv.id]));
+        await as((tx) => decideApproval(tx, actor, productId, d.approval, "approved", "ok"));
+      };
+      // the reply approved in the previous test is still queued; drain it first
+      await as((tx) => tx.query("update outbound_actions set created_at = now() - interval '1 hour' where product_id = $1", [productId]));
+      const before = posted.length;
+      const first = await as((tx) => drainQueue(tx, actor, productId, api));
+      expect(first.posted).toBe(true);
+      expect(posted.length).toBe(before + 1);
+
+      await approveNewReply("How do you remember to do it when it starts?");
+      await as((tx) => tx.query(`update channel_connections set limits = limits || '{"min_gap_minutes":10}'::jsonb where product_id = $1 and channel = 'youtube' and status <> 'revoked'`, [productId]));
+      const waiting = await as((tx) => drainQueue(tx, actor, productId, api));
+      expect(waiting.posted).toBe(false);
+      expect(waiting.queued).toBeGreaterThan(0);
+      expect(waiting.reason).toMatch(/min_gap/);
+      expect(posted.length).toBe(before + 1); // nothing extra went out
     } finally {
       delete process.env.YOUTUBE_PUBLISHING_ENABLED;
     }
