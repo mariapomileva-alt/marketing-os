@@ -1,4 +1,4 @@
-import { approveShortAction, rejectShortAction, selectShortsAction } from "@/app/actions/calm";
+import { approveAllShortsAction, approveShortAction, rejectShortAction, selectShortsAction } from "@/app/actions/calm";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
@@ -23,6 +23,9 @@ export function ShortsBlock({ slug, videoId, lines, shorts, youtube, instagram }
       <summary className="cursor-pointer font-medium">Shorts and Reels from this video ({shorts.length}) {made.length ? <span className="font-normal text-muted">· {made.length} made</span> : null}</summary>
       <p className="mt-2 text-muted">Each is 30–60 seconds, vertical, with the same voice and nature. Tick where it should go; TikTok: download the file once it is made and post it there.</p>
 
+      {made.filter((s) => s.status === "review").length > 1 ? (
+        <ActionForm action={approveAllShortsAction.bind(null, slug, videoId)} submitLabel={`Approve all ${made.filter((s) => s.status === "review").length} ready shorts`} pendingLabel="Scheduling…" className="mt-3 flex flex-col gap-1"><span /></ActionForm>
+      ) : null}
       {made.length ? (
         <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {made.map((s) => (

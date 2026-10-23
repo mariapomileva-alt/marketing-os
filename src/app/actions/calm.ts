@@ -23,6 +23,8 @@ const settingsSchema = z.object({
   voice: z.enum(["sage", "shimmer", "coral", "alloy", "ash", "ballad", "echo", "fable", "nova", "onyx", "verse"]),
   topics: z.array(z.string().min(3).max(120)).min(1).max(60),
   themes: z.array(z.enum(["river", "forest", "clouds", "rain", "ocean", "snow", "lake", "meadow"])).min(1),
+  auto_shorts: z.boolean(),
+  auto_shorts_targets: z.array(z.enum(["youtube", "instagram"])),
 });
 
 export async function saveCalmSettingsAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
@@ -36,6 +38,8 @@ export async function saveCalmSettingsAction(slug: string, _: ActionResult | nul
       voice: str(data.get("voice")),
       topics: lines(data.get("topics")),
       themes: data.getAll("themes"),
+      auto_shorts: data.get("auto_shorts") === "on",
+      auto_shorts_targets: data.getAll("auto_shorts_targets"),
     });
     if (!parsed.success) return fail(parsed.error.issues.map((i) => i.message).join(" "));
     await db((tx, ctx) => updateCalmSettings(tx, ctx.workspaceId, product.id, parsed.data), { reason: "Calm video settings changed" });
@@ -154,4 +158,22 @@ export async function rejectShortAction(slug: string, id: string) {
   const product = await getProduct(slug);
   await db((tx, ctx) => rejectShort(tx, actorOf(ctx), product.id, id), { reason: "Short rejected" });
   revalidatePath(path(slug));
+}
+
+/** Approve every short of one video that is ready to watch (each was rendered and shown on the card). */
+export async function approveAllShortsAction(slug: string, videoId: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const n = await db(async (tx, ctx) => {
+      const conn = await youtubeConnection(tx, product.id);
+      const token = conn?.secret_id ? await accessToken(await refreshTokenFor(conn.secret_id)) : null;
+      const ready = await tx.query<{ id: string }>("select id from calm_shorts where video_id = $1 and product_id = $2 and status = 'review' order by idx", [videoId, product.id]);
+      for (const r of ready) await approveShort(tx, actorOf(ctx), product.id, r.id, token ? { schedule: async (v, at) => void (await scheduleVideo(token, v, at)) } : null);
+      return ready.length;
+    }, { reason: "Shorts approved" });
+    revalidatePath(path(slug));
+    return n ? ok(`${n} shorts approved: one goes out each day.`) : fail("No shorts are ready to approve yet.");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
 }

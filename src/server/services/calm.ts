@@ -4,7 +4,7 @@ import { calmVideoSchema } from "@/domain/ai/schemas";
 import { checkText, outcomeOf } from "@/domain/guardrails";
 import { runAgent, type Actor } from "./content";
 import { draftingKnowledge } from "./knowledge-context";
-import { claimShortJob, finishShortRender, planShorts } from "./calm-shorts";
+import { claimShortJob, finishShortRender, planShorts, selectShorts } from "./calm-shorts";
 import { productRules } from "./youtube";
 
 /**
@@ -24,22 +24,24 @@ export interface CalmSettings {
   renderer_token_hash: string | null;
   renderer_seen_at: string | null;
   last_created_at: string | null;
+  auto_shorts: boolean;
+  auto_shorts_targets: string[];
 }
 
 export async function getCalmSettings(tx: Tx, workspaceId: string, productId: string): Promise<CalmSettings> {
   await tx.query("insert into calm_settings (product_id, workspace_id) values ($1, $2) on conflict (product_id) do nothing", [productId, workspaceId]);
   return tx.one<CalmSettings>(
     `select enabled, publish_days, publish_hour_utc, minutes, voice, language, topics, themes, renderer_token_hash,
-            renderer_seen_at::text, last_created_at::text from calm_settings where product_id = $1`,
+            renderer_seen_at::text, last_created_at::text, auto_shorts, auto_shorts_targets from calm_settings where product_id = $1`,
     [productId],
   );
 }
 
-export async function updateCalmSettings(tx: Tx, workspaceId: string, productId: string, s: Pick<CalmSettings, "enabled" | "publish_days" | "publish_hour_utc" | "minutes" | "voice" | "topics" | "themes">) {
-  await getCalmSettings(tx, workspaceId, productId);
+export async function updateCalmSettings(tx: Tx, workspaceId: string, productId: string, s: Pick<CalmSettings, "enabled" | "publish_days" | "publish_hour_utc" | "minutes" | "voice" | "topics" | "themes"> & Partial<Pick<CalmSettings, "auto_shorts" | "auto_shorts_targets">>) {
+  const cur = await getCalmSettings(tx, workspaceId, productId);
   await tx.query(
-    "update calm_settings set enabled = $2, publish_days = $3, publish_hour_utc = $4, minutes = $5, voice = $6, topics = $7, themes = $8 where product_id = $1",
-    [productId, s.enabled, s.publish_days, s.publish_hour_utc, s.minutes, s.voice, s.topics, s.themes],
+    "update calm_settings set enabled = $2, publish_days = $3, publish_hour_utc = $4, minutes = $5, voice = $6, topics = $7, themes = $8, auto_shorts = $9, auto_shorts_targets = $10 where product_id = $1",
+    [productId, s.enabled, s.publish_days, s.publish_hour_utc, s.minutes, s.voice, s.topics, s.themes, s.auto_shorts ?? cur.auto_shorts, s.auto_shorts_targets ?? cur.auto_shorts_targets],
   );
 }
 
@@ -191,6 +193,14 @@ export async function finishRender(tx: Tx, token: string, id: string, result: { 
     }
   }
   if (result.youtubeVideoId) {
+    // Shorts from the finished video, made automatically when switched on (each still waits for approval).
+    const auto = await tx.maybeOne<{ auto_shorts: boolean; auto_shorts_targets: string[] }>("select auto_shorts, auto_shorts_targets from calm_settings where product_id = $1", [s.product_id]);
+    if (auto?.auto_shorts && auto.auto_shorts_targets.length) {
+      const ig = await tx.maybeOne("select 1 from channel_connections where product_id = $1 and channel = 'instagram' and status = 'connected' and adapter_kind = 'official_api'", [s.product_id]);
+      const targets = auto.auto_shorts_targets.filter((t) => t !== "instagram" || ig) as Array<"youtube" | "instagram">;
+      const planned = await tx.query<{ id: string }>("select id from calm_shorts where video_id = $1 and status = 'planned'", [id]);
+      await selectShorts(tx, s.product_id, planned.map((p) => ({ id: p.id, targets })));
+    }
     await tx.query("update calm_videos set status = 'review', youtube_video_id = $3, render_url = $4, rendered_at = now(), error = case when error like 'Removed %' then error else null end where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, result.youtubeVideoId, result.renderUrl ?? null]);
   } else {
     await tx.query("update calm_videos set status = 'failed', error = $3, render_url = $4 where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, `Render failed: ${(result.error ?? "unknown").slice(0, 600)}`, result.renderUrl ?? null]);

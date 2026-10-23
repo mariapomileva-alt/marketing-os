@@ -237,7 +237,9 @@ async function main() {
     console.log("MOS_URL or MOS_RENDER_TOKEN is not set; nothing to do.");
     return;
   }
-  for (let i = 0; i < 2; i++) {
+  // Keep taking work while there is time left in this run (Shorts are a few minutes each; a long video ~40).
+  const started = Date.now();
+  for (let i = 0; Date.now() - started < 75 * 60_000; i++) {
     const job = await api("/api/cron/calm-next");
     if (!job) {
       console.log(i ? "No more jobs." : "No calm video waiting to be rendered.");

@@ -63,6 +63,10 @@ describe("calm videos", () => {
     expect(await service((tx) => finishRender(tx, token, videoId, { youtubeVideoId: "abcDEF12345", preview: true }))).toBe(true);
     const v = await as((tx) => tx.one<{ status: string; preview_asset_id: string | null }>("select status, preview_asset_id from calm_videos where id = $1", [videoId]));
     expect(v.status).toBe("review");
+    // Shorts are queued automatically from the finished video (YouTube by default); each still needs approval.
+    const queued = await as((tx) => tx.query<{ targets: string[] }>("select targets from calm_shorts where video_id = $1 and status = 'ready_to_render'", [videoId]));
+    expect(queued.length).toBeGreaterThan(0);
+    expect(queued[0].targets).toEqual(["youtube"]);
     const asset = await as((tx) => tx.one<{ kind: string; tags: string[] }>("select kind, tags from creative_assets where id = $1", [v.preview_asset_id]));
     expect(asset).toMatchObject({ kind: "video" });
     expect(asset.tags).toContain("calm-video");
@@ -121,7 +125,8 @@ describe("shorts and reels", () => {
     const token = await as((tx) => createRendererToken(tx, owner.workspaceId, productId));
     // Long videos first, then shorts.
     let job = (await service((tx) => claimRenderJob(tx, token))) as { job: { kind: string; id: string; lines: unknown[] } | null };
-    while (job.job && job.job.kind === "video") {
+    // Other work in the queue (long videos first, then shorts made automatically from earlier videos) is skipped.
+    while (job.job && job.job.id !== shorts[0].id) {
       await service((tx) => finishRender(tx, token, job.job!.id, { error: "skip in test" }));
       job = (await service((tx) => claimRenderJob(tx, token))) as typeof job;
     }

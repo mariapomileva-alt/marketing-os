@@ -168,6 +168,14 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
             <legend className="mb-1 text-[13px] font-medium">Nature</legend>
             <div className="flex flex-wrap gap-3 text-[13.5px]">{THEMES.map((t) => <label key={t} className="flex items-center gap-1.5"><input type="checkbox" name="themes" value={t} defaultChecked={s.themes.includes(t)} /> {t}</label>)}</div>
           </fieldset>
+          <fieldset className="md:col-span-3">
+            <legend className="mb-1 text-[13px] font-medium">Shorts</legend>
+            <label className="flex items-center gap-2 text-[13.5px]"><input type="checkbox" name="auto_shorts" defaultChecked={s.auto_shorts} /> Cut every finished video into Shorts automatically (each still waits for your approval)</label>
+            <div className="mt-1 flex flex-wrap gap-3 pl-6 text-[13.5px]">
+              <label className="flex items-center gap-1.5"><input type="checkbox" name="auto_shorts_targets" value="youtube" defaultChecked={s.auto_shorts_targets.includes("youtube")} /> YouTube Shorts</label>
+              <label className="flex items-center gap-1.5"><input type="checkbox" name="auto_shorts_targets" value="instagram" defaultChecked={s.auto_shorts_targets.includes("instagram")} /> Instagram Reels</label>
+            </div>
+          </fieldset>
           <Field label="Topics, one per line (used in turn)" htmlFor="calm-topics" className="md:col-span-3"><Textarea id="calm-topics" name="topics" rows={8} defaultValue={s.topics.join("\n")} /></Field>
         </ActionForm>
       </Section>
