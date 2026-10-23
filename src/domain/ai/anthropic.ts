@@ -33,18 +33,28 @@ export class AnthropicProvider implements LLMProvider {
     private readonly fetcher: Fetch = fetch,
   ) {}
 
-  private async call(system: string, messages: Array<{ role: "user" | "assistant"; content: string }>, maxTokens: number, temperature: number) {
-    const res = await this.fetcher("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": this.apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: this.model, max_tokens: maxTokens, temperature, system, messages }),
-    });
-    const body = (await res.json().catch(() => ({}))) as {
-      content?: Array<{ type: string; text?: string }>;
-      usage?: { input_tokens?: number; output_tokens?: number };
-      error?: { type?: string; message?: string };
+  private async call(system: string, messages: Array<{ role: "user" | "assistant"; content: string }>, maxTokens: number) {
+    // Sonnet 5.5 thinks up front by default and rejects "disabled" (and custom temperatures alongside thinking).
+    // Short drafting tasks do not need it: "between_tools" turns off up-front thinking. If a model refuses that
+    // setting, fall back once to the model's default (adaptive thinking) with the same token budget.
+    const attempt = async (withThinkingSetting: boolean) => {
+      const res = await this.fetcher("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": this.apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: this.model, max_tokens: maxTokens, ...(withThinkingSetting ? { thinking: { type: "between_tools" } } : {}), system, messages }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        content?: Array<{ type: string; text?: string }>;
+        stop_reason?: string;
+        usage?: { input_tokens?: number; output_tokens?: number };
+        error?: { type?: string; message?: string };
+      };
+      return { res, body };
     };
+    let { res, body } = await attempt(true);
+    if (res.status === 400 && /thinking/i.test(body.error?.message ?? "")) ({ res, body } = await attempt(false));
     if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${body.error?.message ?? body.error?.type ?? "request failed"}`);
+    if (body.stop_reason === "refusal") throw new Error("Anthropic API: the model declined this request.");
     const text = (body.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
     return { text, inputTokens: body.usage?.input_tokens ?? 0, outputTokens: body.usage?.output_tokens ?? 0 };
   }
@@ -58,7 +68,7 @@ export class AnthropicProvider implements LLMProvider {
     let outTok = 0;
     let lastRaw = "";
     for (let attempt = 0; attempt < 2; attempt++) {
-      const r = await this.call(system, messages, req.maxTokens ?? 1500, req.temperature ?? 0.8);
+      const r = await this.call(system, messages, req.maxTokens ?? 4000);
       inTok += r.inputTokens;
       outTok += r.outputTokens;
       lastRaw = r.text;

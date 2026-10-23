@@ -42,3 +42,31 @@ describe("Anthropic provider", () => {
     expect(extractJson('Sure! {"a":1} done')).toEqual({ a: 1 });
   });
 });
+
+describe("request shape", () => {
+  it("turns off up-front thinking and sends no temperature (Sonnet 5.5 rejects it with thinking)", async () => {
+    let body: Record<string, unknown> = {};
+    const fake = (async (_u: unknown, init?: RequestInit) => {
+      body = JSON.parse(String(init!.body));
+      return new Response(JSON.stringify({ content: [{ type: "thinking" }, { type: "text", text: '{"understanding":"x","may_mention_product":false,"handoff_to_human":false,"text":"y"}' }], usage: {} }), { status: 200 });
+    }) as typeof fetch;
+    const r = await new AnthropicProvider("sk-ant-x", "claude-sonnet-5-5", fake).generate({ task: "community_reply", system: "s", input: "{}", schema: communityReplySchema });
+    expect(body.thinking).toEqual({ type: "between_tools" });
+    expect(body).not.toHaveProperty("temperature");
+    expect(r.output.text).toBe("y");
+  });
+});
+
+it("falls back to the model's default thinking when the setting is refused", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  const fake = (async (_u: unknown, init?: RequestInit) => {
+    const b = JSON.parse(String(init!.body));
+    bodies.push(b);
+    if (b.thinking) return new Response(JSON.stringify({ error: { message: "thinking type between_tools is not supported" } }), { status: 400 });
+    return new Response(JSON.stringify({ content: [{ type: "text", text: '{"understanding":"x","may_mention_product":false,"handoff_to_human":false,"text":"ok"}' }], usage: {} }), { status: 200 });
+  }) as typeof fetch;
+  const r = await new AnthropicProvider("sk-ant-x", "claude-sonnet-5-5", fake).generate({ task: "community_reply", system: "s", input: "{}", schema: communityReplySchema });
+  expect(r.output.text).toBe("ok");
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).not.toHaveProperty("thinking");
+});
