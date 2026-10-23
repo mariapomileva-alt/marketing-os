@@ -122,16 +122,22 @@ export async function sendMagicLink(email: string, redirectTo: string): Promise<
 export async function passwordSignIn(emailRaw: string, password: string): Promise<{ ok: boolean; error?: string }> {
   const email = emailRaw.trim().toLowerCase();
   const allowed = allowedEmails();
-  if (allowed && !allowed.includes(email)) return { ok: false, error: "Wrong email or password." };
+  const owner = (process.env.OWNER_PASSWORD ?? "").trim();
+  // Setup problems are named (they reveal nothing about accounts); a wrong email or password is not.
+  if (!allowed) return { ok: false, error: "Password sign-in is not set up: ALLOWED_EMAILS is empty in the hosting settings." };
+  if (!allowed.includes(email)) return { ok: false, error: "This email is not in ALLOWED_EMAILS in the hosting settings." };
   const supabase = await supabaseClient();
   const first = await supabase.auth.signInWithPassword({ email, password });
   if (!first.error) return { ok: true };
 
-  const owner = process.env.OWNER_PASSWORD ?? "";
-  const matches = owner.length >= 12 && password.length === owner.length && timingSafeEqual(Buffer.from(password), Buffer.from(owner));
+  if (owner.length < 12) return { ok: false, error: "Password sign-in is not set up: OWNER_PASSWORD is missing or shorter than 12 characters." };
+  const typed = password.trim();
+  const matches = typed.length === owner.length && timingSafeEqual(Buffer.from(typed), Buffer.from(owner));
   const serviceKey = supabaseServiceKey();
   const url = supabaseUrl();
-  if (!matches || !allowed || !serviceKey || !url) return { ok: false, error: "Wrong email or password." };
+  if (!matches) return { ok: false, error: "Wrong email or password." };
+  if (!serviceKey || !url) return { ok: false, error: "Password sign-in is not set up: the Supabase service key is missing." };
+  password = typed;
 
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const existing = await getPool().query<{ id: string }>("select id from auth.users where lower(email) = $1 limit 1", [email]);
