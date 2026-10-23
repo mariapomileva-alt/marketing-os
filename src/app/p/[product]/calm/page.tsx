@@ -48,7 +48,7 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
   }));
   const s = d.s;
   const rendererSeen = s.renderer_seen_at ? formatDateTime(s.renderer_seen_at) : null;
-  const pexels = Boolean(process.env.PEXELS_API_KEY);
+  const pexels = Boolean(process.env.PIXABAY_API_KEY || process.env.PEXELS_API_KEY);
   return (
     <>
       <PageHeader
@@ -63,7 +63,7 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
             ["Voice", d.openai ? <Status key="v" tone="green">OpenAI text-to-speech, voice “{s.voice}”</Status> : <Status key="v" tone="amber">Add an OpenAI API key in Connections → AI providers</Status>],
             ["Footage", d.library.clips >= 3
               ? <Status key="f" tone="green">{`Your Creative Library: ${d.library.clips} clips and images tagged calm`}</Status>
-              : <span key="f"><Status tone="amber">{`${d.library.clips} of yours tagged calm`}</Status> <span className="text-muted">{pexels ? "· the rest from Pexels" : "· add clips in Creative Library (tag: calm, river…) or set PEXELS_API_KEY; otherwise a soft gradient"}</span></span>],
+              : <span key="f"><Status tone="amber">{`${d.library.clips} of yours tagged calm`}</Status> <span className="text-muted">{pexels ? "· the rest from free stock footage" : "· add clips in Creative Library (tag: calm, river…) or set PIXABAY_API_KEY; otherwise a soft gradient"}</span></span>],
             ["Music", d.library.music ? <Status key="m" tone="green">{`Your Creative Library: ${d.library.music} track${d.library.music === 1 ? "" : "s"} tagged calm, used in turn`}</Status> : "A soft ambient pad generated for each video. Add your own tracks in Creative Library with the tag calm."],
             ["YouTube", d.yt?.status === "connected" ? <Status key="y" tone="green">{`Uploads as private to ${d.yt.account_label}`}</Status> : <Status key="y" tone="red">Connect the YouTube channel in Connections</Status>],
             ["Renderer (GitHub)", s.renderer_token_hash ? (rendererSeen ? <Status key="r" tone="green">{`Last checked in ${rendererSeen}`}</Status> : <Status key="r" tone="amber">Key created; waiting for the first check-in</Status>) : <Status key="r" tone="amber">Create a renderer key below and add it to GitHub</Status>],

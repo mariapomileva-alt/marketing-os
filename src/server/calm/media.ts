@@ -62,3 +62,25 @@ export async function findClips(apiKey: string, theme: string, want = 8, f: Fetc
   }
   return out;
 }
+
+/** Pixabay videos (Pixabay Content License: free for commercial use, no attribution required; we credit anyway). */
+export async function findPixabayClips(apiKey: string, theme: string, want = 8, f: Fetch = fetch): Promise<Clip[]> {
+  const out: Clip[] = [];
+  const seen = new Set<number>();
+  for (const q of THEME_QUERIES[theme] ?? [theme]) {
+    const u = new URL("https://pixabay.com/api/videos/");
+    u.search = new URLSearchParams({ key: apiKey, q, video_type: "film", safesearch: "true", per_page: "20", order: "popular" }).toString();
+    const res = await f(u);
+    if (!res.ok) throw new Error(`Pixabay ${res.status}: could not search footage`);
+    const body = (await res.json()) as { hits?: Array<{ id: number; pageURL: string; duration: number; user?: string; videos?: Record<string, { url: string; width: number; height: number }> }> };
+    for (const v of (body.hits ?? []).sort((a, b) => b.duration - a.duration)) {
+      if (seen.has(v.id) || v.duration < 8) continue;
+      const file = ["large", "medium"].map((k) => v.videos?.[k]).find((x) => x?.url && x.width >= 1280 && x.width > x.height);
+      if (!file) continue;
+      seen.add(v.id);
+      out.push({ url: file.url, author: v.user ?? "Pixabay", source_url: v.pageURL });
+      if (out.length >= want) return out;
+    }
+  }
+  return out;
+}

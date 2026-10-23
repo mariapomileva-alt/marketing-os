@@ -28,8 +28,10 @@ export async function POST(request: NextRequest) {
     }));
     if (!conn?.secret_id || conn.status !== "connected") throw new Error("The YouTube channel is not connected (Connections → Connect YouTube channel).");
     const link = domain ? taggedUrl(`https://${domain}/`, { source: "youtube", medium: "video", key: "calm_video" }) : "";
-    const credits = [...new Set(job.clips.filter((c) => c.source === "pexels").map((c) => c.author))].slice(0, 6).join(", ");
-    const description = `${job.description.replace(/LINK/g, link)}${credits ? `\n\nFootage: ${credits} (Pexels).` : ""}\nVoice: AI-generated.`.slice(0, 4900);
+    const stock = job.clips.filter((c) => c.source === "pexels");
+    const credits = [...new Set(stock.map((c) => c.author))].slice(0, 6).join(", ");
+    const site = stock.some((c) => c.source_url.includes("pixabay")) ? "Pixabay" : "Pexels";
+    const description = `${job.description.replace(/LINK/g, link)}${credits ? `\n\nFootage: ${credits} (${site}).` : ""}\nVoice: AI-generated.`.slice(0, 4900);
     const yt = await accessToken(await refreshTokenFor(conn.secret_id));
     const uploadUrl = await createUploadSession(yt, { title: job.title, description, tags: job.tags });
     const store = fileStore();

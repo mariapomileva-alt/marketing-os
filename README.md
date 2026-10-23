@@ -120,7 +120,7 @@ Other accounts' reels: the API does not allow commenting on other accounts' medi
 
 ## Calm Videos
 
-1. Connections → AI providers: store an OpenAI API key (voice). Optional: `PEXELS_API_KEY` in Vercel (free at pexels.com/api) for nature footage.
+1. Connections → AI providers: store an OpenAI API key (voice). Optional: `PIXABAY_API_KEY` (free at pixabay.com/api/docs) or `PEXELS_API_KEY` in Vercel for stock nature footage when the Creative Library has fewer than three clips tagged calm.
 2. Calm Videos → Create renderer key. GitHub → repository Settings → Secrets and variables → Actions: secret `MOS_RENDER_TOKEN` = the key; variable `MOS_URL` = the app address.
 3. The workflow "Calm video renderer" runs every two hours (or Run workflow by hand), renders waiting videos and uploads them to YouTube as private. Approve them in Calm Videos.
 
