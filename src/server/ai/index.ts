@@ -46,3 +46,15 @@ export async function embedTexts(texts: string[]) {
   if (!p.embed) throw new Error("The active AI provider has no embedding model");
   return p.embed(texts);
 }
+
+/** The workspace's OpenAI key (Connections → AI providers), for text-to-speech. Null when none is connected. */
+export async function openaiKey(workspaceId: string): Promise<string | null> {
+  const row = await withContext({ userId: null, role: "service" }, (tx) =>
+    tx.maybeOne<{ ciphertext: Buffer; iv: Buffer; auth_tag: Buffer; key_version: number }>(
+      `select s.ciphertext, s.iv, s.auth_tag, s.key_version from ai_provider_connections c join secrets s on s.id = c.secret_id
+        where c.workspace_id = $1 and c.provider = 'openai' and c.status = 'connected' order by c.created_at desc limit 1`,
+      [workspaceId],
+    ),
+  );
+  return row ? decryptSecret({ ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag, keyVersion: row.key_version }) : null;
+}

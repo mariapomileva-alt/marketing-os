@@ -9,6 +9,7 @@ import { refreshCommentStats, syncReplies, youtubeConnection } from "@/server/se
 import { commentStats } from "@/server/youtube/write";
 import { liveInstagramApi, liveThreadsApi, liveWriteApi } from "@/server/youtube/live";
 import { syncInstagramComments } from "@/server/services/instagram";
+
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
 
 /**
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
   const results: unknown[] = [];
   const threadsResults = await dailyThreads();
   const instagramResults = await dailyInstagram();
+
 
   const products = !source ? [] : await withContext({ userId: null, role: "service", actorType: "system" }, (tx) =>
     tx.query<{ product_id: string; workspace_id: string; slug: string; name: string; owner_id: string }>(
@@ -126,3 +128,4 @@ async function dailyInstagram() {
   }
   return out;
 }
+

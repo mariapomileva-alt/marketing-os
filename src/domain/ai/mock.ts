@@ -168,6 +168,23 @@ function mockCommunityReply(c: Ctx) {
     : { understanding: `[MOCK] The person is responding to our comment: "${s(c.message).slice(0, 60)}"`, may_mention_product: false, handoff_to_human: false, text: mockReplyText(s(c.message)) };
 }
 
+function mockCalmVideo(c: Ctx) {
+  const topic = s(c.topic, "when panic rises");
+  const theme = s(c.theme, "river");
+  const base = [
+    "You are here.", `You are watching the ${theme}.`, "Nothing is asked of you right now.", "Your body is sounding an alarm.",
+    "Alarms are loud.", "Loud is not the same as dangerous.", "If you like, let your shoulders drop a little.", "Feel where your feet touch the floor.",
+    "This wave has a top.", "You have been through waves before.", "You can let this moment be just this moment.", "Slowly, it is passing.",
+  ];
+  const lines = Array.from({ length: 36 }, (_, i) => ({ text: `[MOCK] ${base[i % base.length]}`, pause: i % 6 === 6 - 1 ? 9 : 4 }));
+  return {
+    title: `[MOCK] 10 Minute Calm for ${topic} · ${theme} affirmations`.slice(0, 95),
+    description: `[MOCK] A slow video for ${topic}. Watch, breathe at your own pace, it's fine to stop.\n\nThis video is not medical advice. If you are in danger or think you might hurt yourself, contact your local emergency number now.\n\nMade by the team behind Back, a small app for the first minutes of panic: LINK`,
+    tags: ["panic attack help", "calm affirmations", "anxiety relief", "panic attack at night"],
+    lines,
+  };
+}
+
 export class MockProvider implements LLMProvider {
   readonly id = "mock" as const;
   readonly isMock = true;
@@ -181,6 +198,7 @@ export class MockProvider implements LLMProvider {
       : req.task === "experiment_review" ? mockExperimentReview()
       : req.task === "community_comment" ? mockCommunityComment(c)
       : req.task === "community_reply" ? mockCommunityReply(c)
+      : req.task === "calm_video" ? mockCalmVideo(c)
       : mockReview(req.task);
     const output = req.schema.parse(raw);
     const rawText = JSON.stringify(raw);

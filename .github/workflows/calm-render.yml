@@ -1,0 +1,37 @@
+# Renders calm affirmation videos for Marketing OS and uploads them to YouTube as PRIVATE.
+# Nothing becomes public here: the owner watches each video and approves it in Marketing OS.
+# Needs: repository secret MOS_RENDER_TOKEN (Marketing OS → Calm Videos → Create renderer key)
+#        repository variable MOS_URL (e.g. https://marketing-os-kappa-one.vercel.app)
+name: Calm video renderer
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: calm-render
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/render-calm.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+      - name: Render waiting videos
+        env:
+          MOS_URL: ${{ vars.MOS_URL }}
+          MOS_RENDER_TOKEN: ${{ secrets.MOS_RENDER_TOKEN }}
+        run: node scripts/render-calm.mjs

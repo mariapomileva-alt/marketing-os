@@ -1,5 +1,11 @@
 # Changelog
 
+## Calm Videos (YouTube affirmation videos)
+- New page Make → Calm Videos. Claude writes a slow affirmation script for a topic and nature theme (lines checked against the product's safety rules), OpenAI text-to-speech records each line, Pexels supplies nature footage (fallback: a slow generated gradient).
+- A renderer on GitHub Actions (`.github/workflows/calm-render.yml`, `scripts/render-calm.mjs`, ffmpeg) builds a 1080p video: cross-faded footage, each line fading in and out, the voice over a generated ambient pad that ducks under it, and uploads it to YouTube as PRIVATE (synthetic voice declared).
+- The owner watches it and approves: scheduled at the next slot (default Tue/Fri 16:00 UTC) or published now. Rejected videos stay private. Every step is logged.
+- Daily cron keeps two videos in the pipeline when automatic videos are on. Renderer key: shown once, only its hash is stored.
+
 ## Instagram: comments under our own reels
 - Connect the Instagram professional account (Instagram Login, long-lived token encrypted and refreshed). Comments under our reels are read every morning and on demand; each person's comment becomes a conversation with an answer drafted; approved answers are posted as replies under their comment from the same queue and limits.
 - Other accounts' reels stay manual (the API does not allow it).

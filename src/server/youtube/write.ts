@@ -82,7 +82,7 @@ export async function revokeToken(refreshToken: string) {
   await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(refreshToken)}`, { method: "POST", cache: "no-store" }).catch(() => undefined);
 }
 
-async function call<T>(method: "GET" | "POST", path: string, token: string, body?: unknown): Promise<T> {
+async function call<T>(method: "GET" | "POST" | "PUT", path: string, token: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API}/${path}`, {
     method,
     headers: { authorization: `Bearer ${token}`, ...(body ? { "content-type": "application/json" } : {}) },
@@ -177,4 +177,36 @@ export async function commentStats(commentIds: string[], threadIds: string[], ap
   const rest = commentIds.filter((id) => !out.has(id));
   if (rest.length) await get("comments", rest);
   return [...out.values()];
+}
+
+/**
+ * Opens a resumable upload for a new PRIVATE video and returns the session URL. The URL only accepts the bytes of
+ * this one video (no access token in it); the renderer PUTs the file there.
+ */
+export async function createUploadSession(token: string, meta: { title: string; description: string; tags: string[] }) {
+  const res = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json; charset=UTF-8", "x-upload-content-type": "video/mp4" },
+    body: JSON.stringify({
+      snippet: { title: meta.title, description: meta.description, tags: meta.tags, categoryId: "22", defaultLanguage: "en", defaultAudioLanguage: "en" },
+      status: { privacyStatus: "private", selfDeclaredMadeForKids: false, containsSyntheticMedia: true },
+    }),
+    cache: "no-store",
+  });
+  const location = res.headers.get("location");
+  if (!res.ok || !location) {
+    const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new YouTubeWriteError(`YouTube upload session ${res.status}: ${json.error?.message ?? "no session"}`, res.status, "upload");
+  }
+  return location;
+}
+
+/** Schedules a private video (publishAt) or publishes it now. */
+export async function scheduleVideo(token: string, videoId: string, publishAt: Date | null) {
+  return call<{ id: string }>("PUT", "videos?part=status", token, {
+    id: videoId,
+    status: publishAt
+      ? { privacyStatus: "private", publishAt: publishAt.toISOString(), selfDeclaredMadeForKids: false, containsSyntheticMedia: true }
+      : { privacyStatus: "public", selfDeclaredMadeForKids: false, containsSyntheticMedia: true },
+  });
 }

@@ -105,3 +105,15 @@ export const communityReplySchema = z.object({
   text: z.string().min(1).max(900),
 });
 export type CommunityReplyOutput = z.infer<typeof communityReplySchema>;
+
+/** A calm affirmation video for YouTube: spoken lines with pauses, plus the YouTube title, description and tags. */
+export const calmVideoSchema = z.object({
+  title: z.string().min(10).max(95).describe("YouTube title, natural and searchable, no clickbait"),
+  description: z.string().min(80).max(2500),
+  tags: z.array(z.string().min(2).max(40)).min(3).max(15),
+  lines: z
+    .array(z.object({ text: z.string().min(2).max(110), pause: z.number().min(1).max(15).describe("Seconds of quiet after the line") }))
+    .min(30)
+    .max(140),
+});
+export type CalmVideoOutput = z.infer<typeof calmVideoSchema>;

@@ -1,6 +1,6 @@
 import {
   Activity, BarChart3, BookOpen, CalendarDays, CheckSquare, Cog, FlaskConical, Gauge, Image as ImageIcon, Layers,
-  Lightbulb, MessagesSquare, PenLine, Plug, Radar, Send, Swords, Users, Workflow,
+  Clapperboard, Lightbulb, MessagesSquare, PenLine, Plug, Radar, Send, Swords, Users, Workflow,
 } from "lucide-react";
 
 /**
@@ -33,6 +33,7 @@ export const NAV: ReadonlyArray<{ group: string; items: ReadonlyArray<NavItem> }
       { slug: "ideas", label: "Hooks & Ideas", icon: Lightbulb },
       { slug: "studio", label: "Content Studio", icon: PenLine },
       { slug: "creatives", label: "Creative Library", icon: ImageIcon },
+      { slug: "calm", label: "Calm Videos", icon: Clapperboard },
       { slug: "calendar", label: "Calendar", icon: CalendarDays },
       { slug: "approvals", label: "Approval Queue", icon: CheckSquare },
     ],

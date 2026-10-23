@@ -117,3 +117,9 @@ Comments under our own reels (Instagram API with Instagram Login, professional a
 3. Vercel: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` (the Instagram app id and secret shown in the Instagram use case, not the Meta app id), `INSTAGRAM_PUBLISHING_ENABLED=true`. Redeploy, then Connections → Connect Instagram.
 
 Other accounts' reels: the API does not allow commenting on other accounts' media. Reels are added by hand (link + what it says), the agent drafts a comment, you approve it and post it yourself.
+
+## Calm Videos
+
+1. Connections → AI providers: store an OpenAI API key (voice). Optional: `PEXELS_API_KEY` in Vercel (free at pexels.com/api) for nature footage.
+2. Calm Videos → Create renderer key. GitHub → repository Settings → Secrets and variables → Actions: secret `MOS_RENDER_TOKEN` = the key; variable `MOS_URL` = the app address.
+3. The workflow "Calm video renderer" runs every two hours (or Run workflow by hand), renders waiting videos and uploads them to YouTube as private. Approve them in Calm Videos.
