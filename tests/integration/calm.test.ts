@@ -59,9 +59,12 @@ describe("calm videos", () => {
     const again = await service((tx) => claimRenderJob(tx, token));
     expect(again.authorized && again.job).toBeNull(); // already rendering
     expect(await service((tx) => finishRender(tx, "mosr_wrong", videoId, { youtubeVideoId: "abcDEF12345" }))).toBe(false);
-    expect(await service((tx) => finishRender(tx, token, videoId, { youtubeVideoId: "abcDEF12345" }))).toBe(true);
-    const v = await as((tx) => tx.one<{ status: string }>("select status from calm_videos where id = $1", [videoId]));
+    expect(await service((tx) => finishRender(tx, token, videoId, { youtubeVideoId: "abcDEF12345", preview: true }))).toBe(true);
+    const v = await as((tx) => tx.one<{ status: string; preview_asset_id: string | null }>("select status, preview_asset_id from calm_videos where id = $1", [videoId]));
     expect(v.status).toBe("review");
+    const asset = await as((tx) => tx.one<{ kind: string; tags: string[] }>("select kind, tags from creative_assets where id = $1", [v.preview_asset_id]));
+    expect(asset).toMatchObject({ kind: "video" });
+    expect(asset.tags).toContain("calm-video");
   });
 
   it("schedules only after approval, at the next free slot", async () => {

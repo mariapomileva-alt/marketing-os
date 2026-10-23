@@ -37,11 +37,11 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
     openai: Boolean(await openaiKey(ctx.workspaceId)),
     library: await tx.one<{ clips: number; music: number }>(
       `select count(*) filter (where kind in ('video', 'image'))::int clips, count(*) filter (where kind = 'audio')::int music
-         from creative_assets where product_id = $1 and storage_path is not null and origin <> 'competitor_reference' and 'calm' = any(tags)`,
+         from creative_assets where product_id = $1 and storage_path is not null and origin <> 'competitor_reference' and 'calm' = any(tags) and not ('calm-video' = any(tags))`,
       [product.id],
     ),
-    videos: await tx.query<{ id: string; topic: string; theme: string; title: string; description: string; lines: Array<{ text: string; pause: number }>; status: string; error: string | null; youtube_video_id: string | null; publish_at: string | null; created_at: string; is_mock: boolean; clips: unknown[]; render_url: string | null }>(
-      `select id, topic, theme, title, description, lines, status, error, youtube_video_id, publish_at::text, created_at::text, is_mock, clips, render_url
+    videos: await tx.query<{ id: string; topic: string; theme: string; title: string; description: string; lines: Array<{ text: string; pause: number }>; status: string; error: string | null; youtube_video_id: string | null; publish_at: string | null; created_at: string; is_mock: boolean; clips: unknown[]; render_url: string | null; preview_asset_id: string | null }>(
+      `select id, topic, theme, title, description, lines, status, error, youtube_video_id, publish_at::text, created_at::text, is_mock, clips, render_url, preview_asset_id
          from calm_videos where product_id = $1 order by created_at desc limit 30`,
       [product.id],
     ),
@@ -99,6 +99,9 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
                     <Status tone={st.tone}>{v.status === "scheduled" && v.publish_at ? `scheduled ${formatDateTime(v.publish_at)}` : st.label}</Status>
                   </div>
                   {v.error ? <p className="mt-2 rounded-[var(--radius-control)] bg-red-tint px-3 py-2 text-[12.5px] text-red">{v.error}</p> : null}
+                  {v.preview_asset_id ? (
+                    <video src={`/p/${slug}/creatives/${v.preview_asset_id}`} controls preload="metadata" playsInline className="mt-3 aspect-video w-full max-w-[720px] rounded-[var(--radius-panel)] bg-ink" />
+                  ) : null}
                   {v.youtube_video_id && ["review", "scheduled", "published"].includes(v.status) ? (
                     <p className="mt-2 text-[13px]">
                       <a href={`https://studio.youtube.com/video/${v.youtube_video_id}/edit`} target="_blank" rel="noreferrer noopener" className="underline">Watch in YouTube Studio</a>

@@ -51,7 +51,9 @@ export async function POST(request: NextRequest) {
       }
     }
     const music_url = job.music_path ? await store.signedUrl(job.music_path, 3 * 3600) : null;
-    return NextResponse.json({ id: job.id, title: job.title, minutes: job.minutes, lines, clips, music_url, upload_url: uploadUrl, font_url: FONT_URL });
+    // A light 480p preview goes to private storage too, so the video can be watched inside Marketing OS.
+    const preview_upload_url = await store.signedUploadUrl(`${job.workspace_id}/${claimed.productId}/calm/${job.id}-preview.mp4`).catch(() => null);
+    return NextResponse.json({ id: job.id, title: job.title, minutes: job.minutes, lines, clips, music_url, upload_url: uploadUrl, preview_upload_url, font_url: FONT_URL });
   } catch (e) {
     const msg = (e as Error).message.slice(0, 400);
     await withContext({ userId: null, role: "service", actorType: "system" }, (tx) =>

@@ -249,9 +249,26 @@ async function main() {
       await download(job.font_url, job.font_file);
       const r = await render(job, out, work);
       console.log(`Rendered ${r.seconds}s, uploading as private…`);
+      // A light preview (480p) for watching inside Marketing OS; storage accepts up to 50 MB per file.
+      let preview = false;
+      if (job.preview_upload_url) {
+        try {
+          const small = path.join(work, "preview.mp4");
+          await ffmpeg(["-i", out, "-vf", "scale=-2:480", "-c:v", "libx264", "-preset", "veryfast", "-crf", "31", "-maxrate", "450k", "-bufsize", "900k",
+            "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", small], "preview");
+          const size = (await stat(small)).size;
+          if (size < 48 * 1024 * 1024) {
+            const res = await fetch(job.preview_upload_url, { method: "PUT", headers: { "content-type": "video/mp4", "content-length": String(size) }, body: createReadStream(small), duplex: "half" });
+            preview = res.ok;
+            if (!res.ok) console.warn(`Preview upload failed: ${res.status}`);
+          }
+        } catch (e) {
+          console.warn(`Preview skipped: ${e.message}`);
+        }
+      }
       const renderUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : undefined;
       const youtubeVideoId = await uploadToYoutube(job.upload_url, out);
-      await api("/api/cron/calm-done", { id: job.id, youtubeVideoId, seconds: r.seconds, renderUrl });
+      await api("/api/cron/calm-done", { id: job.id, youtubeVideoId, seconds: r.seconds, renderUrl, preview });
       console.log("Uploaded as private; waiting for approval in Marketing OS.");
     } catch (e) {
       console.error(e);

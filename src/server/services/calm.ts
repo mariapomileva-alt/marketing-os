@@ -124,7 +124,7 @@ export async function prepareCalmMedia(tx: Tx, productId: string, videoId: strin
     const library = await tx.query<{ id: string; kind: "video" | "image" }>(
       `select id, kind from creative_assets
         where product_id = $1 and kind in ('video', 'image') and storage_path is not null and origin <> 'competitor_reference'
-          and ('calm' = any(tags) or $2 = any(tags))
+          and ('calm' = any(tags) or $2 = any(tags)) and not ('calm-video' = any(tags)) -- never our own finished videos
         order by ($2 = any(tags)) desc, random() limit 8`,
       [productId, v.theme],
     );
@@ -170,9 +170,22 @@ export async function claimRenderJob(tx: Tx, token: string) {
   return { authorized: true as const, productId: s.product_id, job: { ...v, minutes: s.minutes, libraryPaths: Object.fromEntries(paths.map((p) => [p.id, p.storage_path])) } };
 }
 
-export async function finishRender(tx: Tx, token: string, id: string, result: { youtubeVideoId?: string; error?: string; renderUrl?: string }) {
+export async function finishRender(tx: Tx, token: string, id: string, result: { youtubeVideoId?: string; error?: string; renderUrl?: string; preview?: boolean }) {
   const s = await tx.maybeOne<{ product_id: string }>("select product_id from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
   if (!s) return false;
+  if (result.youtubeVideoId && result.preview) {
+    // The preview the renderer uploaded becomes a Creative Library video, watchable inside Marketing OS.
+    const v = await tx.maybeOne<{ workspace_id: string; title: string; theme: string; preview_asset_id: string | null }>(
+      "select workspace_id, title, theme, preview_asset_id from calm_videos where id = $1 and product_id = $2", [id, s.product_id]);
+    if (v && !v.preview_asset_id) {
+      const a = await tx.one<{ id: string }>(
+        `insert into creative_assets (workspace_id, product_id, kind, title, storage_path, mime_type, origin, tags, rights_note)
+         values ($1,$2,'video',$3,$4,'video/mp4','generated',$5,'Rendered by Marketing OS (preview, 480p). Footage and music as credited on YouTube.') returning id`,
+        [v.workspace_id, s.product_id, v.title, `${v.workspace_id}/${s.product_id}/calm/${id}-preview.mp4`, ["calm-video", v.theme]],
+      );
+      await tx.query("update calm_videos set preview_asset_id = $2 where id = $1", [id, a.id]);
+    }
+  }
   if (result.youtubeVideoId) {
     await tx.query("update calm_videos set status = 'review', youtube_video_id = $3, render_url = $4, rendered_at = now(), error = case when error like 'Removed %' then error else null end where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, result.youtubeVideoId, result.renderUrl ?? null]);
   } else {
