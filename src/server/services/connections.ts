@@ -9,7 +9,7 @@ export const CHANNEL_REGISTRY: Array<{ id: string; name: string; status: "availa
   { id: "website", name: "Website", status: "available", adapter: "export", capabilities: "Landing pages for tracking links; article export" },
   { id: "meta_ads", name: "Meta Ads", status: "available", adapter: "export", capabilities: "Report import by CSV", note: "Read-only API sync in v0.2; changes with approval in v0.4." },
   { id: "google_ads", name: "Google Ads", status: "available", adapter: "export", capabilities: "Report import by CSV", note: "Read-only API sync in v0.2; changes with approval in v0.4." },
-  { id: "youtube", name: "YouTube", status: "planned", adapter: "official_api", capabilities: "—" },
+  { id: "youtube", name: "YouTube", status: "available", adapter: "official_api", capabilities: "Comments and replies from your channel, each one after your approval (official API, Google sign-in)" },
   { id: "tiktok", name: "TikTok", status: "planned", adapter: "official_api", capabilities: "—" },
   { id: "x", name: "X / Twitter", status: "planned", adapter: "official_api", capabilities: "—" },
   { id: "linkedin", name: "LinkedIn", status: "planned", adapter: "official_api", capabilities: "—" },

@@ -91,3 +91,12 @@ src/server/           Database access, auth, encryption, storage, services per a
 src/app/              Pages (19 sections under /p/[product]/…) and server actions
 tests/                unit, integration (real database, RLS on), e2e (Playwright)
 ```
+
+## Posting to YouTube
+
+1. Google Cloud (same project as the API key) → Google Auth Platform / OAuth consent screen: External, add yourself as a test user.
+2. Clients → Create client → Web application. Authorized redirect URI: `https://<APP_URL>/api/youtube/oauth/callback`.
+3. Vercel → Environment Variables: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `YOUTUBE_PUBLISHING_ENABLED=true`, `APP_URL` (the main address). Redeploy.
+4. Connections → Connect YouTube channel, sign in with the account that owns the channel and choose the channel.
+
+While the consent screen is in Testing, Google expires the token after 7 days: reconnect, or switch the app to In production.

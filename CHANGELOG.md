@@ -1,5 +1,11 @@
 # Changelog
 
+## YouTube: approve and post, live conversations
+- Connect the product's YouTube channel with Google sign-in (Connections → Connect YouTube channel). The token is encrypted server-side; Disconnect revokes it at Google.
+- With `YOUTUBE_PUBLISHING_ENABLED=true` and a connected channel, **Approve and post** publishes the exact approved text as the channel. Limits: daily cap, 10 min gap, 08–23 Riga. Every attempt is in outbound_actions; a YouTube error pauses the channel instead of retrying. "Post now" retries an approved draft later.
+- Replies under our posted comments are read (button and daily cron), answers drafted for approval; high-risk replies get only a safety note and an urgent Telegram alert.
+- Conversations tab: Live conversations (our comment, replies as a thread, drafted answer), New comments to approve, Posted with no replies yet.
+
 ## [Unreleased]
 
 ### Real AI voice and simpler approval — 2026-10-23

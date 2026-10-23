@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closePools, type Tx } from "@/server/db/client";
 import { createBackApp } from "@/server/services/products";
 import { decideApproval, type Actor } from "@/server/services/content";
-import { getYtSettings, publishGate, receiveReply, runDiscovery, updateYtSettings } from "@/server/services/youtube";
+import { getYtSettings, receiveReply, runDiscovery, updateYtSettings } from "@/server/services/youtube";
+import { postGate as publishGate, postApproved, saveYoutubeConnection, syncReplies, type YoutubeWriteApi } from "@/server/services/youtube-publish";
 import { demoSource } from "@/server/youtube/source";
 import { similarity } from "@/domain/youtube";
 import { asUser, createOwner } from "../helpers/db";
@@ -106,7 +107,7 @@ describe("publishing", () => {
     await as((tx) => decideApproval(tx, actor, productId, m.approval_id, "approved", "ok"));
     const afterApproval = await as((tx) => publishGate(tx, productId, m.id));
     expect(afterApproval.allowed).toBe(false);
-    expect(afterApproval.reason).toMatch(/turned off/);
+    expect(afterApproval.reason).toMatch(/switched off/);
   });
 });
 
@@ -133,5 +134,71 @@ describe("approving from the thread view", () => {
     const approved = await as((tx) => tx.one<{ text: string }>(
       "select a.payload_snapshot->>'text' text from approval_items a join conversation_messages m on m.id = a.conversation_message_id where m.id = $1 and a.state = 'approved'", [helpful.id]));
     expect(approved.text).toBe(text);
+  });
+});
+
+
+describe("posting after approval and reading replies", () => {
+  const posted: string[] = [];
+  let replies: Array<{ id: string; authorChannelId: string | null; authorName: string; text: string; publishedAt: string }> = [];
+  const api: YoutubeWriteApi = {
+    accessToken: async () => "access",
+    postComment: async (_t, videoId, text) => { posted.push(`comment:${videoId}:${text}`); return { threadId: "Ugthread1", commentId: "Ugthread1" }; },
+    postReply: async (_t, threadId, text) => { posted.push(`reply:${threadId}:${text}`); return { commentId: `r${posted.length}` }; },
+    listReplies: async () => replies,
+  };
+
+  it("posts the approved comment, records it, then reads replies and drafts an answer", async () => {
+    await as((tx) => saveYoutubeConnection(tx, owner.workspaceId, productId, { id: "UCback", title: "Back" }, "refresh-token-xyz"));
+    // Tests run at any hour: open the window and drop the gap so only the rules under test decide.
+    await as((tx) => tx.query(`update channel_connections set limits = limits || '{"min_gap_minutes":0,"active_hours":{"start":0,"end":24,"tz":"UTC"}}'::jsonb where product_id = $1 and channel = 'youtube' and status <> 'revoked'`, [productId]));
+    process.env.YOUTUBE_PUBLISHING_ENABLED = "true";
+    try {
+      const m = await as((tx) => tx.one<{ id: string }>(
+        "select m.id from conversation_messages m join approval_items a on a.conversation_message_id = m.id where m.product_id = $1 and a.state = 'approved' and m.status = 'approved' limit 1", [productId]));
+      // 12:00 Riga is inside active hours
+      const r = await as((tx) => postApproved(tx, actor, productId, m.id, api, new Date()));
+      expect(r.reason).toBe("Comment posted on YouTube.");
+      expect(posted[0]).toMatch(/^comment:/);
+      const conv = await as((tx) => tx.one<{ id: string; external_thread_id: string; status: string }>(
+        "select c.id, c.external_thread_id, m.status from conversations c join conversation_messages m on m.conversation_id = c.id where m.id = $1", [m.id]));
+      expect(conv).toMatchObject({ external_thread_id: "Ugthread1", status: "posted" });
+
+      // posting twice is refused (dedupe)
+      const again = await as((tx) => postApproved(tx, actor, productId, m.id, api, new Date()));
+      expect(again.posted).toBe(false);
+
+      replies = [
+        { id: "rep1", authorChannelId: "UCviewer", authorName: "@maya", text: "Yes!! the second-guessing is the worst part for me", publishedAt: "2026-10-23T10:00:00Z" },
+        { id: "rep2", authorChannelId: "UCback", authorName: "Back", text: "our own reply", publishedAt: "2026-10-23T10:05:00Z" },
+      ];
+      const sync = await as((tx) => syncReplies(tx, actor, productId, api));
+      expect(sync.fresh).toBe(1);
+      const sync2 = await as((tx) => syncReplies(tx, actor, productId, api));
+      expect(sync2.fresh).toBe(0);
+      const thread = await as((tx) => tx.query<{ direction: string; author_handle: string | null; status: string; variant: string | null }>(
+        "select direction, author_handle, status, variant from conversation_messages where conversation_id = $1 order by occurred_at, created_at", [conv.id]));
+      expect(thread.some((x) => x.direction === "inbound" && x.author_handle === "@maya")).toBe(true);
+      expect(thread.some((x) => x.direction === "outbound" && x.variant === "reply" && x.status === "draft")).toBe(true);
+    } finally {
+      delete process.env.YOUTUBE_PUBLISHING_ENABLED;
+    }
+  });
+
+  it("pauses the channel when YouTube refuses, instead of retrying", async () => {
+    process.env.YOUTUBE_PUBLISHING_ENABLED = "true";
+    try {
+      const reply = await as((tx) => tx.one<{ id: string; approval: string }>(
+        `select m.id, a.id approval from conversation_messages m join approval_items a on a.conversation_message_id = m.id
+          where m.product_id = $1 and m.variant = 'reply' and m.status = 'draft' and a.state = 'pending' order by m.created_at desc limit 1`, [productId]));
+      await as((tx) => decideApproval(tx, actor, productId, reply.approval, "approved", "ok"));
+      const failing: YoutubeWriteApi = { ...api, postReply: async () => { throw new Error("YouTube 403 forbidden: commentsDisabled"); } };
+      const r = await as((tx) => postApproved(tx, actor, productId, reply.id, failing, new Date()));
+      expect(r.reason).toMatch(/YouTube refused/);
+      const c = await as((tx) => tx.one<{ status: string }>("select status from channel_connections where product_id = $1 and channel = 'youtube' and status <> 'revoked'", [productId]));
+      expect(c.status).toBe("paused");
+    } finally {
+      delete process.env.YOUTUBE_PUBLISHING_ENABLED;
+    }
   });
 });

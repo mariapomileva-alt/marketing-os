@@ -1,21 +1,19 @@
 import type { Tx } from "@/server/db/client";
 import { getYtSettings } from "@/server/services/youtube";
-import { approveYtDraftAction, logYtReplyAction, rejectYtDraftAction, runYtDiscoveryAction, saveYtSettingsAction } from "@/app/actions/youtube";
-import { CopyButton } from "@/components/content/copy-button";
-import { markReplyPostedAction } from "@/app/actions/conversations";
+import { runYtDiscoveryAction, saveYtSettingsAction, syncYtRepliesAction } from "@/app/actions/youtube";
+import { publishingEnabled, youtubeConnection } from "@/server/services/youtube-publish";
 import { ActionForm } from "@/components/ui/action-form";
-import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/form";
+import { groupThreads, ThreadCard, type Thread } from "./youtube-threads";
 import { EmptyState, KeyValue, Section, Table } from "@/components/ui/layout";
 import { Status } from "@/components/ui/status";
 import { DataFlag } from "@/components/ui/status";
 import { formatDateTime } from "@/lib/format";
 
-type Msg = { id: string; direction: string; author_handle: string | null; text: string; status: string; variant: string | null; kind: string | null; voice: { problems?: string[]; warnings?: string[]; guardrailBlocks?: string[] } | null };
-
 export async function loadYoutube(tx: Tx, workspaceId: string, productId: string) {
   return {
     settings: await getYtSettings(tx, workspaceId, productId),
+    connection: await youtubeConnection(tx, productId),
     lastRun: await tx.maybeOne<{ stats: { errors?: string[]; draftsQueued?: number; found?: number }; started_at: string }>(
       "select stats, started_at::text from automation_runs where product_id = $1 and kind = 'youtube_discovery' order by started_at desc limit 1",
       [productId],
@@ -28,10 +26,10 @@ export async function loadYoutube(tx: Tx, workspaceId: string, productId: string
       "select id, title, url, channel_title, relevance, status, reason, found_at::text, is_demo from yt_videos where product_id = $1 order by found_at desc, relevance desc limit 60",
       [productId],
     ),
-    threads: await tx.query<{ id: string; subject: string | null; thread_url: string | null; risk: string; risk_reason: string | null; status: string; created_at: string; messages: Msg[] }>(
-      `select c.id, c.subject, c.thread_url, c.risk, c.risk_reason, c.status, c.created_at::text,
+    threads: await tx.query<Thread>(
+      `select c.id, c.subject, c.thread_url, c.external_thread_id, c.risk, c.risk_reason, c.status, c.created_at::text,
               coalesce((select json_agg(json_build_object('id', m.id, 'direction', m.direction, 'author_handle', m.author_handle, 'text', m.text, 'status', m.status,
-                                                          'variant', m.variant, 'kind', m.kind, 'voice', m.voice) order by m.occurred_at, m.created_at)
+                                                          'variant', m.variant, 'kind', m.kind, 'voice', m.voice, 'occurred_at', m.occurred_at) order by m.occurred_at, m.created_at)
                           from conversation_messages m where m.conversation_id = c.id), '[]') messages
          from conversations c where c.product_id = $1 and c.channel = 'youtube'
         order by (c.risk = 'high') desc,
@@ -42,13 +40,15 @@ export async function loadYoutube(tx: Tx, workspaceId: string, productId: string
   };
 }
 
-const VARIANT: Record<string, string> = { helpful: "Helpful, no product", with_mention: "Mentions the product openly", reply: "Reply", safety: "Safety note (no product)" };
-
 export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnType<typeof loadYoutube>> }) {
   const s = data.settings;
   const apiKey = Boolean(process.env.YOUTUBE_API_KEY);
   const telegram = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
-  const publishing = process.env.YOUTUBE_PUBLISHING_ENABLED === "true";
+  const publishing = publishingEnabled();
+  const connected = data.connection?.status === "connected";
+  const canPost = publishing && Boolean(data.connection);
+  const brand = data.connection?.account_label ?? s.brand_name ?? "Our channel";
+  const groups = groupThreads(data.threads);
   const waiting = data.threads.reduce((n, t) => n + t.messages.filter((m) => m.direction === "outbound" && m.status === "draft").length, 0);
   const toPost = data.threads.reduce((n, t) => n + t.messages.filter((m) => m.direction === "outbound" && m.status === "approved").length, 0);
   return (
@@ -57,9 +57,9 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
         <ol className="grid gap-3 text-[13.5px] md:grid-cols-4">
           {[
             ["1. Read", `Below, each card is one video. ${waiting ? `${waiting} draft${waiting === 1 ? "" : "s"} wait for you.` : "Nothing waits for you right now."}`],
-            ["2. Choose", "Pick the variant you like, change any words right in the box, then press Approve. Reject the ones you would not post."],
-            ["3. Post", `${toPost ? `${toPost} approved comment${toPost === 1 ? "" : "s"} to post. ` : ""}Press Copy text, open the video, paste it as the Back channel, then press “I posted it”.`],
-            ["4. Keep talking", "When someone answers us on YouTube, paste their words into the card. The agent drafts a reply that reads the whole thread."],
+            ["2. Choose", canPost ? "Change any words right in the box, then press Approve and post: it goes out from your channel. Reject the ones you would not post." : "Pick the variant you like, change any words right in the box, then press Approve. Reject the ones you would not post."],
+            ["3. Post", canPost ? `Posting is automatic after your approval${toPost ? `; ${toPost} approved, waiting for the next allowed time` : ""}.` : `${toPost ? `${toPost} approved comment${toPost === 1 ? "" : "s"} to post. ` : ""}Copy the text, post it as the channel, press “I posted it myself”. To post from here, connect the channel in Connections.`],
+            ["4. Keep talking", connected ? "Replies to our comments appear under Live conversations with an answer drafted. Approve it the same way." : "When someone answers us, paste their words into the card; the agent drafts an answer that reads the whole thread."],
           ].map(([h, b]) => (
             <li key={h} className="rounded-[var(--radius-panel)] border border-line bg-surface p-3">
               <p className="font-medium">{h}</p>
@@ -77,7 +77,7 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
             ["Daily search", s.enabled ? <Status tone="green">On</Status> : <Status>Off</Status>],
             ["YouTube access", apiKey ? <Status tone="green">API key set (read-only)</Status> : <Status tone="amber">Not set: add YOUTUBE_API_KEY</Status>],
             ["Telegram alerts", telegram ? <Status tone="green">On</Status> : <Status tone="amber">Not set: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID</Status>],
-            ["Publishing", publishing ? <Status tone="amber">On, after approval only</Status> : <Status>Off (dry run): you post approved comments from the channel yourself</Status>],
+            ["Posting", canPost ? (connected ? <Status tone="green">{`From ${data.connection!.account_label}, after your approval only`}</Status> : <Status tone="red">{`Paused: ${data.connection!.paused_reason ?? "see Connections"}`}</Status>) : publishing ? <Status tone="amber">Channel not connected: Connections → Connect YouTube channel</Status> : <Status>Off: you post approved comments yourself</Status>],
             ["Last search", s.last_run_at ? `${formatDateTime(s.last_run_at)}${data.lastRun ? ` · ${data.lastRun.stats.found ?? 0} videos, ${data.lastRun.stats.draftsQueued ?? 0} new drafts` : ""}` : "Never"],
           ]}
         />
@@ -96,76 +96,47 @@ export function YoutubeTab({ slug, data }: { slug: string; data: Awaited<ReturnT
         </div>
       </Section>
 
-      <Section title="Conversations on YouTube" description="Our drafted comments, replies from people and our drafted answers. Red threads need a person first.">
-        {data.threads.length ? (
-          <ul className="flex flex-col gap-3">
-            {data.threads.map((t) => (
-              <li key={t.id} className={`rounded-[var(--radius-panel)] border bg-surface p-4 ${t.risk === "high" ? "border-red/50" : "border-line"}`}>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[12.5px] text-muted">
-                  <span className="min-w-0">
-                    {t.thread_url ? <a href={t.thread_url} target="_blank" rel="noreferrer noopener" className="text-ink underline underline-offset-2">{t.subject ?? "Video"}</a> : t.subject}
-                    {" · "}{formatDateTime(t.created_at)}
-                  </span>
-                  <span className="flex items-center gap-3">
-                    {t.risk === "high" ? <Status tone="red">High risk</Status> : t.risk === "medium" ? <Status tone="amber">Careful</Status> : null}
-                    <Status tone={t.status === "replied" ? "green" : "amber"}>{t.status.replace("_", " ")}</Status>
-                  </span>
-                </div>
-                {t.risk === "high" ? (
-                  <p className="mb-2 rounded-[var(--radius-control)] bg-red-tint px-3 py-2 text-[12.5px] text-red">
-                    {t.risk_reason ?? "This person may need urgent help."} Answer as a person, briefly and kindly, or not at all. Never mention the product here.
-                  </p>
-                ) : null}
-                <ul className="flex flex-col gap-2 text-[13.5px]">
-                  {t.messages.map((m) => (
-                    <li key={m.id} className={m.direction === "outbound" ? "ml-4 border-l-2 border-line pl-3" : ""}>
-                      <div className="mb-0.5 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-                        <span>{m.direction === "inbound" ? (m.author_handle ?? "Someone") : `Team draft · ${VARIANT[m.variant ?? "reply"] ?? "Draft"}`}</span>
-                        {m.kind && m.direction === "inbound" ? <span>· {m.kind.replaceAll("_", " ")}</span> : null}
-                        {m.direction === "outbound" ? (
-                          <Status tone={m.status === "posted" || m.status === "approved" ? "green" : m.status === "rejected" ? "red" : "amber"}>
-                            {m.status === "draft" ? "waiting for approval" : m.status === "rejected" ? "held back" : m.status}
-                          </Status>
-                        ) : null}
-                        {m.text.startsWith("[MOCK]") ? <DataFlag kind="mock" /> : null}
-                      </div>
-                      {m.direction === "outbound" && m.status === "draft" ? (
-                        <>
-                          <ActionForm action={approveYtDraftAction.bind(null, slug, m.id)} submitLabel="Approve" pendingLabel="Checking…" submitVariant="primary" className="mt-1 flex flex-col gap-2">
-                            <Textarea name="text" rows={3} defaultValue={m.text} aria-label="Draft text, edit before approving" />
-                          </ActionForm>
-                          <form action={rejectYtDraftAction.bind(null, slug, m.id)} className="mt-1"><Button size="sm" variant="ghost">Reject</Button></form>
-                        </>
-                      ) : (
-                        <p className={`whitespace-pre-wrap ${m.status === "rejected" ? "text-muted line-through decoration-faint" : ""}`}>{m.text}</p>
-                      )}
-                      {m.voice && (m.voice.problems?.length || m.voice.guardrailBlocks?.length || (m.status === "draft" && m.voice.warnings?.length)) ? (
-                        <ul className="mt-1 text-[12px] text-muted">
-                          {[...(m.voice.guardrailBlocks ?? []), ...(m.voice.problems ?? [])].map((p) => <li key={p} className="text-red">{p}</li>)}
-                          {(m.voice.warnings ?? []).map((p) => <li key={p}>{p}</li>)}
-                        </ul>
-                      ) : null}
-                      {m.direction === "outbound" && m.status === "approved" ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <CopyButton text={m.text} />
-                          {t.thread_url ? <a href={t.thread_url} target="_blank" rel="noreferrer noopener" className="inline-flex h-7 items-center rounded-[var(--radius-control)] border border-line-strong bg-surface px-2.5 text-[13px]">Open the video</a> : null}
-                          <form action={markReplyPostedAction.bind(null, slug, m.id)}><Button size="sm" variant="primary">I posted it</Button></form>
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                <ActionForm action={logYtReplyAction.bind(null, slug, t.id)} submitLabel="Draft an answer" pendingLabel="Reading the thread…" submitVariant="secondary" resetOnSuccess className="mt-3 grid gap-2 md:grid-cols-[180px_1fr]">
-                  <Input name="author" aria-label="Who wrote" placeholder="@name" />
-                  <Textarea name="text" rows={2} aria-label="Their reply" placeholder="Paste a reply someone wrote under our comment" />
-                </ActionForm>
+      <Section
+        title="Live conversations"
+        description="Threads where people answered us. Our comment on top, the replies under it, and the answer the agent drafted, waiting for you."
+      >
+        {connected ? (
+          <ActionForm action={syncYtRepliesAction.bind(null, slug)} submitLabel="Check for new replies" pendingLabel="Reading YouTube…" submitVariant="secondary" className="mb-3 flex flex-col gap-2"><span /></ActionForm>
+        ) : null}
+        {groups.live.length ? (
+          <ul className="flex flex-col gap-3">{groups.live.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} />)}</ul>
+        ) : (
+          <EmptyState title="No replies yet">{connected ? "Replies are checked every morning and when you press Check for new replies." : "Once comments are posted from here, replies show up on their own."}</EmptyState>
+        )}
+      </Section>
+
+      <Section title="New comments to approve" description="One card per video. Two variants: pick one, edit it if you like, approve. The other closes by itself.">
+        {groups.fresh.length ? (
+          <ul className="flex flex-col gap-3">{groups.fresh.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} />)}</ul>
+        ) : (
+          <EmptyState title="Nothing waits for you">Run a search, or try it with demo videos.</EmptyState>
+        )}
+      </Section>
+
+      {groups.posted.length || groups.quiet.length ? (
+        <Section title="Posted, no replies yet">
+          <ul className="flex flex-col gap-1.5 text-[13.5px]">
+            {groups.posted.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-baseline gap-x-2">
+                <Status tone="green">posted</Status>
+                {t.thread_url ? <a href={t.thread_url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">{t.subject ?? "Video"}</a> : t.subject}
+                <span className="text-[12px] text-muted">{formatDateTime(t.created_at)}</span>
               </li>
             ))}
           </ul>
-        ) : (
-          <EmptyState title="No YouTube conversations yet">Run a search, or try it with demo videos.</EmptyState>
-        )}
-      </Section>
+          {groups.quiet.length ? (
+            <details className="mt-3 text-[12.5px] text-muted">
+              <summary className="cursor-pointer">{groups.quiet.length} closed without posting</summary>
+              <ul className="mt-2 flex flex-col gap-3">{groups.quiet.map((t) => <ThreadCard key={t.id} slug={slug} t={t} canPost={canPost} brand={brand} connected={connected} />)}</ul>
+            </details>
+          ) : null}
+        </Section>
+      ) : null}
 
       <Section title="Videos found" description="Every video the search returned, with the reason it was or was not picked.">
         {data.videos.length ? (

@@ -7,11 +7,23 @@ import { Field, Input, Select } from "@/components/ui/form";
 import { PageHeader, Section, Table } from "@/components/ui/layout";
 import { DataFlag, Status } from "@/components/ui/status";
 import { formatDateTime } from "@/lib/format";
+import { disconnectYoutubeAction } from "@/app/actions/youtube";
+import { publishingEnabled } from "@/server/services/youtube-publish";
+import { oauthConfigured } from "@/server/youtube/write";
 
 export const metadata = { title: "Connections" };
 
-export default async function ConnectionsPage({ params }: PageProps<"/p/[product]/connections">) {
+const YT_MESSAGES: Record<string, string> = {
+  connected: "YouTube channel connected. Approved comments and replies will now be posted from it.",
+  denied: "Google sign-in was cancelled. Nothing was connected.",
+  bad_state: "The sign-in link expired or was opened in another browser. Press Connect YouTube channel again.",
+  not_configured: "Google sign-in is not set up yet: GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are missing in Vercel.",
+};
+
+export default async function ConnectionsPage({ params, searchParams }: PageProps<"/p/[product]/connections">) {
   const { product: slug } = await params;
+  const ytParam = (await searchParams).yt;
+  const yt = typeof ytParam === "string" ? (YT_MESSAGES[ytParam] ?? (ytParam.startsWith("error:") ? `Could not connect: ${ytParam.slice(6)}` : null)) : null;
   const product = await getProduct(slug);
   const d = await db(async (tx, ctx) => ({
     ai: await tx.query<{ id: string; provider: string; label: string; status: string; last_four: string | null; created_at: string; rotated_at: string | null; revoked_at: string | null; runs: number }>(
@@ -65,6 +77,28 @@ export default async function ConnectionsPage({ params }: PageProps<"/p/[product
         </ActionForm>
       </Section>
 
+      <Section title="YouTube channel" description="Lets Marketing OS post the comments and replies you approve, as your channel. Nothing is ever posted without your approval; limits: a few per day, a gap between posts, daytime only.">
+        {yt ? <p className="mb-3 rounded-[var(--radius-panel)] border border-line bg-surface p-3 text-[13px]">{yt}</p> : null}
+        {(() => {
+          const active = d.channels.find((x) => x.channel === "youtube" && x.status !== "revoked");
+          if (active) {
+            return (
+              <div className="flex flex-wrap items-center gap-3">
+                <Status tone={tone(active.status)}>{active.status === "connected" ? `Posting as ${active.account_label}` : `Paused: ${active.paused_reason ?? active.status}`}</Status>
+                {!publishingEnabled() ? <span className="text-[13px] text-muted">Posting is still switched off on the server (YOUTUBE_PUBLISHING_ENABLED is not true), so drafts are copied by hand.</span> : null}
+                <a href={`/api/youtube/oauth/start?product=${slug}`} className="text-[13px] underline">Reconnect</a>
+                <form action={disconnectYoutubeAction.bind(null, slug)}><Button size="sm" variant="danger">Disconnect YouTube</Button></form>
+              </div>
+            );
+          }
+          return oauthConfigured() ? (
+            <a href={`/api/youtube/oauth/start?product=${slug}`} className="inline-flex h-9 items-center rounded-[var(--radius-control)] bg-green px-4 text-[14px] font-medium text-white hover:bg-green-hover">Connect YouTube channel</a>
+          ) : (
+            <p className="text-[13px] text-muted">Google sign-in is not set up yet. Add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in Vercel (see README, “Posting to YouTube”), redeploy, then a Connect button appears here.</p>
+          );
+        })()}
+      </Section>
+
       <Section title={`Channels for ${product.name}`}>
         <Table>
           <thead><tr><th>Channel</th><th>What works in this build</th><th>Connection</th><th /></tr></thead>
@@ -76,16 +110,16 @@ export default async function ConnectionsPage({ params }: PageProps<"/p/[product
                 <td className="font-medium">{c.name}</td>
                 <td className="max-w-[360px] text-muted">{c.status === "planned" ? <DataFlag kind="planned" /> : c.capabilities}{c.note ? <div className="text-[12px]">{c.note}</div> : null}</td>
                 <td>
-                  {active ? <><Status tone={tone(active.status)}>{active.account_label || "Connected"}</Status><div className="text-[12px] text-muted">{active.mode === "draft_only" ? "Draft only" : "Requires approval"}, {active.pubs} publications{active.paused_reason ? `, paused: ${active.paused_reason}` : ""}</div></> : <span className="text-muted">{c.status === "planned" ? "Not available yet" : "Not connected"}</span>}
+                  {!active && c.id === "youtube" ? <span className="text-muted">Connect above</span> : active ? <><Status tone={tone(active.status)}>{active.account_label || "Connected"}</Status><div className="text-[12px] text-muted">{active.mode === "draft_only" ? "Draft only" : "Requires approval"}, {active.pubs} publications{active.paused_reason ? `, paused: ${active.paused_reason}` : ""}</div></> : <span className="text-muted">{c.status === "planned" ? "Not available yet" : "Not connected"}</span>}
                   {conns.filter((x) => x.status === "revoked").map((x) => <div key={x.id} className="text-[12px] text-faint">Disconnected {formatDateTime(x.revoked_at)}, {x.pubs} publications kept</div>)}
                 </td>
-                <td>{active ? <form action={revokeChannelAction.bind(null, slug, active.id)}><Button size="sm" variant="danger">Disconnect</Button></form> : null}</td>
+                <td>{active && c.id !== "youtube" ? <form action={revokeChannelAction.bind(null, slug, active.id)}><Button size="sm" variant="danger">Disconnect</Button></form> : null}</td>
               </tr>
             );
           })}</tbody>
         </Table>
         <ActionForm action={connectChannelAction.bind(null, slug)} submitLabel="Add channel" resetOnSuccess className="mt-3 grid gap-2 rounded-[var(--radius-panel)] border border-line bg-surface p-4 sm:grid-cols-[180px_1fr_200px_auto] sm:items-end">
-          <Field label="Channel" htmlFor="ch"><Select id="ch" name="channel">{CHANNEL_REGISTRY.filter((c) => c.status === "available").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="Channel" htmlFor="ch"><Select id="ch" name="channel">{CHANNEL_REGISTRY.filter((c) => c.status === "available" && c.adapter === "export").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="Account" htmlFor="ch-acc" hint="e.g. @backapp. Used in the approval preview."><Input id="ch-acc" name="account_label" required /></Field>
           <Field label="Mode" htmlFor="ch-mode"><Select id="ch-mode" name="mode"><option value="requires_approval">Requires approval</option><option value="draft_only">Draft only</option></Select></Field>
         </ActionForm>

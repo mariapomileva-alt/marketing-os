@@ -149,11 +149,23 @@ function mockCommunityComment(c: Ctx) {
   };
 }
 
+// Several shapes so mock replies in one thread do not trip the repetition check against each other.
+function mockReplyText(message: string) {
+  const quote = message.slice(0, 50);
+  const shapes = [
+    `[MOCK] About "${quote}": that makes sense. What usually helps you a little, even for a minute?`,
+    `[MOCK] Thank you for writing back. "${quote}" sounds familiar to many people reading this thread.`,
+    `[MOCK] You put "${quote}" so plainly. Has anything made those moments a bit softer lately?`,
+  ];
+  const n = [...message].reduce((a, ch) => a + ch.charCodeAt(0), 0);
+  return shapes[n % shapes.length];
+}
+
 function mockCommunityReply(c: Ctx) {
   const danger = Boolean(c.highRisk);
   return danger
     ? { understanding: "[MOCK] The person may be in danger.", may_mention_product: false, handoff_to_human: true, text: "[MOCK] Thank you for telling us. Please contact your local emergency number or a crisis line right now. You don't have to go through this alone." }
-    : { understanding: `[MOCK] The person is responding to our comment: "${s(c.message).slice(0, 60)}"`, may_mention_product: false, handoff_to_human: false, text: "[MOCK] That makes a lot of sense, and thank you for sharing it. What usually helps you a little, even for a minute?" };
+    : { understanding: `[MOCK] The person is responding to our comment: "${s(c.message).slice(0, 60)}"`, may_mention_product: false, handoff_to_human: false, text: mockReplyText(s(c.message)) };
 }
 
 export class MockProvider implements LLMProvider {

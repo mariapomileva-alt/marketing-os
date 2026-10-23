@@ -7,6 +7,9 @@ import { describeDbError } from "@/server/db/client";
 import { approveDraft, receiveReply, rejectDraft, runDiscovery, updateYtSettings } from "@/server/services/youtube";
 import { configuredSource, demoSource } from "@/server/youtube/source";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
+import { postApproved, publishingEnabled, refreshTokenFor, syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
+import { liveWriteApi } from "@/server/youtube/live";
+import { revokeToken } from "@/server/youtube/write";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 
 const msg = (x: unknown) => (x instanceof Error && !("code" in x) ? x.message : describeDbError(x));
@@ -85,11 +88,55 @@ export async function approveYtDraftAction(slug: string, messageId: string, _: A
     const product = await getProduct(slug);
     const r = await db((tx, ctx) => approveDraft(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, str(data.get("text")) || null), { reason: "YouTube draft approved" });
     if (!r.ok) return fail(`Not approved: ${r.problems.join(" ")}`);
+    if (!publishingEnabled()) {
+      revalidatePath(`/p/${slug}`, "layout");
+      return ok("Approved. Posting from here is switched off, so copy the text, post it as the Back channel and press “I posted it”.");
+    }
+    // Approval and posting are separate transactions: the approval stays recorded even if YouTube refuses.
+    const p = await db((tx, ctx) => postApproved(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, liveWriteApi()), { reason: "YouTube post after approval" });
     revalidatePath(`/p/${slug}`, "layout");
-    return ok("Approved. Copy the text, open the video and post it from the Back channel, then press “I posted it”.");
+    return p.posted ? ok(`Approved and posted. ${p.reason}`) : ok(`Approved, not posted yet: ${p.reason}`);
   } catch (e) {
     return toFailure(e, msg);
   }
+}
+
+/** Retries posting an already approved draft (e.g. after the minimum gap or outside active hours). */
+export async function postYtNowAction(slug: string, messageId: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const p = await db((tx, ctx) => postApproved(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, liveWriteApi()), { reason: "YouTube post after approval" });
+    revalidatePath(`/p/${slug}`, "layout");
+    return p.posted ? ok(p.reason) : fail(p.reason);
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+export async function syncYtRepliesAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const r = await db((tx, ctx) => syncReplies(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, liveWriteApi()), { reason: "YouTube replies read", actorType: "ai" });
+    if (r.highRisk) await notifyTelegram(`${product.name}: someone on YouTube may need urgent help. Please look now.\n${appUrl(`/p/${slug}/conversations?tab=youtube`)}`, { urgent: true });
+    revalidatePath(`/p/${slug}`, "layout");
+    if (!r.checked) return ok("Nothing to check yet: replies are read under comments posted from here.");
+    const errors = r.errors.length ? ` Problems: ${r.errors.slice(0, 2).join(" ")}` : "";
+    return ok(`${r.checked} conversation${r.checked === 1 ? "" : "s"} checked, ${r.fresh} new repl${r.fresh === 1 ? "y" : "ies"}${r.fresh ? ", answers drafted for your approval" : ""}.${errors}`);
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+export async function disconnectYoutubeAction(slug: string) {
+  const product = await getProduct(slug);
+  const conn = await db((tx) => youtubeConnection(tx, product.id));
+  if (conn?.secret_id) await revokeToken(await refreshTokenFor(conn.secret_id)).catch(() => undefined);
+  await db(async (tx) => {
+    if (!conn) return;
+    await tx.query("update channel_connections set status = 'revoked', secret_id = null, revoked_at = now() where id = $1", [conn.id]);
+    if (conn.secret_id) await tx.query("delete from secrets where id = $1", [conn.secret_id]);
+  }, { reason: "YouTube channel disconnected" });
+  revalidatePath(`/p/${slug}`, "layout");
 }
 
 export async function rejectYtDraftAction(slug: string, messageId: string) {

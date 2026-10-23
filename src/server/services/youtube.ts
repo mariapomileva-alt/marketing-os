@@ -4,7 +4,6 @@ import { approvalHash, canonicalJson } from "@/domain/approvals";
 import { checkText, outcomeOf, type GuardrailRule } from "@/domain/guardrails";
 import { communityCommentSchema, communityReplySchema } from "@/domain/ai/schemas";
 import { checkVoice, classifyMessage, safetyDraft, scoreVideo, type VideoCandidate, type VoiceCheck } from "@/domain/youtube";
-import { evaluatePolicy } from "@/domain/policy";
 import { decideApproval, runAgent, type Actor } from "./content";
 import type { VideoSource } from "@/server/youtube/source";
 
@@ -245,15 +244,18 @@ export async function runDiscovery(tx: Tx, actor: Actor, productId: string, sour
 }
 
 /** A person answered under our comment: record it, judge the risk, and draft a reply (or a safety note) for approval. */
-export async function receiveReply(tx: Tx, actor: Actor, productId: string, conversationId: string, author: string | null, text: string) {
+export async function receiveReply(
+  tx: Tx, actor: Actor, productId: string, conversationId: string, author: string | null, text: string,
+  opts: { externalId?: string; occurredAt?: string } = {},
+) {
   const conv = await tx.one<{ id: string; thread_url: string | null; subject: string | null; external_ref: string | null }>(
     "select id, thread_url, subject, external_ref from conversations where id = $1 and product_id = $2 and channel = 'youtube'",
     [conversationId, productId],
   );
   const cls = classifyMessage(text);
   await tx.query(
-    "insert into conversation_messages (workspace_id, product_id, conversation_id, direction, author_handle, text, kind) values ($1,$2,$3,'inbound',$4,$5,$6)",
-    [actor.workspaceId, productId, conv.id, author, text, cls.kind],
+    "insert into conversation_messages (workspace_id, product_id, conversation_id, direction, author_handle, text, kind, external_id, occurred_at) values ($1,$2,$3,'inbound',$4,$5,$6,$7,coalesce($8::timestamptz, now()))",
+    [actor.workspaceId, productId, conv.id, author, text, cls.kind, opts.externalId ?? null, opts.occurredAt ?? null],
   );
   const high = cls.risk === "high";
   await tx.query(
@@ -295,45 +297,6 @@ export async function receiveReply(tx: Tx, actor: Actor, productId: string, conv
   const q = await queueDraft(tx, actor, productId, conv, r.output.text, "reply", check, r.agentRunId,
     `${r.output.handoff_to_human ? "Drafter asks you to decide. " : ""}What they mean: ${r.output.understanding} (${cls.kind.replaceAll("_", " ")}, risk ${cls.risk}).`);
   return { kind: cls.kind, risk: cls.risk, queued: q.queued };
-}
-
-/**
- * The only door to posting on YouTube. In this version it always refuses unless publishing is switched on AND the
- * exact text was approved AND the daily and per-channel limits allow it. Even then it reports what would be sent:
- * the API call itself is added only after the dry-run period (owner decision).
- */
-export async function publishGate(tx: Tx, productId: string, messageId: string, now = new Date()) {
-  const m = await tx.one<{ text: string; status: string; conversation_id: string }>(
-    "select text, status, conversation_id from conversation_messages where id = $1 and product_id = $2 and direction = 'outbound'",
-    [messageId, productId],
-  );
-  const a = await tx.maybeOne<{ state: string; payload_hash: string; payload_snapshot: Record<string, unknown> }>(
-    "select state, payload_hash, payload_snapshot from approval_items where conversation_message_id = $1 order by created_at desc limit 1",
-    [messageId],
-  );
-  const s = await tx.one<{ daily_publish_limit: number }>("select daily_publish_limit from yt_settings where product_id = $1", [productId]);
-  const today = await tx.one<{ n: number }>(
-    "select count(*)::int n from outbound_actions where product_id = $1 and action in ('publish', 'reply') and result = 'executed' and created_at > $2::timestamptz - interval '1 day'",
-    [productId, now.toISOString()],
-  );
-  const currentHash = a ? approvalHash({ ...(a.payload_snapshot as Record<string, unknown>), text: m.text } as never) : "";
-  const enabled = process.env.YOUTUBE_PUBLISHING_ENABLED === "true";
-  const policy = evaluatePolicy({
-    action: "reply", now,
-    connection: enabled
-      ? { status: "connected", mode: "requires_approval", pausedUntil: null, pausedReason: null, adapterKind: "official_api",
-          limits: { daily_limit: s.daily_publish_limit, account_daily_cap: s.daily_publish_limit, min_gap_minutes: 30, author_cooldown_days: 0, active_hours: { start: 8, end: 22, tz: "Europe/Riga" } } }
-      : null,
-    approval: a ? { state: a.state, payloadHash: a.payload_hash } : null,
-    currentPayloadHash: currentHash,
-    executedToday: today.n,
-    executedTodayAccount: today.n,
-    lastExecutedAt: null,
-    authorLastContactedAt: null,
-    dedupeKeyUsed: m.status === "posted",
-  });
-  const reason = !enabled ? "Publishing to YouTube is turned off (dry run). Post approved comments yourself from the channel, then mark them as posted." : policy.reason;
-  return { allowed: enabled && policy.allowed, reason, checks: policy.checks };
 }
 
 /**

@@ -3,11 +3,13 @@ import { timingSafeEqual } from "node:crypto";
 import { withContext } from "@/server/db/client";
 import { runDiscovery } from "@/server/services/youtube";
 import { configuredSource } from "@/server/youtube/source";
+import { syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
+import { liveWriteApi } from "@/server/youtube/live";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
 
 /**
  * Daily YouTube search (Vercel Cron, see vercel.json). Vercel sends `Authorization: Bearer $CRON_SECRET`.
- * Finds videos and prepares drafts only; nothing is posted. Each product runs in its own transaction.
+ * Finds videos, reads replies under our posted comments and prepares drafts only; nothing is posted. Each product runs in its own transaction.
  */
 export const maxDuration = 300;
 
@@ -37,7 +39,16 @@ export async function GET(request: NextRequest) {
       if (stats.draftsQueued > 0) {
         await notifyTelegram(`${p.name}: ${stats.draftsQueued} new YouTube comment draft(s) wait for your approval.\n${appUrl(`/p/${p.slug}/approvals`)}`);
       }
-      results.push({ product: p.slug, ...stats });
+      // Replies under comments posted from the connected channel: read them and draft answers (never posted here).
+      const replies = await withContext({ userId: p.owner_id, role: "service", actorType: "ai", reason: "daily YouTube replies check" }, async (tx) =>
+        (await youtubeConnection(tx, p.product_id)) ? syncReplies(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.product_id, liveWriteApi()) : null,
+      );
+      if (replies?.highRisk) {
+        await notifyTelegram(`${p.name}: someone on YouTube may need urgent help. Please look now.\n${appUrl(`/p/${p.slug}/conversations?tab=youtube`)}`, { urgent: true });
+      } else if (replies?.fresh) {
+        await notifyTelegram(`${p.name}: ${replies.fresh} new repl${replies.fresh === 1 ? "y" : "ies"} on YouTube, answers drafted for your approval.\n${appUrl(`/p/${p.slug}/conversations?tab=youtube`)}`);
+      }
+      results.push({ product: p.slug, ...stats, replies });
     } catch (e) {
       results.push({ product: p.slug, error: (e as Error).message });
     }
