@@ -21,12 +21,20 @@ export interface Actor {
 async function promptVersion(tx: Tx, workspaceId: string, key: string) {
   const seed = PROMPTS.find((p) => p.key === key);
   if (!seed) throw new Error(`Unknown prompt ${key}`);
-  const existing = await tx.maybeOne<{ id: string; system_prompt: string }>(
-    `select v.id, v.system_prompt from prompt_template_versions v join prompt_templates t on t.id = v.template_id
+  const existing = await tx.maybeOne<{ id: string; system_prompt: string; version: number; template_id: string }>(
+    `select v.id, v.system_prompt, v.version, v.template_id from prompt_template_versions v join prompt_templates t on t.id = v.template_id
       where t.workspace_id = $1 and t.key = $2 order by v.version desc limit 1`,
     [workspaceId, key],
   );
-  if (existing) return existing;
+  if (existing && existing.system_prompt === seed.system) return existing;
+  if (existing) {
+    // The prompt text changed with an app update: record it as a new version, so every run shows which text it used.
+    await tx.query(
+      "insert into prompt_template_versions (workspace_id, template_id, version, system_prompt, output_schema_name, change_note) values ($1,$2,$3,$4,$5,'Updated with the app') on conflict (template_id, version) do nothing",
+      [workspaceId, existing.template_id, existing.version + 1, seed.system, seed.outputSchema],
+    );
+    return tx.one<{ id: string; system_prompt: string }>("select id, system_prompt from prompt_template_versions where template_id = $1 order by version desc limit 1", [existing.template_id]);
+  }
   const t = await tx.one<{ id: string }>("insert into prompt_templates (workspace_id, key, role, description) values ($1,$2,$3,$4) returning id", [workspaceId, key, seed.role, `Seeded ${key}`]);
   return tx.one<{ id: string; system_prompt: string }>(
     "insert into prompt_template_versions (workspace_id, template_id, version, system_prompt, output_schema_name, change_note) values ($1,$2,$3,$4,$5,'Initial version') returning id, system_prompt",

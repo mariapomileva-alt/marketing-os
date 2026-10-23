@@ -3,7 +3,7 @@ import "@fontsource-variable/schibsted-grotesk";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Marketing OS", template: "%s · Marketing OS" },
+  title: { default: "God of Marketing", template: "%s · God of Marketing" },
   description: "Marketing operating system: knowledge, audiences, content, approvals and experiments for every product.",
   robots: { index: false, follow: false },
 };

@@ -5,6 +5,7 @@ import { checkText, outcomeOf, type GuardrailRule } from "@/domain/guardrails";
 import { communityCommentSchema, communityReplySchema } from "@/domain/ai/schemas";
 import { checkVoice, classifyMessage, queriesForRun, safetyDraft, scoreVideo, type VideoCandidate, type VoiceCheck } from "@/domain/youtube";
 import { decideApproval, runAgent, type Actor } from "./content";
+import { draftingKnowledge } from "./knowledge-context";
 import type { VideoSource } from "@/server/youtube/source";
 
 export interface YtSettings {
@@ -144,7 +145,8 @@ export async function draftVideoComment(tx: Tx, actor: Actor, productId: string,
   const r = await runAgent(tx, {
     actor, productId, workflowRunId: wf.id, step: "community_comment", task: "community_comment", promptKey: "community_comment.v2",
     schema: communityCommentSchema, sourceIds: [],
-    input: { productName: name, videoTitle: v.title, videoDescription: v.description.slice(0, 1500), channel: v.channel_title, whatViewersSay: viewerComments.slice(0, 12), previousComments: previous.slice(0, 20), seed },
+    input: { productName: name, videoTitle: v.title, videoDescription: v.description.slice(0, 1500), channel: v.channel_title, whatViewersSay: viewerComments.slice(0, 12), previousComments: previous.slice(0, 20), seed,
+             knowledge: await draftingKnowledge(tx, actor.workspaceId, productId, v.title) },
   });
   await tx.query("update workflow_runs set status = 'waiting_for_human' where id = $1", [wf.id]);
   if (r.output.skip) {
@@ -302,8 +304,8 @@ export async function receiveReply(
     promptKey: conv.channel === "youtube" ? "community_reply.v2" : "community_social_reply.v1",
     schema: communityReplySchema, sourceIds: [],
     input: conv.channel === "youtube"
-      ? { productName: name, video: conv.subject, thread, message: text, messageKind: cls.kind, productAlreadyMentioned: productMentioned, highRisk: false }
-      : { platform: CHANNEL_NAME[conv.channel], productName: name, post: conv.subject, thread, message: text, messageKind: cls.kind, productAlreadyMentioned: productMentioned, highRisk: false },
+      ? { productName: name, video: conv.subject, thread, message: text, messageKind: cls.kind, productAlreadyMentioned: productMentioned, highRisk: false, knowledge: await draftingKnowledge(tx, actor.workspaceId, productId, text) }
+      : { platform: CHANNEL_NAME[conv.channel], productName: name, post: conv.subject, thread, message: text, messageKind: cls.kind, productAlreadyMentioned: productMentioned, highRisk: false, knowledge: await draftingKnowledge(tx, actor.workspaceId, productId, text) },
   });
   await tx.query("update workflow_runs set status = 'waiting_for_human' where id = $1", [wf.id]);
   const check = checkDraft(r.output.text, previous, name, rules, conv.channel);

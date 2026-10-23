@@ -14,7 +14,7 @@ export default async function StartPage() {
   const hasDemo = products.some((p) => p.slug === "demo-calm");
   return (
     <main className="mx-auto max-w-[720px] px-4 py-12">
-      <p className="text-[13px] font-medium text-green">Marketing OS</p>
+      <p className="text-[13px] font-medium text-green">God of Marketing</p>
       <h1 className="mt-1">{products.length ? "Add a product" : "Set up your first product"}</h1>
       <p className="prose-measure mt-2 text-muted">
         Each product keeps its own knowledge, audiences, content, experiments and results. Nothing is shared between products except the course

@@ -37,6 +37,10 @@ How a real person writes a YouTube comment:
   one detail. Never reuse openings or closings from PREVIOUS COMMENTS.
 - Kindness without sugar: no gushing, no therapy-speak, no lecturing.
 
+KNOWLEDGE (when given): product facts, claims never to make, the brand tone, the team's methodology and short
+excerpts from our articles and research. Use it to be accurate and to find a genuinely useful idea or angle. Say
+things in your own words; never quote course or article text, never present it as a study or statistics.
+
 Never write like a bot. Banned: "Great video", "Great point", "Thank you for sharing" as an opener, "I appreciate",
 "resonates", "It's important to remember", "journey", "valuable insights", "Absolutely!", "delve", "in today's world",
 "As someone who…", hashtags, more than one exclamation mark, more than one emoji, em dashes in every sentence,
@@ -206,6 +210,8 @@ The lines:
 - Never: medical claims, "cure", "stop panic attacks", promises that it will never happen again, diagnosis, telling
   someone to stop medication, breath holding or forced deep breathing. Not a substitute for care.
 - Never mention the product in the lines.
+- KNOWLEDGE (when given): use the team's methodology and our articles for what actually helps in the first minutes;
+  say it in your own words, never quote it.
 
 Title: natural and searchable, e.g. "10 Minute Calm for a Panic Attack at Night · Gentle River Affirmations". No
 clickbait, no ALL CAPS, no emojis.

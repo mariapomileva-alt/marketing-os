@@ -96,7 +96,7 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
         </ActionForm>
       </Section>
 
-      <Section title="YouTube channel" description="Lets Marketing OS post the comments and replies you approve, as your channel. Nothing is ever posted without your approval; limits: a few per day, a gap between posts, daytime only.">
+      <Section title="YouTube channel" description="Lets God of Marketing post the comments and replies you approve, as your channel. Nothing is ever posted without your approval; limits: a few per day, a gap between posts, daytime only.">
         {yt ? <p className="mb-3 rounded-[var(--radius-panel)] border border-line bg-surface p-3 text-[13px]">{yt}</p> : null}
         {(() => {
           const active = d.channels.find((x) => x.channel === "youtube" && x.status !== "revoked");
@@ -118,7 +118,7 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
         })()}
       </Section>
 
-      <Section title="Threads account" description="Lets Marketing OS publish the replies and posts you approve, as your Threads account, and read replies, likes and views. Nothing is posted without your approval.">
+      <Section title="Threads account" description="Lets God of Marketing publish the replies and posts you approve, as your Threads account, and read replies, likes and views. Nothing is posted without your approval.">
         {th ? <p className="mb-3 rounded-[var(--radius-panel)] border border-line bg-surface p-3 text-[13px]">{th}</p> : null}
         {(() => {
           const active = d.channels.find((x) => x.channel === "threads" && x.status !== "revoked" && x.adapter_kind === "official_api");
@@ -140,7 +140,7 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
         })()}
       </Section>
 
-      <Section title="Instagram account" description="Lets Marketing OS read comments under our own reels and post the replies you approve, as your Instagram professional account. Comments on other people's reels stay manual (Instagram does not allow it).">
+      <Section title="Instagram account" description="Lets God of Marketing read comments under our own reels and post the replies you approve, as your Instagram professional account. Comments on other people's reels stay manual (Instagram does not allow it).">
         {ig ? <p className="mb-3 rounded-[var(--radius-panel)] border border-line bg-surface p-3 text-[13px]">{ig}</p> : null}
         {(() => {
           const active = d.channels.find((x) => x.channel === "instagram" && x.status !== "revoked" && x.adapter_kind === "official_api");

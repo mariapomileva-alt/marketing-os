@@ -27,7 +27,7 @@ export default async function ProductLayout({ children, params }: LayoutProps<"/
       <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-paper/95 px-3 backdrop-blur sm:px-4">
         <MobileNav productSlug={product.slug} approvals={approvals} />
         <Link href={`/p/${product.slug}/overview`} className="hidden text-[13px] font-semibold text-green lg:block lg:w-[208px]">
-          Marketing OS
+          God of Marketing
         </Link>
         <ProductSelector current={{ slug: product.slug, name: product.name, isDemo: product.is_demo }} products={products.map((p) => ({ slug: p.slug, name: p.name, isDemo: p.is_demo }))} />
         <div className="ml-auto flex items-center gap-3">

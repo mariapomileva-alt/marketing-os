@@ -15,7 +15,7 @@ export default async function LoginPage() {
   if (missing.length) {
     return (
       <main className="mx-auto flex min-h-screen max-w-[480px] flex-col justify-center gap-4 px-4">
-        <p className="text-[13px] font-medium text-green">Marketing OS</p>
+        <p className="text-[13px] font-medium text-green">God of Marketing</p>
         <h1>Setup is not finished</h1>
         <p className="text-muted">This deployment cannot reach its database or sign-in yet. These settings are missing in the hosting environment:</p>
         <ul className="list-disc pl-5 font-mono text-[13px]">
@@ -32,7 +32,7 @@ export default async function LoginPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-[400px] flex-col justify-center gap-6 px-4">
       <div>
-        <p className="text-[13px] font-medium text-green">Marketing OS</p>
+        <p className="text-[13px] font-medium text-green">God of Marketing</p>
         <h1 className="mt-1">Sign in</h1>
       </div>
       {mode === "dev" ? (

@@ -4,6 +4,7 @@ import { publishableText } from "@/domain/content";
 import type { ContentBody } from "@/domain/ai/schemas";
 import { classifyMessage, queriesForRun } from "@/domain/youtube";
 import { runAgent, type Actor } from "./content";
+import { draftingKnowledge } from "./knowledge-context";
 import { brandName, checkDraft, getYtSettings, previousTeamTexts, productRules, queueDraft, receiveReply, startRun, CHANNEL_NAME } from "./youtube";
 import { channelConnection, publishingEnabled, threadsToken, type ThreadsWriteApi } from "./youtube-publish";
 
@@ -85,7 +86,8 @@ export async function draftSocialComment(tx: Tx, actor: Actor, productId: string
   const r = await runAgent(tx, {
     actor, productId, workflowRunId: wf.id, step: "community_comment", task: "community_comment", promptKey: "community_social_comment.v1",
     schema: communityCommentSchema, sourceIds: [],
-    input: { platform, productName: name, post: p.text.slice(0, 1500), author: p.author, videoTitle: p.text.slice(0, 80), previousComments: previous.slice(0, 20), seed },
+    input: { platform, productName: name, post: p.text.slice(0, 1500), author: p.author, videoTitle: p.text.slice(0, 80), previousComments: previous.slice(0, 20), seed,
+             knowledge: await draftingKnowledge(tx, actor.workspaceId, productId, p.text.slice(0, 200)) },
   });
   await tx.query("update workflow_runs set status = 'waiting_for_human' where id = $1", [wf.id]);
   if (r.output.skip) {

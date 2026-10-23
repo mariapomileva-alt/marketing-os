@@ -56,7 +56,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/p/[product]/studio/
       ...(payload.utmUrl ? ["## Tracking link", "", payload.utmUrl, ""] : []),
       "## After posting",
       "",
-      "Open the item in Marketing OS and mark it as published with the link to the live post.",
+      "Open the item in God of Marketing and mark it as published with the link to the live post.",
       "",
     ];
     return { status: 200 as const, body: lines.join("\n"), filename: `${product.slug}-${item.channel}-${itemId.slice(0, 8)}.md` };

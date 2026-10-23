@@ -3,6 +3,7 @@ import type { Tx } from "@/server/db/client";
 import { calmVideoSchema } from "@/domain/ai/schemas";
 import { checkText, outcomeOf } from "@/domain/guardrails";
 import { runAgent, type Actor } from "./content";
+import { draftingKnowledge } from "./knowledge-context";
 import { productRules } from "./youtube";
 
 /**
@@ -77,7 +78,7 @@ export async function createCalmVideo(tx: Tx, actor: Actor, productId: string, m
   );
   const r = await runAgent(tx, {
     actor, productId, workflowRunId: wf.id, step: "calm_video", task: "calm_video", promptKey: "calm_video.v1", schema: calmVideoSchema, sourceIds: [],
-    input: { topic, theme, minutes: s.minutes, language: s.language },
+    input: { topic, theme, minutes: s.minutes, language: s.language, knowledge: await draftingKnowledge(tx, actor.workspaceId, productId, topic, 5) },
   });
   const rules = await productRules(tx, productId);
   // A long script with one or two doubtful lines: drop those lines (noted on the video). Many: hold the whole script.
@@ -174,13 +175,13 @@ export async function finishRender(tx: Tx, token: string, id: string, result: { 
   const s = await tx.maybeOne<{ product_id: string }>("select product_id from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
   if (!s) return false;
   if (result.youtubeVideoId && result.preview) {
-    // The preview the renderer uploaded becomes a Creative Library video, watchable inside Marketing OS.
+    // The preview the renderer uploaded becomes a Creative Library video, watchable inside God of Marketing.
     const v = await tx.maybeOne<{ workspace_id: string; title: string; theme: string; preview_asset_id: string | null }>(
       "select workspace_id, title, theme, preview_asset_id from calm_videos where id = $1 and product_id = $2", [id, s.product_id]);
     if (v && !v.preview_asset_id) {
       const a = await tx.one<{ id: string }>(
         `insert into creative_assets (workspace_id, product_id, kind, title, storage_path, mime_type, origin, tags, rights_note)
-         values ($1,$2,'video',$3,$4,'video/mp4','generated',$5,'Rendered by Marketing OS (preview, 480p). Footage and music as credited on YouTube.') returning id`,
+         values ($1,$2,'video',$3,$4,'video/mp4','generated',$5,'Rendered by God of Marketing (preview, 480p). Footage and music as credited on YouTube.') returning id`,
         [v.workspace_id, s.product_id, v.title, `${v.workspace_id}/${s.product_id}/calm/${id}-preview.mp4`, ["calm-video", v.theme]],
       );
       await tx.query("update calm_videos set preview_asset_id = $2 where id = $1", [id, a.id]);
