@@ -61,7 +61,8 @@ export function judgePost(p: FoundPost, queries: string[], ownUsername: string |
   if (lastContactWithAuthor && now.getTime() - lastContactWithAuthor.getTime() < cooldownDays * 86_400_000) flags.push(`we answered this person in the last ${cooldownDays} days`);
   const lower = text.toLowerCase();
   const matched = queries.filter((q) => lower.includes(q.toLowerCase()));
-  const topical = /panic|anxiety|паник|тревог/i.test(text);
+  // Fear in the moment, in the person's own words (not horror films or news): first person plus a feeling.
+  const topical = /panic|anxiety|anxious|scared|terrified|freaking out|froze|heart (was )?racing|couldn'?t breathe|паник|тревог|страшно|испугал|напугал|накрыло|сердце (колотил|бешено)|не могл[аи]? дышать|не знал[аи]? что делать/i.test(text);
   const relevance = Math.min(100, (matched.length ? 50 : 0) + (topical ? 30 : 0) + Math.min(20, Math.floor(text.length / 20)));
   if (!matched.length && !topical) flags.push("not clearly about panic or anxiety");
   const eligible = flags.length === 0;
