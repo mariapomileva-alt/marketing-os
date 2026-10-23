@@ -35,8 +35,8 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
     s: await getCalmSettings(tx, ctx.workspaceId, product.id),
     yt: await youtubeConnection(tx, product.id),
     openai: Boolean(await openaiKey(ctx.workspaceId)),
-    videos: await tx.query<{ id: string; topic: string; theme: string; title: string; description: string; lines: Array<{ text: string; pause: number }>; status: string; error: string | null; youtube_video_id: string | null; publish_at: string | null; created_at: string; is_mock: boolean; clips: unknown[] }>(
-      `select id, topic, theme, title, description, lines, status, error, youtube_video_id, publish_at::text, created_at::text, is_mock, clips
+    videos: await tx.query<{ id: string; topic: string; theme: string; title: string; description: string; lines: Array<{ text: string; pause: number }>; status: string; error: string | null; youtube_video_id: string | null; publish_at: string | null; created_at: string; is_mock: boolean; clips: unknown[]; render_url: string | null }>(
+      `select id, topic, theme, title, description, lines, status, error, youtube_video_id, publish_at::text, created_at::text, is_mock, clips, render_url
          from calm_videos where product_id = $1 order by created_at desc limit 30`,
       [product.id],
     ),
@@ -96,6 +96,7 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
                     <p className="mt-2 text-[13px]">
                       <a href={`https://studio.youtube.com/video/${v.youtube_video_id}/edit`} target="_blank" rel="noreferrer noopener" className="underline">Watch in YouTube Studio</a>
                       <span className="text-muted"> (private until approved)</span>
+                      {v.render_url ? <> · <a href={v.render_url} target="_blank" rel="noreferrer noopener" className="underline">Download the file</a> <span className="text-muted">(GitHub run → Artifacts)</span></> : null}
                     </p>
                   ) : null}
                   {v.status === "review" ? (

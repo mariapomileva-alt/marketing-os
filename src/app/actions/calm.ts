@@ -104,6 +104,10 @@ export async function approveCalmAction(slug: string, id: string, when: "slot" |
     revalidatePath(path(slug));
     return ok(r.publishAt ? `Approved. YouTube publishes it on ${r.publishAt.toUTCString().replace(/:00 GMT/, " UTC")}.` : "Approved and published.");
   } catch (e) {
+    const m = msg(e);
+    if (/forbidden|private|locked|audit|403/i.test(m)) {
+      return fail(`YouTube kept it private: ${m} Videos uploaded through the API by a project YouTube has not audited yet stay private. Until the audit, download the file (link on the card) and upload it in YouTube Studio, or request the audit (README, “Calm Videos”).`);
+    }
     return toFailure(e, msg);
   }
 }

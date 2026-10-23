@@ -139,13 +139,13 @@ export async function claimRenderJob(tx: Tx, token: string) {
   return { authorized: true as const, productId: s.product_id, job: { ...v, minutes: s.minutes } };
 }
 
-export async function finishRender(tx: Tx, token: string, id: string, result: { youtubeVideoId?: string; error?: string }) {
+export async function finishRender(tx: Tx, token: string, id: string, result: { youtubeVideoId?: string; error?: string; renderUrl?: string }) {
   const s = await tx.maybeOne<{ product_id: string }>("select product_id from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
   if (!s) return false;
   if (result.youtubeVideoId) {
-    await tx.query("update calm_videos set status = 'review', youtube_video_id = $3, rendered_at = now(), error = null where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, result.youtubeVideoId]);
+    await tx.query("update calm_videos set status = 'review', youtube_video_id = $3, render_url = $4, rendered_at = now(), error = null where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, result.youtubeVideoId, result.renderUrl ?? null]);
   } else {
-    await tx.query("update calm_videos set status = 'failed', error = $3 where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, `Render failed: ${(result.error ?? "unknown").slice(0, 600)}`]);
+    await tx.query("update calm_videos set status = 'failed', error = $3, render_url = $4 where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, `Render failed: ${(result.error ?? "unknown").slice(0, 600)}`, result.renderUrl ?? null]);
   }
   return true;
 }

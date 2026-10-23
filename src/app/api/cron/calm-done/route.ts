@@ -5,7 +5,7 @@ import { finishRender } from "@/server/services/calm";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
 
 /** The renderer reports back: the private YouTube video id, or what went wrong. */
-const Body = z.object({ id: z.string().uuid(), youtubeVideoId: z.string().regex(/^[A-Za-z0-9_-]{6,20}$/).optional(), error: z.string().max(2000).optional(), seconds: z.number().optional() });
+const Body = z.object({ id: z.string().uuid(), youtubeVideoId: z.string().regex(/^[A-Za-z0-9_-]{6,20}$/).optional(), error: z.string().max(2000).optional(), seconds: z.number().optional(), renderUrl: z.string().url().regex(/^https:\/\/github\.com\//).optional() });
 
 export async function POST(request: NextRequest) {
   const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");

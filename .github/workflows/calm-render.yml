@@ -35,3 +35,11 @@ jobs:
           MOS_URL: ${{ vars.MOS_URL }}
           MOS_RENDER_TOKEN: ${{ secrets.MOS_RENDER_TOKEN }}
         run: node scripts/render-calm.mjs
+      - name: Keep the video files (download from the run page)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: calm-videos
+          path: out/*.mp4
+          if-no-files-found: ignore
+          retention-days: 14

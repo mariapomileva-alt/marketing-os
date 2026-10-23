@@ -123,3 +123,5 @@ Other accounts' reels: the API does not allow commenting on other accounts' medi
 1. Connections → AI providers: store an OpenAI API key (voice). Optional: `PEXELS_API_KEY` in Vercel (free at pexels.com/api) for nature footage.
 2. Calm Videos → Create renderer key. GitHub → repository Settings → Secrets and variables → Actions: secret `MOS_RENDER_TOKEN` = the key; variable `MOS_URL` = the app address.
 3. The workflow "Calm video renderer" runs every two hours (or Run workflow by hand), renders waiting videos and uploads them to YouTube as private. Approve them in Calm Videos.
+
+YouTube keeps videos uploaded through the API private while the Google Cloud project has not passed the YouTube API audit (projects created after July 2020). Request it with the "YouTube API Services Audit and Quota Extension Form"; until then, download the rendered file from the GitHub run and upload it in YouTube Studio.

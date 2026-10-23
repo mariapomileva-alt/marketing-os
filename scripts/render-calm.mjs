@@ -227,14 +227,17 @@ async function main() {
     console.log(`Rendering "${job.title}" (${job.lines.length} lines)`);
     try {
       const work = path.join(tmpdir(), `calm-${job.id}`);
-      const out = path.join(work, "out.mp4");
+      // Kept in the workspace so the workflow can attach it to the run (download for manual upload if needed).
+      await mkdir("out", { recursive: true });
+      const out = path.resolve("out", `${job.id}.mp4`);
       job.font_file = path.join(work, "font.ttf");
       await mkdir(work, { recursive: true });
       await download(job.font_url, job.font_file);
       const r = await render(job, out, work);
       console.log(`Rendered ${r.seconds}s, uploading as private…`);
+      const renderUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : undefined;
       const youtubeVideoId = await uploadToYoutube(job.upload_url, out);
-      await api("/api/cron/calm-done", { id: job.id, youtubeVideoId, seconds: r.seconds });
+      await api("/api/cron/calm-done", { id: job.id, youtubeVideoId, seconds: r.seconds, renderUrl });
       console.log("Uploaded as private; waiting for approval in Marketing OS.");
     } catch (e) {
       console.error(e);
