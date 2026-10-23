@@ -80,16 +80,23 @@ export async function createCalmVideo(tx: Tx, actor: Actor, productId: string, m
     input: { topic, theme, minutes: s.minutes, language: s.language },
   });
   const rules = await productRules(tx, productId);
-  const blocks = r.output.lines.flatMap((l) => {
+  // A long script with one or two doubtful lines: drop those lines (noted on the video). Many: hold the whole script.
+  const blockedLines = r.output.lines.map((l) => {
     const f = checkText({ text: l.text, channel: "youtube", format: "helpful_comment" }, rules);
-    return outcomeOf(f) === "block" ? f.filter((x) => x.severity === "block").map((x) => `“${l.text}”: ${x.message}`) : [];
+    return outcomeOf(f) === "block" ? `“${l.text}”: ${f.filter((x) => x.severity === "block").map((x) => x.message).join(" ")}` : null;
   });
+  const dropped = blockedLines.filter((b): b is string => Boolean(b));
+  const tolerable = dropped.length <= Math.max(2, Math.floor(r.output.lines.length * 0.05));
+  const blocks = tolerable ? [] : dropped;
+  const keptLines = r.output.lines.filter((_, i) => !blockedLines[i]);
+  r.output.lines = keptLines;
+  const note = tolerable && dropped.length ? `Removed ${dropped.length} line(s) the safety rules flagged: ${dropped.join(" ")}` : null;
   const isMock = r.output.title.startsWith("[MOCK]");
   const row = await tx.one<{ id: string }>(
     `insert into calm_videos (workspace_id, product_id, topic, theme, title, description, tags, lines, status, error, agent_run_id, is_mock)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning id`,
     [actor.workspaceId, productId, topic, theme, r.output.title, r.output.description, r.output.tags, JSON.stringify(r.output.lines),
-     blocks.length ? "rejected" : "scripted", blocks.length ? `Held back by safety rules: ${blocks.slice(0, 3).join(" ")}` : null, r.agentRunId, isMock],
+     blocks.length ? "rejected" : "scripted", blocks.length ? `Held back by safety rules: ${blocks.slice(0, 3).join(" ")}` : note, r.agentRunId, isMock],
   );
   await tx.query("update workflow_runs set status = 'completed', current_step = 'scripted' where id = $1", [wf.id]);
   await tx.query("update calm_settings set last_created_at = now() where product_id = $1", [productId]);
@@ -128,7 +135,7 @@ export async function prepareCalmMedia(tx: Tx, productId: string, videoId: strin
         order by (select max(created_at) from calm_videos c where c.music_asset_id = a.id) nulls first, random() limit 1`,
       [productId],
     );
-    await tx.query("update calm_videos set audio_keys = $2, clips = $3, music_asset_id = $4, status = 'ready_to_render', error = null where id = $1",
+    await tx.query("update calm_videos set audio_keys = $2, clips = $3, music_asset_id = $4, status = 'ready_to_render', error = case when error like 'Removed %' then error else null end where id = $1",
       [videoId, keys, JSON.stringify([...own, ...stock]), music?.id ?? null]);
     return { status: "ready_to_render" as const };
   } catch (e) {
@@ -159,7 +166,7 @@ export async function claimRenderJob(tx: Tx, token: string) {
   if (!v) return { authorized: true as const, productId: s.product_id, job: null };
   const paths = await tx.query<{ id: string; storage_path: string }>("select id, storage_path from creative_assets where id = any($1)",
     [v.clips.filter((c) => c.source === "library").map((c) => (c as { asset_id: string }).asset_id)]);
-  await tx.query("update calm_videos set status = 'rendering', render_started_at = now(), error = null where id = $1", [v.id]);
+  await tx.query("update calm_videos set status = 'rendering', render_started_at = now(), error = case when error like 'Removed %' then error else null end where id = $1", [v.id]);
   return { authorized: true as const, productId: s.product_id, job: { ...v, minutes: s.minutes, libraryPaths: Object.fromEntries(paths.map((p) => [p.id, p.storage_path])) } };
 }
 
@@ -167,7 +174,7 @@ export async function finishRender(tx: Tx, token: string, id: string, result: { 
   const s = await tx.maybeOne<{ product_id: string }>("select product_id from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
   if (!s) return false;
   if (result.youtubeVideoId) {
-    await tx.query("update calm_videos set status = 'review', youtube_video_id = $3, render_url = $4, rendered_at = now(), error = null where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, result.youtubeVideoId, result.renderUrl ?? null]);
+    await tx.query("update calm_videos set status = 'review', youtube_video_id = $3, render_url = $4, rendered_at = now(), error = case when error like 'Removed %' then error else null end where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, result.youtubeVideoId, result.renderUrl ?? null]);
   } else {
     await tx.query("update calm_videos set status = 'failed', error = $3, render_url = $4 where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, `Render failed: ${(result.error ?? "unknown").slice(0, 600)}`, result.renderUrl ?? null]);
   }

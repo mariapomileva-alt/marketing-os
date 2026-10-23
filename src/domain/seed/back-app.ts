@@ -71,7 +71,7 @@ export const BACK_APP_GUARDRAILS: GuardrailRule[] = [
     severity: "block",
     rationale: "No false urgency.",
     patterns: [
-      "\\b(only today|today only|last chance|act now|hurry|don'?t wait|limited time|ends tonight|only \\d+ (left|hours))\\b",
+      "(?<!\\b(?:no|not|never|any|in no)\\s+(?:a\\s+|in\\s+a\\s+|need\\s+to\\s+)?)\\b(only today|today only|last chance|act now|hurry|don'?t wait|limited time|ends tonight|only \\d+ (left|hours))\\b",
       "только сегодня",
       "последний шанс",
       "успей(те)?",
