@@ -1,5 +1,9 @@
 # Changelog
 
+## Calm Videos use the Creative Library
+- Creative Library accepts video (MP4/MOV/WebM up to 50 MB), music (MP3/M4A/WAV up to 30 MB) and large images, uploaded straight from the browser to private storage; videos and music play in the library.
+- Calm Videos takes footage from the library first (tagged calm or the nature theme; images get a slow push-in), fills up from Pexels only when there are fewer than three, and uses the product's own music tagged calm (in turn), else the generated pad. Competitor references are never used.
+
 ## Calm Videos (YouTube affirmation videos)
 - New page Make → Calm Videos. Claude writes a slow affirmation script for a topic and nature theme (lines checked against the product's safety rules), OpenAI text-to-speech records each line, Pexels supplies nature footage (fallback: a slow generated gradient).
 - A renderer on GitHub Actions (`.github/workflows/calm-render.yml`, `scripts/render-calm.mjs`, ffmpeg) builds a 1080p video: cross-faded footage, each line fading in and out, the voice over a generated ambient pad that ducks under it, and uploads it to YouTube as PRIVATE (synthetic voice declared).

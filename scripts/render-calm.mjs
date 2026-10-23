@@ -104,12 +104,21 @@ export async function render(job, out, work) {
     const seg = (T + XFADE * (clips.length - 1)) / clips.length;
     const segs = [];
     for (const [i, c] of clips.entries()) {
-      const src = c.file ?? (await download(c.url, path.join(work, `c${i}.mp4`)));
+      const isImage = c.kind === "image";
+      const src = c.file ?? (await download(c.url, path.join(work, `c${i}${isImage ? ".img" : ".media"}`)));
       const dst = path.join(work, `s${i}.mp4`);
-      // Loop short clips, fill 1920x1080, slow them a little (calmer motion), no audio.
-      await ffmpeg(["-stream_loop", "-1", "-i", src, "-t", seg.toFixed(2), "-an",
-        "-vf", `setpts=1.25*PTS,scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${FPS},format=yuv420p`,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", dst], `clip ${i}`);
+      if (isImage) {
+        // A still image: a very slow push-in, so it feels alive.
+        const frames = Math.ceil(seg * FPS);
+        await ffmpeg(["-loop", "1", "-i", src, "-t", seg.toFixed(2),
+          "-vf", `scale=${W * 2}:${H * 2}:force_original_aspect_ratio=increase,crop=${W * 2}:${H * 2},zoompan=z='min(1+on/${frames}*0.12,1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${W}x${H}:fps=${FPS},format=yuv420p`,
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", dst], `image ${i}`);
+      } else {
+        // Loop short clips, fill 1920x1080, slow them a little (calmer motion), no audio.
+        await ffmpeg(["-stream_loop", "-1", "-i", src, "-t", seg.toFixed(2), "-an",
+          "-vf", `setpts=1.25*PTS,scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${FPS},format=yuv420p`,
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", dst], `clip ${i}`);
+      }
       segs.push(dst);
     }
     if (segs.length === 1) {
@@ -158,13 +167,18 @@ export async function render(job, out, work) {
   const vi = voice.map((_, i) => `[${i + 1}:a]adelay=${Math.round(tl.items[i].start * 1000)}:all=1,volume=1.0[a${i}]`);
   filters.push(...vi);
   filters.push(`${voice.map((_, i) => `[a${i}]`).join("")}amix=inputs=${voice.length}:normalize=0:dropout_transition=0,apad,atrim=0:${T},asplit=2[voice][side]`);
-  // Ambient pad: a soft chord with slow movement plus a little brown noise, generated here (no licensing questions).
+  // Music: the product's own track from the Creative Library when there is one (looped), otherwise a soft generated pad.
+  const musicFile = job.music_file ?? (job.music_url ? await download(job.music_url, path.join(work, "music.media")) : null);
   const pad = `aevalsrc='0.05*sin(2*PI*110*t)*(0.6+0.4*sin(2*PI*0.05*t))+0.04*sin(2*PI*164.81*t)*(0.6+0.4*sin(2*PI*0.031*t))+0.035*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*0.043*t))+0.025*sin(2*PI*277.18*t)*(0.5+0.5*sin(2*PI*0.027*t))':s=44100:d=${T}`;
   const padIdx = voice.length + 1;
   const noiseIdx = voice.length + 2;
-  filters.push(`[${padIdx}:a]lowpass=f=900,aecho=0.8:0.7:120|240:0.35|0.25,volume=0.9[padv]`);
-  filters.push(`[${noiseIdx}:a]lowpass=f=500,volume=0.25[noise]`);
-  filters.push(`[padv][noise]amix=inputs=2:normalize=0,afade=t=in:d=4,afade=t=out:st=${T - 6}:d=6[music]`);
+  if (musicFile) {
+    filters.push(`[${padIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:${T},volume=0.22,afade=t=in:d=4,afade=t=out:st=${T - 6}:d=6[music]`);
+  } else {
+    filters.push(`[${padIdx}:a]lowpass=f=900,aecho=0.8:0.7:120|240:0.35|0.25,volume=0.9[padv]`);
+    filters.push(`[${noiseIdx}:a]lowpass=f=500,volume=0.25[noise]`);
+    filters.push(`[padv][noise]amix=inputs=2:normalize=0,afade=t=in:d=4,afade=t=out:st=${T - 6}:d=6[music]`);
+  }
   filters.push(`[music][side]sidechaincompress=threshold=0.03:ratio=5:attack=30:release=600[ducked]`);
   filters.push(`[ducked][voice]amix=inputs=2:normalize=0,alimiter=limit=0.9[aout]`);
 
@@ -172,7 +186,7 @@ export async function render(job, out, work) {
   await writeFile(script, filters.join(";\n"));
   await ffmpeg([
     "-i", bg, ...voiceInputs,
-    "-f", "lavfi", "-i", pad,
+    ...(musicFile ? ["-stream_loop", "-1", "-i", musicFile] : ["-f", "lavfi", "-i", pad]),
     "-f", "lavfi", "-i", `anoisesrc=color=brown:amplitude=0.05:d=${T}:r=44100`,
     "-filter_complex_script", script, "-map", `[${v}]`, "-map", "[aout]",
     "-c:v", "libx264", "-preset", job.preset ?? "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-r", String(FPS),

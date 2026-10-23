@@ -78,6 +78,25 @@ describe("calm videos", () => {
   });
 });
 
+describe("own media from the Creative Library", () => {
+  it("prefers our clips and music tagged calm over stock footage", async () => {
+    await as((tx) => tx.query(
+      `insert into creative_assets (workspace_id, product_id, kind, title, storage_path, mime_type, tags, rights_note) values
+        ($1,$2,'video','river 1','a/r1.mp4','video/mp4','{calm,river}','filmed by us'),
+        ($1,$2,'video','river 2','a/r2.mp4','video/mp4','{calm,river}','filmed by us'),
+        ($1,$2,'image','lake','a/l.jpg','image/jpeg','{calm}','ours'),
+        ($1,$2,'audio','pad','a/m.mp3','audio/mpeg','{calm}','YouTube Audio Library'),
+        ($1,$2,'video','competitor','a/x.mp4','video/mp4','{calm}','reference')`, [owner.workspaceId, productId]));
+    await as((tx) => tx.query("update creative_assets set origin = 'competitor_reference' where title = 'competitor' and product_id = $1", [productId]));
+    const r = await as((tx) => createCalmVideo(tx, actor, productId, media, { theme: "river" }));
+    const v = await as((tx) => tx.one<{ clips: Array<{ source: string; kind: string }>; music_asset_id: string | null }>("select clips, music_asset_id from calm_videos where id = $1", [r.id]));
+    expect(v.clips).toHaveLength(3);
+    expect(v.clips.every((c) => c.source === "library")).toBe(true);
+    expect(v.clips.some((c) => c.kind === "image")).toBe(true);
+    expect(v.music_asset_id).not.toBeNull();
+  });
+});
+
 describe("publishing slots", () => {
   it("picks the next Tuesday or Friday, skipping taken slots and slots too close", () => {
     const now = new Date("2026-10-23T10:00:00Z"); // Friday

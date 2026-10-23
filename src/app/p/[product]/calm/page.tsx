@@ -35,6 +35,11 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
     s: await getCalmSettings(tx, ctx.workspaceId, product.id),
     yt: await youtubeConnection(tx, product.id),
     openai: Boolean(await openaiKey(ctx.workspaceId)),
+    library: await tx.one<{ clips: number; music: number }>(
+      `select count(*) filter (where kind in ('video', 'image'))::int clips, count(*) filter (where kind = 'audio')::int music
+         from creative_assets where product_id = $1 and storage_path is not null and origin <> 'competitor_reference' and 'calm' = any(tags)`,
+      [product.id],
+    ),
     videos: await tx.query<{ id: string; topic: string; theme: string; title: string; description: string; lines: Array<{ text: string; pause: number }>; status: string; error: string | null; youtube_video_id: string | null; publish_at: string | null; created_at: string; is_mock: boolean; clips: unknown[]; render_url: string | null }>(
       `select id, topic, theme, title, description, lines, status, error, youtube_video_id, publish_at::text, created_at::text, is_mock, clips, render_url
          from calm_videos where product_id = $1 order by created_at desc limit 30`,
@@ -56,8 +61,10 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
           items={[
             ["Script", <Status key="s" tone="green">Claude (as for every draft)</Status>],
             ["Voice", d.openai ? <Status key="v" tone="green">OpenAI text-to-speech, voice “{s.voice}”</Status> : <Status key="v" tone="amber">Add an OpenAI API key in Connections → AI providers</Status>],
-            ["Footage", pexels ? <Status key="f" tone="green">Pexels nature clips</Status> : <Status key="f" tone="amber">PEXELS_API_KEY not set: a soft moving gradient is used instead</Status>],
-            ["Music", "A soft ambient pad generated for each video (no licensing questions)"],
+            ["Footage", d.library.clips >= 3
+              ? <Status key="f" tone="green">{`Your Creative Library: ${d.library.clips} clips and images tagged calm`}</Status>
+              : <span key="f"><Status tone="amber">{`${d.library.clips} of yours tagged calm`}</Status> <span className="text-muted">{pexels ? "· the rest from Pexels" : "· add clips in Creative Library (tag: calm, river…) or set PEXELS_API_KEY; otherwise a soft gradient"}</span></span>],
+            ["Music", d.library.music ? <Status key="m" tone="green">{`Your Creative Library: ${d.library.music} track${d.library.music === 1 ? "" : "s"} tagged calm, used in turn`}</Status> : "A soft ambient pad generated for each video. Add your own tracks in Creative Library with the tag calm."],
             ["YouTube", d.yt?.status === "connected" ? <Status key="y" tone="green">{`Uploads as private to ${d.yt.account_label}`}</Status> : <Status key="y" tone="red">Connect the YouTube channel in Connections</Status>],
             ["Renderer (GitHub)", s.renderer_token_hash ? (rendererSeen ? <Status key="r" tone="green">{`Last checked in ${rendererSeen}`}</Status> : <Status key="r" tone="amber">Key created; waiting for the first check-in</Status>) : <Status key="r" tone="amber">Create a renderer key below and add it to GitHub</Status>],
             ["Automatic videos", s.enabled ? <Status key="a" tone="green">{`On: two in the pipeline, published ${s.publish_days.map((x) => DAYS[x - 1]).join(" and ")} at ${s.publish_hour_utc}:00 UTC after your approval`}</Status> : <Status key="a">Off (Settings below)</Status>],

@@ -113,8 +113,23 @@ export async function prepareCalmMedia(tx: Tx, productId: string, videoId: strin
         keys.push(key);
       }
     }
-    const clips = await media.clips(v.theme).catch(() => []);
-    await tx.query("update calm_videos set audio_keys = $2, clips = $3, status = 'ready_to_render', error = null where id = $1", [videoId, keys, JSON.stringify(clips)]);
+    // Footage: the product's own library first (tagged calm or the theme), Pexels only to fill up.
+    const library = await tx.query<{ id: string; kind: "video" | "image" }>(
+      `select id, kind from creative_assets
+        where product_id = $1 and kind in ('video', 'image') and storage_path is not null and origin <> 'competitor_reference'
+          and ('calm' = any(tags) or $2 = any(tags))
+        order by ($2 = any(tags)) desc, random() limit 8`,
+      [productId, v.theme],
+    );
+    const own = library.map((a) => ({ source: "library", asset_id: a.id, kind: a.kind, author: "our library" }));
+    const stock = own.length >= 3 ? [] : (await media.clips(v.theme).catch(() => [])).slice(0, 6 - own.length).map((c) => ({ source: "pexels", kind: "video", ...c }));
+    const music = await tx.maybeOne<{ id: string }>(
+      `select a.id from creative_assets a where a.product_id = $1 and a.kind = 'audio' and a.storage_path is not null and 'calm' = any(a.tags)
+        order by (select max(created_at) from calm_videos c where c.music_asset_id = a.id) nulls first, random() limit 1`,
+      [productId],
+    );
+    await tx.query("update calm_videos set audio_keys = $2, clips = $3, music_asset_id = $4, status = 'ready_to_render', error = null where id = $1",
+      [videoId, keys, JSON.stringify([...own, ...stock]), music?.id ?? null]);
     return { status: "ready_to_render" as const };
   } catch (e) {
     const msg = (e as Error).message.slice(0, 400);
@@ -124,19 +139,28 @@ export async function prepareCalmMedia(tx: Tx, productId: string, videoId: strin
 }
 
 /** The renderer asks for work: the oldest prepared video (or one stuck in rendering for 2 hours). */
+export type CalmClip =
+  | { source: "library"; asset_id: string; kind: "video" | "image"; author: string }
+  | { source: "pexels"; kind: "video"; url: string; author: string; source_url: string };
+
 export async function claimRenderJob(tx: Tx, token: string) {
   const s = await tx.maybeOne<{ product_id: string; minutes: number }>("select product_id, minutes from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
   if (!s) return { authorized: false as const };
   await tx.query("update calm_settings set renderer_seen_at = now() where product_id = $1", [s.product_id]);
-  const v = await tx.maybeOne<{ id: string; workspace_id: string; title: string; description: string; tags: string[]; lines: Array<{ text: string; pause: number }>; audio_keys: string[]; clips: Array<{ url: string; author: string; source_url: string }> }>(
-    `select id, workspace_id, title, description, tags, lines, audio_keys, clips from calm_videos
+  const v = await tx.maybeOne<{ id: string; workspace_id: string; title: string; description: string; tags: string[]; lines: Array<{ text: string; pause: number }>; audio_keys: string[]; clips: CalmClip[]; music_path: string | null; music_title: string | null }>(
+    `select id, workspace_id, title, description, tags, lines, audio_keys, clips,
+            (select storage_path from creative_assets a where a.id = v.music_asset_id) music_path,
+            (select rights_note from creative_assets a where a.id = v.music_asset_id) music_title
+       from calm_videos v
       where product_id = $1 and (status = 'ready_to_render' or (status = 'rendering' and render_started_at < now() - interval '2 hours'))
       order by created_at limit 1 for update skip locked`,
     [s.product_id],
   );
   if (!v) return { authorized: true as const, productId: s.product_id, job: null };
+  const paths = await tx.query<{ id: string; storage_path: string }>("select id, storage_path from creative_assets where id = any($1)",
+    [v.clips.filter((c) => c.source === "library").map((c) => (c as { asset_id: string }).asset_id)]);
   await tx.query("update calm_videos set status = 'rendering', render_started_at = now(), error = null where id = $1", [v.id]);
-  return { authorized: true as const, productId: s.product_id, job: { ...v, minutes: s.minutes } };
+  return { authorized: true as const, productId: s.product_id, job: { ...v, minutes: s.minutes, libraryPaths: Object.fromEntries(paths.map((p) => [p.id, p.storage_path])) } };
 }
 
 export async function finishRender(tx: Tx, token: string, id: string, result: { youtubeVideoId?: string; error?: string; renderUrl?: string }) {

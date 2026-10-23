@@ -10,6 +10,8 @@ export interface FileStore {
   get(key: string): Promise<Uint8Array>;
   /** A short-lived URL to read the file without credentials (Supabase only; null for local storage). */
   signedUrl(key: string, seconds: number): Promise<string | null>;
+  /** A one-time URL the browser can upload one file to directly (Supabase only; null for local storage). */
+  signedUploadUrl(key: string): Promise<string | null>;
 }
 
 function safeKey(key: string): string {
@@ -32,6 +34,9 @@ class LocalStore implements FileStore {
   async signedUrl() {
     return null;
   }
+  async signedUploadUrl() {
+    return null;
+  }
 }
 
 class SupabaseStore implements FileStore {
@@ -52,6 +57,11 @@ class SupabaseStore implements FileStore {
   async signedUrl(key: string, seconds: number) {
     const { data, error } = await this.client.storage.from(this.bucket).createSignedUrl(safeKey(key), seconds);
     if (error || !data) throw new Error(`Storage link failed: ${error?.message ?? "no data"}`);
+    return data.signedUrl;
+  }
+  async signedUploadUrl(key: string) {
+    const { data, error } = await this.client.storage.from(this.bucket).createSignedUploadUrl(safeKey(key));
+    if (error || !data) throw new Error(`Storage upload link failed: ${error?.message ?? "no data"}`);
     return data.signedUrl;
   }
 }
