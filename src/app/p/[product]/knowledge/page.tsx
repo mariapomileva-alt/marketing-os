@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db, getProduct } from "@/server/context";
 import { listPlaybook, listSources, searchKnowledge } from "@/server/services/knowledge";
-import { approveRuleAction, importCourseAction, setRuleApplicabilityAction, uploadSourceAction } from "@/app/actions/knowledge";
+import { approveRuleAction, importCourseAction, setRuleApplicabilityAction, syncBlogAction, uploadSourceAction } from "@/app/actions/knowledge";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/form";
@@ -29,6 +29,11 @@ export default async function KnowledgePage({ params, searchParams }: PageProps<
     sources: tab === "sources" ? await listSources(tx, ctx.workspaceId, product.id) : [],
     hits: tab === "search" && q ? await searchKnowledge(tx, { workspaceId: ctx.workspaceId, productId: product.id, query: q, includeMethodology: true, scope }) : [],
     rules: tab === "playbook" ? await listPlaybook(tx, ctx.workspaceId, product.id) : [],
+    blog: tab === "sources"
+      ? await tx.query<{ id: string; url: string; title: string; status: string; error: string | null; idea_id: string | null; found_at: string }>(
+          "select id, url, title, status, error, idea_id, found_at::text from blog_articles where product_id = $1 order by found_at desc limit 30", [product.id])
+      : [],
+    domain: (await tx.maybeOne<{ domain: string | null }>("select domain from site_settings where product_id = $1", [product.id]))?.domain ?? null,
   }));
   const productSources = data.sources.filter((s) => s.scope === "product");
   const methodology = data.sources.filter((s) => s.scope === "workspace");
@@ -54,6 +59,23 @@ export default async function KnowledgePage({ params, searchParams }: PageProps<
 
       {tab === "sources" ? (
         <>
+          <Section title="Our blog" description={`New articles on ${data.domain ?? "the product's site"} are read every morning: each becomes knowledge the agents draw on (comments, replies, calm videos), an idea with drafted Threads posts (drafts only, in Content Studio) and a calm video topic.`}>
+            <ActionForm action={syncBlogAction.bind(null, slug)} submitLabel="Check the blog now" pendingLabel="Reading the blog…" submitVariant="secondary" className="mb-3 flex flex-col gap-2"><span /></ActionForm>
+            {data.blog.length ? (
+              <Table>
+                <thead><tr><th>Article</th><th>Status</th><th /></tr></thead>
+                <tbody>
+                  {data.blog.map((b) => (
+                    <tr key={b.id}>
+                      <td className="min-w-[260px]"><a href={b.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">{b.title || b.url}</a>{b.error ? <div className="text-[12px] text-red">{b.error}</div> : null}</td>
+                      <td><Status tone={b.status === "drafted" || b.status === "ingested" ? "green" : b.status === "failed" ? "red" : "neutral"}>{b.status === "drafted" ? "in knowledge, posts drafted" : b.status === "ingested" ? "in knowledge" : b.status}</Status></td>
+                      <td>{b.idea_id ? <Link href={`/p/${slug}/ideas`} className="text-[13px] underline">Threads drafts</Link> : null}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : <EmptyState title="No articles yet">{data.domain ? "Press Check the blog now." : "Set the website domain in Analytics → Set up the website counter first."}</EmptyState>}
+          </Section>
           <Section title={`${product.name} evidence`} description="Interviews, reviews, research and notes about this product. Visible only inside this product.">
             {productSources.length ? (
               <SourceTable slug={slug} rows={productSources} />

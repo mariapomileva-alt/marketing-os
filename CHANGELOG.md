@@ -1,5 +1,10 @@
 # Changelog
 
+## God of Marketing; one knowledge base for everything
+- Renamed to God of Marketing (header, sign-in, page titles).
+- Comments, replies (YouTube, Threads, Instagram) and calm video scripts now draw on the knowledge base: approved facts, claims never to make, tone, the approved playbook from the course and matching excerpts (our articles, research). Prompt changes from app updates are recorded as new prompt versions.
+- Our blog: every morning the site's sitemap is read; each new article (guides/blog) becomes a knowledge source, an idea with drafted Threads posts (drafts, approved as usual) and the first calm video topic. Knowledge → Our blog shows the articles and has "Check the blog now".
+
 ## Calm Videos use the Creative Library
 - Creative Library accepts video (MP4/MOV/WebM up to 50 MB), music (MP3/M4A/WAV up to 30 MB) and large images, uploaded straight from the browser to private storage; videos and music play in the library.
 - Calm Videos takes footage from the library first (tagged calm or the nature theme; images get a slow push-in), fills up from Pexels only when there are fewer than three, and uses the product's own music tagged calm (in turn), else the generated pad. Competitor references are never used.

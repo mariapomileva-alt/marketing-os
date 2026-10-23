@@ -5,6 +5,7 @@ import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { importCourse, IngestError, ingestSource, MAX_UPLOAD_BYTES, readCourseFiles } from "@/server/services/knowledge";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
+import { syncBlog } from "@/server/services/blog";
 
 const SOURCE_TYPES = ["doc", "transcript", "interview", "call", "note", "report", "creative", "dataset"] as const;
 
@@ -91,4 +92,18 @@ export async function setRuleApplicabilityAction(productSlug: string, ruleId: st
     ),
   );
   revalidatePath(`/p/${productSlug}/knowledge`);
+}
+
+export async function syncBlogAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const r = await db((tx, ctx) => syncBlog(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, (url) => fetch(url, { cache: "no-store" })), { reason: "Blog read", actorType: "ai" });
+    revalidatePath(`/p/${slug}/knowledge`);
+    const errors = r.errors.length ? ` Problems: ${r.errors.slice(0, 2).join(" ")}` : "";
+    return r.found || !r.errors.length
+      ? ok(`${r.found} articles on the site, ${r.added} new added to knowledge, ${r.drafted} with Threads posts drafted.${errors}`)
+      : fail(r.errors.join(" "));
+  } catch (e) {
+    return fail((e as Error).message);
+  }
 }
