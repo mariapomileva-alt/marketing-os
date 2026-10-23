@@ -36,6 +36,12 @@ export async function updateYtSettings(tx: Tx, workspaceId: string, productId: s
             drafts_per_run = $7, daily_publish_limit = $8, published_within_days = $9, brand_name = $10 where product_id = $1`,
     [productId, s.enabled, s.queries, s.languages, s.min_duration_seconds, s.channel_cooldown_days, s.drafts_per_run, s.daily_publish_limit, s.published_within_days, s.brand_name],
   );
+  // The posting gate reads its limits from the channel connection: keep the daily cap in step with the setting.
+  await tx.query(
+    `update channel_connections set limits = limits || jsonb_build_object('daily_limit', $2::int, 'account_daily_cap', $2::int)
+      where product_id = $1 and channel = 'youtube' and status <> 'revoked'`,
+    [productId, s.daily_publish_limit],
+  );
 }
 
 async function productRules(tx: Tx, productId: string): Promise<GuardrailRule[]> {
