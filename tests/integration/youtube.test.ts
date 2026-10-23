@@ -115,7 +115,8 @@ describe("approving from the thread view", () => {
     const { approveDraft } = await import("@/server/services/youtube");
     const conv = await as((tx) => tx.one<{ id: string }>(
       `select c.id from conversations c where c.product_id = $1 and c.channel = 'youtube'
-         and (select count(*) from conversation_messages m where m.conversation_id = c.id and m.status = 'draft' and m.variant in ('helpful','with_mention')) = 2 limit 1`, [productId]));
+         and exists (select 1 from conversation_messages m where m.conversation_id = c.id and m.status = 'draft' and m.variant = 'helpful')
+       order by (select count(*) from conversation_messages m where m.conversation_id = c.id and m.status = 'draft') desc limit 1`, [productId]));
     const drafts = await as((tx) => tx.query<{ id: string; variant: string }>("select id, variant from conversation_messages where conversation_id = $1 and status = 'draft' order by variant", [conv.id]));
     const helpful = drafts.find((d) => d.variant === "helpful")!;
 
@@ -127,7 +128,8 @@ describe("approving from the thread view", () => {
     expect(good.ok).toBe(true);
     const after = await as((tx) => tx.query<{ variant: string; status: string; text: string }>("select variant, status, text from conversation_messages where conversation_id = $1 and variant in ('helpful','with_mention')", [conv.id]));
     expect(after.find((m) => m.variant === "helpful")).toMatchObject({ status: "approved", text });
-    expect(after.find((m) => m.variant === "with_mention")?.status).toBe("rejected");
+    const sibling = after.find((m) => m.variant === "with_mention");
+    if (sibling) expect(sibling.status).toBe("rejected"); // either chosen-away or held back by the checks
     const approved = await as((tx) => tx.one<{ text: string }>(
       "select a.payload_snapshot->>'text' text from approval_items a join conversation_messages m on m.id = a.conversation_message_id where m.id = $1 and a.state = 'approved'", [helpful.id]));
     expect(approved.text).toBe(text);

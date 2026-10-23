@@ -209,9 +209,15 @@ export async function runDiscovery(tx: Tx, actor: Actor, productId: string, sour
     stats.newVideos++;
     if (verdict.eligible) { stats.eligible++; fresh.push({ id: row.id, relevance: verdict.relevance, channel: v.channelId }); }
   }
-  // Best first; one draft per channel per run.
+  // Best first; one draft per channel per run. Suitable videos found earlier but not drafted yet stay candidates.
+  const waiting = await tx.query<{ id: string; relevance: number; channel: string }>(
+    `select id, relevance, channel_id channel from yt_videos
+      where product_id = $1 and status = 'new' and conversation_id is null and (published_at is null or published_at >= $2)`,
+    [productId, publishedAfter.toISOString()],
+  );
+  const pool = [...new Map([...fresh, ...waiting].map((x) => [x.id, x])).values()];
   const picked: typeof fresh = [];
-  for (const f of fresh.sort((a, b) => b.relevance - a.relevance)) {
+  for (const f of pool.sort((a, b) => b.relevance - a.relevance)) {
     if (picked.length >= s.drafts_per_run) break;
     if (picked.some((p) => p.channel === f.channel)) continue;
     picked.push(f);
