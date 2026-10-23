@@ -8,9 +8,10 @@ import { closePools, type Tx } from "@/server/db/client";
 import { createBackApp } from "@/server/services/products";
 import { decideApproval, type Actor } from "@/server/services/content";
 import { getYtSettings, receiveReply, runDiscovery, updateYtSettings } from "@/server/services/youtube";
-import { drainQueue, postGate as publishGate, postApproved, saveYoutubeConnection, syncReplies, type YoutubeWriteApi } from "@/server/services/youtube-publish";
+import { drainQueue, refreshCommentStats, postGate as publishGate, postApproved, saveYoutubeConnection, syncReplies, type YoutubeWriteApi } from "@/server/services/youtube-publish";
 import { demoSource } from "@/server/youtube/source";
 import { similarity } from "@/domain/youtube";
+import { youtubeCommentTotals } from "@/server/services/traffic";
 import { asUser, createOwner } from "../helpers/db";
 
 let owner: { userId: string; workspaceId: string };
@@ -231,5 +232,18 @@ describe("posting after approval and reading replies", () => {
     } finally {
       delete process.env.YOUTUBE_PUBLISHING_ENABLED;
     }
+  });
+
+  it("stores likes and reply counts for what we posted", async () => {
+    const reader = async (commentIds: string[], threadIds: string[]) => [
+      ...threadIds.map((id) => ({ id, likeCount: 7, replyCount: 2 })),
+      ...commentIds.map((id) => ({ id, likeCount: 1, replyCount: null })),
+    ];
+    const r = await as((tx) => refreshCommentStats(tx, productId, reader));
+    expect(r.checked).toBeGreaterThan(0);
+    const totals = await as((tx) => youtubeCommentTotals(tx, productId, new Date(Date.now() - 86_400_000)));
+    expect(totals.posted).toBeGreaterThan(0);
+    expect(totals.likes).toBeGreaterThanOrEqual(7);
+    expect(totals.replies_received).toBeGreaterThanOrEqual(2);
   });
 });

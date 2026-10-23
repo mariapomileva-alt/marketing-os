@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/form";
 import { formatNumber, formatPercent } from "@/lib/format";
 import { nowMs } from "@/lib/time";
+import { getSiteSettings, topYoutubeComments, trafficBySource, youtubeCommentTotals } from "@/server/services/traffic";
+import { appUrl } from "@/server/notify/telegram";
+import { CounterSetup, WebsiteTraffic, YoutubeCommentStats } from "./traffic-sections";
 
 export const metadata = { title: "Analytics" };
 
@@ -37,6 +40,10 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps<
       conv,
       t: await thresholdsFor(tx, ctx.workspaceId),
       products: await productSummaries(tx, ctx.workspaceId, from, to),
+      site: await getSiteSettings(tx, ctx.workspaceId, product.id),
+      traffic: await trafficBySource(tx, product.id, from),
+      ytTotals: await youtubeCommentTotals(tx, product.id, from),
+      ytTop: await topYoutubeComments(tx, product.id),
       demoCount: (await tx.one<{ n: number }>("select count(*)::int n from publications where product_id = $1 and is_demo", [product.id])).n,
     };
   });
@@ -90,6 +97,9 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps<
         {d.ads.platform_conversions !== null ? <p className="mt-1 text-[12.5px] text-muted">Ad platforms reported {formatNumber(d.ads.platform_conversions)} results themselves; these are platform claims and are not mixed with your conversions.</p> : null}
       </Section>
 
+      <WebsiteTraffic traffic={d.traffic} period={period} />
+      <YoutubeCommentStats totals={d.ytTotals} top={d.ytTop} />
+
       {d.rows.length ? (
         <>
           <Section title="Recommendations for the next cycle">
@@ -122,6 +132,8 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps<
           Publish approved content, then add metrics in <Link className="text-green underline" href={`/p/${slug}/publications`}>Publications</Link>. {d.demoCount ? "Or tick 'Include demo data' to see how this page works." : ""}
         </EmptyState>
       )}
+
+      <CounterSetup slug={slug} site={d.site} scriptUrl={appUrl("/t.js")} productName={product.name} />
 
       <Section title="By product" description="Workspace overview. Each product's data stays separate; this table only shows totals side by side.">
         <Table>

@@ -1,5 +1,9 @@
 # Changelog
 
+## Website traffic by source, YouTube comment stats
+- Own cookieless site counter (`/t.js` + `/api/t`): visits, visitors (daily hash, no IP stored) and App Store button clicks per source (UTM tags, then referrer, then in-app browser: Instagram, Threads, Facebook, TikTok). With an App Store provider token the counter adds campaign tags to App Store links, so Apple counts installs per source.
+- Analytics: "Website visitors by source", "YouTube comments" (likes and replies on what we posted, read daily and on "Check for new replies"), and a setup panel with the snippet, a Cursor prompt, tagged links and App Store campaign links.
+
 ## YouTube posting queue
 - Approve as many comments and replies as you like; they go out by themselves, one at a time (10 min apart, 08–23 Riga, daily cap), from a queue checked every 5 minutes.
 - The schedule lives in the database (Supabase pg_cron + pg_net), set up by the production build; the endpoint token is derived from the server key and kept in Supabase Vault. Only approved texts are ever in the queue; the gate re-checks the approval hash before each post.

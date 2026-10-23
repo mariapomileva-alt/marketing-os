@@ -205,3 +205,24 @@ export async function syncReplies(tx: Tx, actor: Actor, productId: string, api: 
   }
   return { checked: threads.length, fresh, highRisk, errors };
 }
+
+/** Reads likes and reply counts for everything we posted and stores them on the messages (cumulative counters). */
+export async function refreshCommentStats(tx: Tx, productId: string, read: (commentIds: string[], threadIds: string[]) => Promise<Array<{ id: string; likeCount: number; replyCount: number | null }>>) {
+  const rows = await tx.query<{ id: string; external_id: string; thread: string | null; top: boolean }>(
+    `select m.id, m.external_id, c.external_thread_id thread, (m.variant is distinct from 'reply' and m.variant is distinct from 'safety') top
+       from conversation_messages m join conversations c on c.id = m.conversation_id
+      where m.product_id = $1 and c.channel = 'youtube' and m.direction = 'outbound' and m.status = 'posted' and m.external_id is not null
+      order by m.stats_checked_at nulls first limit 200`,
+    [productId],
+  );
+  if (!rows.length) return { checked: 0 };
+  const threads = rows.filter((r) => r.top && r.thread).map((r) => r.thread!);
+  const stats = await read(rows.filter((r) => !r.top || !r.thread).map((r) => r.external_id), threads);
+  const byId = new Map(stats.map((s) => [s.id, s]));
+  for (const r of rows) {
+    const s = byId.get(r.top && r.thread ? r.thread : r.external_id) ?? byId.get(r.external_id);
+    if (!s) continue; // deleted or held for review by YouTube: keep the last known numbers
+    await tx.query("update conversation_messages set like_count = $2, reply_count = $3, stats_checked_at = now() where id = $1", [r.id, s.likeCount, s.replyCount]);
+  }
+  return { checked: rows.length };
+}

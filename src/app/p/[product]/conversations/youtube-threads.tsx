@@ -16,6 +16,8 @@ export type Msg = {
   variant: string | null;
   kind: string | null;
   occurred_at: string | null;
+  like_count: number | null;
+  reply_count: number | null;
   voice: { problems?: string[]; warnings?: string[]; guardrailBlocks?: string[] } | null;
 };
 export type Thread = {
@@ -120,6 +122,11 @@ function Bubble({ m, ours, brand }: { m: Msg; ours: boolean; brand: string }) {
           {m.text.startsWith("[MOCK]") ? <DataFlag kind="mock" /> : null}
         </div>
         <p className={`mt-0.5 inline-block max-w-[62ch] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13.5px] leading-relaxed ${ours ? "rounded-tl-sm bg-green-soft" : "rounded-tl-sm bg-paper"}`}>{m.text}</p>
+        {ours && m.like_count !== null ? (
+          <p className="mt-1 text-[12px] text-muted">
+            {m.like_count} like{m.like_count === 1 ? "" : "s"}{m.reply_count !== null ? `, ${m.reply_count} repl${m.reply_count === 1 ? "y" : "ies"}` : ""} on YouTube
+          </p>
+        ) : null}
       </div>
     </div>
   );

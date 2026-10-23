@@ -144,3 +144,37 @@ export async function listReplies(threadId: string, apiKey: string): Promise<Thr
     publishedAt: i.snippet?.publishedAt ?? new Date().toISOString(),
   }));
 }
+
+export interface CommentStat {
+  id: string;
+  likeCount: number;
+  replyCount: number | null; // only for top-level comments (threads)
+}
+
+/** Likes on our comments and replies, and reply counts on our threads. Read-only API key, 1 unit per 50 ids. */
+export async function commentStats(commentIds: string[], threadIds: string[], apiKey: string): Promise<CommentStat[]> {
+  const out = new Map<string, CommentStat>();
+  const get = async (path: string, ids: string[]) => {
+    for (let i = 0; i < ids.length; i += 50) {
+      const u = new URL(`${API}/${path}`);
+      u.search = new URLSearchParams({ part: "snippet", id: ids.slice(i, i + 50).join(","), maxResults: "50", key: apiKey }).toString();
+      const res = await fetch(u, { cache: "no-store" });
+      const body = (await res.json().catch(() => ({}))) as { items?: Array<Record<string, unknown>>; error?: { message?: string } };
+      if (!res.ok) throw new YouTubeWriteError(`YouTube ${res.status}: ${body.error?.message ?? "could not read comment stats"}`, res.status, "read");
+      for (const item of body.items ?? []) {
+        const snippet = item.snippet as { likeCount?: number; totalReplyCount?: number; topLevelComment?: { id?: string; snippet?: { likeCount?: number } } };
+        if (path === "commentThreads") {
+          const id = snippet.topLevelComment?.id ?? (item.id as string);
+          out.set(id, { id, likeCount: snippet.topLevelComment?.snippet?.likeCount ?? 0, replyCount: snippet.totalReplyCount ?? 0 });
+          if (item.id !== id) out.set(item.id as string, out.get(id)!);
+        } else if (!out.has(item.id as string)) {
+          out.set(item.id as string, { id: item.id as string, likeCount: snippet.likeCount ?? 0, replyCount: null });
+        }
+      }
+    }
+  };
+  if (threadIds.length) await get("commentThreads", threadIds);
+  const rest = commentIds.filter((id) => !out.has(id));
+  if (rest.length) await get("comments", rest);
+  return [...out.values()];
+}

@@ -3,7 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 import { withContext } from "@/server/db/client";
 import { runDiscovery } from "@/server/services/youtube";
 import { configuredSource } from "@/server/youtube/source";
-import { syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
+import { refreshCommentStats, syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
+import { commentStats } from "@/server/youtube/write";
 import { liveWriteApi } from "@/server/youtube/live";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
 
@@ -43,6 +44,12 @@ export async function GET(request: NextRequest) {
       const replies = await withContext({ userId: p.owner_id, role: "service", actorType: "ai", reason: "daily YouTube replies check" }, async (tx) =>
         (await youtubeConnection(tx, p.product_id)) ? syncReplies(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.product_id, liveWriteApi()) : null,
       );
+      const key = process.env.YOUTUBE_API_KEY;
+      if (key) {
+        await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "daily YouTube comment stats" }, (tx) =>
+          refreshCommentStats(tx, p.product_id, (c, t) => commentStats(c, t, key)),
+        ).catch(() => undefined);
+      }
       if (replies?.highRisk) {
         await notifyTelegram(`${p.name}: someone on YouTube may need urgent help. Please look now.\n${appUrl(`/p/${p.slug}/conversations?tab=youtube`)}`, { urgent: true });
       } else if (replies?.fresh) {

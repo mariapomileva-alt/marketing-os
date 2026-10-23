@@ -34,7 +34,7 @@ export async function loadYoutube(tx: Tx, workspaceId: string, productId: string
     threads: await tx.query<Thread>(
       `select c.id, c.subject, c.thread_url, c.external_thread_id, c.risk, c.risk_reason, c.status, c.created_at::text,
               coalesce((select json_agg(json_build_object('id', m.id, 'direction', m.direction, 'author_handle', m.author_handle, 'text', m.text, 'status', m.status,
-                                                          'variant', m.variant, 'kind', m.kind, 'voice', m.voice, 'occurred_at', m.occurred_at) order by m.occurred_at, m.created_at)
+                                                          'variant', m.variant, 'kind', m.kind, 'voice', m.voice, 'occurred_at', m.occurred_at, 'like_count', m.like_count, 'reply_count', m.reply_count) order by m.occurred_at, m.created_at)
                           from conversation_messages m where m.conversation_id = c.id), '[]') messages
          from conversations c where c.product_id = $1 and c.channel = 'youtube'
         order by (c.risk = 'high') desc,

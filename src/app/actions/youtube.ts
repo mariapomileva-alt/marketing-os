@@ -7,9 +7,9 @@ import { describeDbError } from "@/server/db/client";
 import { approveDraft, receiveReply, rejectDraft, runDiscovery, updateYtSettings } from "@/server/services/youtube";
 import { configuredSource, demoSource } from "@/server/youtube/source";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
-import { postApproved, postGate, publishingEnabled, refreshTokenFor, syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
+import { postApproved, postGate, publishingEnabled, refreshCommentStats, refreshTokenFor, syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
 import { liveWriteApi } from "@/server/youtube/live";
-import { revokeToken } from "@/server/youtube/write";
+import { commentStats, revokeToken } from "@/server/youtube/write";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 
 const msg = (x: unknown) => (x instanceof Error && !("code" in x) ? x.message : describeDbError(x));
@@ -121,11 +121,13 @@ export async function syncYtRepliesAction(slug: string, _: ActionResult | null):
   try {
     const product = await getProduct(slug);
     const r = await db((tx, ctx) => syncReplies(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, liveWriteApi()), { reason: "YouTube replies read", actorType: "ai" });
+    const key = process.env.YOUTUBE_API_KEY;
+    if (key) await db((tx) => refreshCommentStats(tx, product.id, (c, t) => commentStats(c, t, key)), { reason: "YouTube comment stats" });
     if (r.highRisk) await notifyTelegram(`${product.name}: someone on YouTube may need urgent help. Please look now.\n${appUrl(`/p/${slug}/conversations?tab=youtube`)}`, { urgent: true });
     revalidatePath(`/p/${slug}`, "layout");
-    if (!r.checked) return ok("Nothing to check yet: replies are read under comments posted from here.");
+    if (!r.checked) return ok("Nothing to check yet: replies and likes are read under comments posted from here.");
     const errors = r.errors.length ? ` Problems: ${r.errors.slice(0, 2).join(" ")}` : "";
-    return ok(`${r.checked} conversation${r.checked === 1 ? "" : "s"} checked, ${r.fresh} new repl${r.fresh === 1 ? "y" : "ies"}${r.fresh ? ", answers drafted for your approval" : ""}.${errors}`);
+    return ok(`${r.checked} conversation${r.checked === 1 ? "" : "s"} checked, ${r.fresh} new repl${r.fresh === 1 ? "y" : "ies"}${r.fresh ? ", answers drafted for your approval" : ""}; likes updated.${errors}`);
   } catch (e) {
     return toFailure(e, msg);
   }
