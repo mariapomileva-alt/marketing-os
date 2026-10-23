@@ -1,5 +1,10 @@
 # Changelog
 
+## Shorts and Reels from calm videos
+- Every calm video's script is split into 30-60 second pieces (up to 15). On the video's card, tick YouTube and/or Instagram for the ones to make; the renderer builds them vertically (1080x1920) from the same voice, footage and music and uploads YouTube ones as private.
+- Each short plays on the card; Approve schedules it (one a day at the publishing hour): YouTube via publishAt, Instagram Reels from the posting queue (container, then publish when processed). TikTok: download the file.
+- Instagram sign-in now also asks for instagram_business_content_publish (reconnect Instagram to grant it).
+
 ## God of Marketing; one knowledge base for everything
 - Renamed to God of Marketing (header, sign-in, page titles).
 - Comments, replies (YouTube, Threads, Instagram) and calm video scripts now draw on the knowledge base: approved facts, claims never to make, tone, the approved playbook from the course and matching excerpts (our articles, research). Prompt changes from app updates are recorded as new prompt versions.

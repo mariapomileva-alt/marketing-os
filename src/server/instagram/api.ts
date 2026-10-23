@@ -2,12 +2,12 @@ import "server-only";
 
 /**
  * Instagram API with Instagram Login (graph.instagram.com), as the team's professional account. Used only for our
- * own media: reading comments under our reels and posting approved replies to them. The API does not allow
+ * own media: reading comments under our reels, posting approved replies to them, and publishing approved Reels. The API does not allow
  * commenting on other accounts' media; that stays manual. Tokens stay on the server; errors never include them.
  */
 const GRAPH = "https://graph.instagram.com";
 const API = `${GRAPH}/v23.0`;
-export const INSTAGRAM_SCOPES = ["instagram_business_basic", "instagram_business_manage_comments"];
+export const INSTAGRAM_SCOPES = ["instagram_business_basic", "instagram_business_manage_comments", "instagram_business_content_publish"];
 
 export function instagramOauthConfigured() {
   return Boolean(process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_SECRET);
@@ -100,4 +100,15 @@ export async function instagramComments(token: string, mediaId: string, f: Fetch
 /** Instagram threads are one level deep: a reply always attaches to the top-level comment. */
 export async function instagramReply(token: string, commentId: string, message: string, f: Fetch = fetch) {
   return call<{ id: string }>(f, "POST", `${API}/${commentId}/replies`, { message, access_token: token });
+}
+
+/** Reels publishing (our own account): a container from a video URL, processed by Instagram, then published. */
+export async function instagramCreateReel(token: string, igUserId: string, videoUrl: string, caption: string, f: Fetch = fetch) {
+  return (await call<{ id: string }>(f, "POST", `${API}/${igUserId}/media`, { media_type: "REELS", video_url: videoUrl, caption, share_to_feed: "true", access_token: token })).id;
+}
+export async function instagramContainerStatus(token: string, containerId: string, f: Fetch = fetch) {
+  return (await call<{ status_code?: string }>(f, "GET", `${API}/${containerId}`, { fields: "status_code", access_token: token })).status_code ?? "IN_PROGRESS";
+}
+export async function instagramPublish(token: string, igUserId: string, containerId: string, f: Fetch = fetch) {
+  return (await call<{ id: string }>(f, "POST", `${API}/${igUserId}/media_publish`, { creation_id: containerId, access_token: token })).id;
 }

@@ -18,8 +18,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-const W = 1920;
-const H = 1080;
+// Landscape for long videos; vertical 9:16 for Shorts and Reels (set per job in render()).
+let W = 1920;
+let H = 1080;
 const FPS = 24;
 const XFADE = 2.5;
 
@@ -44,7 +45,7 @@ async function download(url, file) {
 }
 
 /** Wraps a line for the screen: about 28 characters per row, never more than 3 rows. */
-export function wrap(text, width = 28) {
+export function wrap(text, width = 28, maxRows = 3) {
   const words = text.replace(/\s+/g, " ").trim().split(" ");
   const rows = [];
   let row = "";
@@ -55,20 +56,21 @@ export function wrap(text, width = 28) {
     } else row = (row + " " + w).trim();
   }
   if (row) rows.push(row);
-  return rows.slice(0, 3).join("\n");
+  return rows.slice(0, maxRows).join("\n");
 }
 
 /**
  * Timeline: a quiet intro, then each line (spoken duration + pause), then an outro. Pauses are stretched (up to 2.5x)
  * when the script is shorter than the target length, so the video still breathes rather than rushes.
  */
-export function timeline(lines, durations, minutes) {
-  const intro = 6;
-  const outro = 14;
+export function timeline(lines, durations, minutes, opts = {}) {
+  const intro = opts.intro ?? 6;
+  const outro = opts.outro ?? 14;
   const spoken = durations.reduce((a, b) => a + b, 0);
   const pauses = lines.reduce((a, l) => a + l.pause, 0);
   const target = minutes * 60 - intro - outro;
-  const stretch = Math.min(2.5, Math.max(1, (target - spoken) / Math.max(1, pauses)));
+  // Shorts keep the pauses short (people scroll), long videos stretch them to breathe.
+  const stretch = opts.pauseScale ?? Math.min(2.5, Math.max(1, (target - spoken) / Math.max(1, pauses)));
   let t = intro;
   const items = lines.map((l, i) => {
     const start = t;
@@ -89,12 +91,15 @@ function alphaExpr(a, b) {
 
 export async function render(job, out, work) {
   await mkdir(work, { recursive: true });
+  const vertical = job.format === "short";
+  W = vertical ? 1080 : 1920;
+  H = vertical ? 1920 : 1080;
   // 1. Voice lines
   const voice = [];
   for (const [i, l] of job.lines.entries()) voice.push(l.audio_file ?? (await download(l.audio_url, path.join(work, `v${i}.mp3`))));
   const durations = [];
   for (const f of voice) durations.push(await duration(f));
-  const tl = timeline(job.lines, durations, job.minutes ?? 10);
+  const tl = vertical ? timeline(job.lines, durations, 1, { intro: 1.2, outro: 4.5, pauseScale: 0.6 }) : timeline(job.lines, durations, job.minutes ?? 10);
   const T = Math.ceil(tl.total);
 
   // 2. Background: normalized clip segments with cross-fades, or a slow generated gradient when there are no clips.
@@ -157,10 +162,10 @@ export async function render(job, out, work) {
       n++;
     }
   };
-  await draw(wrap(job.intro_text ?? "Take a moment. You are here.", 30), 0.5, tl.intro + 0.5, 58);
-  for (const it of tl.items) await draw(wrap(it.text), it.showFrom, Math.min(it.showTo, T - 0.1), 66);
-  await draw(job.outro_title ?? "Made by the team behind Back", tl.outroFrom + 1, T - 0.5, 54, H / 2 - 40);
-  await draw(job.outro_line ?? "a small app for the first minutes of panic", tl.outroFrom + 2, T - 0.5, 36, H / 2 + 50);
+  if (!vertical) await draw(wrap(job.intro_text ?? "Take a moment. You are here.", 30), 0.5, tl.intro + 0.5, 58);
+  for (const it of tl.items) await draw(wrap(it.text, vertical ? 18 : 28, vertical ? 5 : 3), it.showFrom, Math.min(it.showTo, T - 0.1), vertical ? 80 : 66);
+  await draw(job.outro_title ?? (vertical ? "Back" : "Made by the team behind Back"), tl.outroFrom + (vertical ? 0.3 : 1), T - 0.3, vertical ? 84 : 54, H / 2 - (vertical ? 60 : 40));
+  await draw(job.outro_line ?? (vertical ? "for the first minutes of panic" : "a small app for the first minutes of panic"), tl.outroFrom + (vertical ? 0.8 : 2), T - 0.3, vertical ? 44 : 36, H / 2 + (vertical ? 60 : 50));
 
   // Voice: each line placed at its start time.
   const voiceInputs = voice.flatMap((f) => ["-i", f]);
@@ -253,9 +258,12 @@ async function main() {
       let preview = false;
       if (job.preview_upload_url) {
         try {
-          const small = path.join(work, "preview.mp4");
-          await ffmpeg(["-i", out, "-vf", "scale=-2:480", "-c:v", "libx264", "-preset", "veryfast", "-crf", "31", "-maxrate", "450k", "-bufsize", "900k",
-            "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", small], "preview");
+          // Shorts are small: the full file is kept (Instagram Reels are published from it). Long videos: a 480p copy.
+          const small = job.format === "short" ? out : path.join(work, "preview.mp4");
+          if (job.format !== "short") {
+            await ffmpeg(["-i", out, "-vf", "scale=-2:480", "-c:v", "libx264", "-preset", "veryfast", "-crf", "31", "-maxrate", "450k", "-bufsize", "900k",
+              "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", small], "preview");
+          }
           const size = (await stat(small)).size;
           if (size < 48 * 1024 * 1024) {
             const res = await fetch(job.preview_upload_url, { method: "PUT", headers: { "content-type": "video/mp4", "content-length": String(size) }, body: createReadStream(small), duplex: "half" });
@@ -267,7 +275,7 @@ async function main() {
         }
       }
       const renderUrl = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : undefined;
-      const youtubeVideoId = await uploadToYoutube(job.upload_url, out);
+      const youtubeVideoId = job.upload_url ? await uploadToYoutube(job.upload_url, out) : undefined;
       await api("/api/cron/calm-done", { id: job.id, youtubeVideoId, seconds: r.seconds, renderUrl, preview });
       console.log("Uploaded as private; waiting for approval in Marketing OS.");
     } catch (e) {

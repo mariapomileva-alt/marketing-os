@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closePools, withContext, type Tx } from "@/server/db/client";
 import { createBackApp } from "@/server/services/products";
 import type { Actor } from "@/server/services/content";
+import { approveShort, groupLines, publishDueReels, selectShorts } from "@/server/services/calm-shorts";
 import { approveCalmVideo, claimRenderJob, createCalmVideo, createRendererToken, finishRender, getCalmSettings, nextSlot, updateCalmSettings, videosInPipeline, type CalmMedia } from "@/server/services/calm";
 import { asUser, createOwner } from "../helpers/db";
 
@@ -97,6 +98,49 @@ describe("own media from the Creative Library", () => {
     expect(v.clips.every((c) => c.source === "library")).toBe(true);
     expect(v.clips.some((c) => c.kind === "image")).toBe(true);
     expect(v.music_asset_id).not.toBeNull();
+  });
+});
+
+describe("shorts and reels", () => {
+  it("groups a script into 30-60 second pieces", () => {
+    const lines = Array.from({ length: 70 }, (_, i) => ({ text: "Feel where your feet touch the floor.", pause: i % 6 === 5 ? 9 : 4 }));
+    const g = groupLines(lines);
+    expect(g.length).toBeGreaterThan(5);
+    expect(g.length).toBeLessThanOrEqual(15);
+    expect(g[0].from).toBe(0);
+    for (let i = 1; i < g.length; i++) expect(g[i].from).toBe(g[i - 1].to + 1);
+  });
+
+  it("makes only the ticked shorts, waits for approval, then publishes the Reel when its time comes", async () => {
+    const r = await as((tx) => createCalmVideo(tx, actor, productId, media, { theme: "lake" }));
+    const shorts = await as((tx) => tx.query<{ id: string; status: string }>("select id, status from calm_shorts where video_id = $1 order by idx", [r.id]));
+    expect(shorts.length).toBeGreaterThan(1);
+    expect(shorts.every((x) => x.status === "planned")).toBe(true);
+    expect(await as((tx) => selectShorts(tx, productId, [{ id: shorts[0].id, targets: ["youtube", "instagram"] }]))).toBe(1);
+
+    const token = await as((tx) => createRendererToken(tx, owner.workspaceId, productId));
+    // Long videos first, then shorts.
+    let job = (await service((tx) => claimRenderJob(tx, token))) as { job: { kind: string; id: string; lines: unknown[] } | null };
+    while (job.job && job.job.kind === "video") {
+      await service((tx) => finishRender(tx, token, job.job!.id, { error: "skip in test" }));
+      job = (await service((tx) => claimRenderJob(tx, token))) as typeof job;
+    }
+    expect(job.job?.kind).toBe("short");
+    expect(job.job?.id).toBe(shorts[0].id);
+    await service((tx) => finishRender(tx, token, shorts[0].id, { youtubeVideoId: "shortVID123", preview: true }));
+    const calls: Array<{ id: string; at: Date | null }> = [];
+    const a = await as((tx) => approveShort(tx, actor, productId, shorts[0].id, { schedule: async (id, at) => void calls.push({ id, at }) }));
+    expect(calls[0].id).toBe("shortVID123");
+    await as((tx) => tx.query("update calm_shorts set publish_at = now() - interval '1 minute' where id = $1", [shorts[0].id]));
+    expect(a.publishAt.getTime()).toBeGreaterThan(Date.now());
+    let status = "IN_PROGRESS";
+    const reels = { token: async () => ({ token: "t", igUserId: "ig1" }), fileUrl: async (p: string) => `https://storage/${p}`, create: async () => "container1", status: async () => status, publish: async () => "media1" };
+    await as((tx) => publishDueReels(tx, productId, reels));
+    await as((tx) => publishDueReels(tx, productId, reels)); // still processing
+    status = "FINISHED";
+    expect((await as((tx) => publishDueReels(tx, productId, reels))).published).toBe(1);
+    const s = await as((tx) => tx.one<{ instagram_media_id: string; status: string }>("select instagram_media_id, status from calm_shorts where id = $1", [shorts[0].id]));
+    expect(s).toMatchObject({ instagram_media_id: "media1", status: "published" });
   });
 });
 

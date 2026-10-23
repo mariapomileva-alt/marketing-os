@@ -6,6 +6,7 @@ import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { approveCalmVideo, createCalmVideo, createRendererToken, prepareCalmMedia, rejectCalmVideo, updateCalmSettings } from "@/server/services/calm";
 import { liveCalmMedia } from "@/server/calm/live";
+import { approveShort, rejectShort, selectShorts } from "@/server/services/calm-shorts";
 import { refreshTokenFor, youtubeConnection } from "@/server/services/youtube-publish";
 import { accessToken, scheduleVideo } from "@/server/youtube/write";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -115,5 +116,42 @@ export async function approveCalmAction(slug: string, id: string, when: "slot" |
 export async function rejectCalmAction(slug: string, id: string) {
   const product = await getProduct(slug);
   await db((tx, ctx) => rejectCalmVideo(tx, actorOf(ctx), product.id, id), { reason: "Calm video rejected" });
+  revalidatePath(path(slug));
+}
+
+export async function selectShortsAction(slug: string, videoId: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const ids = new Set([...data.keys()].filter((k) => /^(yt|ig)_/.test(k)).map((k) => k.slice(3)));
+    const picks = [...ids].map((id) => ({
+      id,
+      targets: [data.get(`yt_${id}`) === "on" ? "youtube" : null, data.get(`ig_${id}`) === "on" ? "instagram" : null].filter(Boolean) as Array<"youtube" | "instagram">,
+    }));
+    const n = await db((tx) => selectShorts(tx, product.id, picks), { reason: "Shorts chosen" });
+    revalidatePath(path(slug));
+    return n ? ok(`${n} short${n === 1 ? "" : "s"} queued for the renderer. Each comes back here to watch and approve.`) : fail("Tick YouTube or Instagram next to at least one short.");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+export async function approveShortAction(slug: string, id: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const r = await db(async (tx, ctx) => {
+      const conn = await youtubeConnection(tx, product.id);
+      const token = conn?.secret_id ? await accessToken(await refreshTokenFor(conn.secret_id)) : null;
+      return approveShort(tx, actorOf(ctx), product.id, id, token ? { schedule: async (videoId, at) => void (await scheduleVideo(token, videoId, at)) } : null);
+    }, { reason: "Short approved" });
+    revalidatePath(path(slug));
+    return ok(`Approved. It goes out on ${r.publishAt.toUTCString().replace(/:00 GMT/, " UTC")}.`);
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+export async function rejectShortAction(slug: string, id: string) {
+  const product = await getProduct(slug);
+  await db((tx, ctx) => rejectShort(tx, actorOf(ctx), product.id, id), { reason: "Short rejected" });
   revalidatePath(path(slug));
 }

@@ -9,6 +9,9 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { EmptyState, KeyValue, PageHeader, Section } from "@/components/ui/layout";
 import { DataFlag, Status } from "@/components/ui/status";
 import { formatDateTime } from "@/lib/format";
+import { planShorts } from "@/server/services/calm-shorts";
+import { channelConnection } from "@/server/services/youtube-publish";
+import { ShortsBlock, type ShortRow } from "./shorts-block";
 
 export const metadata = { title: "Calm Videos" };
 export const maxDuration = 300;
@@ -31,7 +34,16 @@ const STATUS: Record<string, { label: string; tone: "green" | "amber" | "red" | 
 export default async function CalmPage({ params }: PageProps<"/p/[product]/calm">) {
   const { product: slug } = await params;
   const product = await getProduct(slug);
-  const d = await db(async (tx, ctx) => ({
+  const d = await db(async (tx, ctx) => {
+   // Videos made before Shorts existed get their plan the first time the page is opened.
+   for (const v of await tx.query<{ id: string }>("select id from calm_videos v where product_id = $1 and status not in ('rejected') and not exists (select 1 from calm_shorts s where s.video_id = v.id)", [product.id])) {
+     await planShorts(tx, product.id, v.id);
+   }
+   return {
+    shorts: await tx.query<ShortRow>(
+      `select id, video_id, idx, title, line_from, line_to, targets, status, error, youtube_video_id, instagram_status, preview_asset_id, publish_at::text
+         from calm_shorts where product_id = $1 order by video_id, idx`, [product.id]),
+    ig: await channelConnection(tx, product.id, "instagram"),
     s: await getCalmSettings(tx, ctx.workspaceId, product.id),
     yt: await youtubeConnection(tx, product.id),
     openai: Boolean(await openaiKey(ctx.workspaceId)),
@@ -45,7 +57,8 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
          from calm_videos where product_id = $1 order by created_at desc limit 30`,
       [product.id],
     ),
-  }));
+   };
+  });
   const s = d.s;
   const rendererSeen = s.renderer_seen_at ? formatDateTime(s.renderer_seen_at) : null;
   const pexels = Boolean(process.env.PIXABAY_API_KEY || process.env.PEXELS_API_KEY);
@@ -121,6 +134,9 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
                       <ActionForm action={retryCalmMediaAction.bind(null, slug, v.id)} submitLabel="Try again" submitVariant="secondary" pendingLabel="Retrying…" className="flex flex-col gap-1"><span /></ActionForm>
                       <form action={rejectCalmAction.bind(null, slug, v.id)}><Button size="sm" variant="ghost">Reject</Button></form>
                     </div>
+                  ) : null}
+                  {v.status !== "rejected" ? (
+                    <ShortsBlock slug={slug} videoId={v.id} lines={v.lines} shorts={d.shorts.filter((x) => x.video_id === v.id)} instagram={d.ig?.status === "connected"} youtube={d.yt?.status === "connected"} />
                   ) : null}
                   <details className="mt-3 text-[13px]">
                     <summary className="cursor-pointer text-muted">Script and description</summary>

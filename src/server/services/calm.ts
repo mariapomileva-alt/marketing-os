@@ -4,6 +4,7 @@ import { calmVideoSchema } from "@/domain/ai/schemas";
 import { checkText, outcomeOf } from "@/domain/guardrails";
 import { runAgent, type Actor } from "./content";
 import { draftingKnowledge } from "./knowledge-context";
+import { claimShortJob, finishShortRender, planShorts } from "./calm-shorts";
 import { productRules } from "./youtube";
 
 /**
@@ -101,6 +102,7 @@ export async function createCalmVideo(tx: Tx, actor: Actor, productId: string, m
   );
   await tx.query("update workflow_runs set status = 'completed', current_step = 'scripted' where id = $1", [wf.id]);
   await tx.query("update calm_settings set last_created_at = now() where product_id = $1", [productId]);
+  if (!blocks.length) await planShorts(tx, productId, row.id);
   if (blocks.length || !media) return { id: row.id, status: blocks.length ? "rejected" : "scripted", problems: blocks };
   return { id: row.id, ...(await prepareCalmMedia(tx, productId, row.id, media)), problems: [] };
 }
@@ -164,16 +166,17 @@ export async function claimRenderJob(tx: Tx, token: string) {
       order by created_at limit 1 for update skip locked`,
     [s.product_id],
   );
-  if (!v) return { authorized: true as const, productId: s.product_id, job: null };
+  if (!v) return { authorized: true as const, productId: s.product_id, job: await claimShortJob(tx, s.product_id) };
   const paths = await tx.query<{ id: string; storage_path: string }>("select id, storage_path from creative_assets where id = any($1)",
     [v.clips.filter((c) => c.source === "library").map((c) => (c as { asset_id: string }).asset_id)]);
   await tx.query("update calm_videos set status = 'rendering', render_started_at = now(), error = case when error like 'Removed %' then error else null end where id = $1", [v.id]);
-  return { authorized: true as const, productId: s.product_id, job: { ...v, minutes: s.minutes, libraryPaths: Object.fromEntries(paths.map((p) => [p.id, p.storage_path])) } };
+  return { authorized: true as const, productId: s.product_id, job: { ...v, kind: "video" as const, minutes: s.minutes, libraryPaths: Object.fromEntries(paths.map((p) => [p.id, p.storage_path])) } };
 }
 
 export async function finishRender(tx: Tx, token: string, id: string, result: { youtubeVideoId?: string; error?: string; renderUrl?: string; preview?: boolean }) {
   const s = await tx.maybeOne<{ product_id: string }>("select product_id from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
   if (!s) return false;
+  if (await tx.maybeOne("select 1 from calm_shorts where id = $1 and product_id = $2", [id, s.product_id])) return finishShortRender(tx, s.product_id, id, result);
   if (result.youtubeVideoId && result.preview) {
     // The preview the renderer uploaded becomes a Creative Library video, watchable inside God of Marketing.
     const v = await tx.maybeOne<{ workspace_id: string; title: string; theme: string; preview_asset_id: string | null }>(

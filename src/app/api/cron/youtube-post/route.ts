@@ -5,6 +5,10 @@ import { queueToken } from "@/server/security/queue-token";
 import { drainQueue } from "@/server/services/youtube-publish";
 import { dueThreadsPosts, publishThreadsPost } from "@/server/services/threads";
 import { liveApis, liveThreadsApi } from "@/server/youtube/live";
+import { publishDueReels } from "@/server/services/calm-shorts";
+import { channelConnection, threadsToken } from "@/server/services/youtube-publish";
+import { fileStore } from "@/server/storage";
+import { instagramContainerStatus, instagramCreateReel, instagramPublish, instagramRefresh } from "@/server/instagram/api";
 
 /**
  * Posting queue, called every few minutes by the database scheduler (Supabase pg_cron + pg_net, set up by the build).
@@ -41,7 +45,17 @@ export async function GET(request: NextRequest) {
         for (const item of await dueThreadsPosts(tx, p.product_id)) out.push(await publishThreadsPost(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.product_id, item.id, liveThreadsApi()));
         return out;
       });
-      results.push({ product: p.product_id, ...r, posts });
+      // Approved Reels (calm shorts) whose time has come.
+      const reels = await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "scheduled Reels (approved only)" }, async (tx) => {
+        const conn = await channelConnection(tx, p.product_id, "instagram");
+        if (!conn?.external_account_id || conn.status !== "connected") return null;
+        return publishDueReels(tx, p.product_id, {
+          token: async () => ({ token: await threadsToken(tx, conn, { refresh: instagramRefresh }), igUserId: conn.external_account_id! }),
+          fileUrl: async (path) => (await fileStore().signedUrl(path, 3600)) ?? "",
+          create: instagramCreateReel, status: instagramContainerStatus, publish: instagramPublish,
+        });
+      });
+      results.push({ product: p.product_id, ...r, posts, reels });
     } catch (e) {
       results.push({ product: p.product_id, error: (e as Error).message });
     }
