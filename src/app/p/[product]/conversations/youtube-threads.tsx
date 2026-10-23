@@ -102,7 +102,7 @@ function Approved({ slug, m, t, canPost, queue }: { slug: string; m: Msg; t: Thr
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {canPost ? <ActionForm action={postYtNowAction.bind(null, slug, m.id)} submitLabel="Post now" pendingLabel="Posting…" submitVariant="primary" className="flex flex-col gap-1"><span /></ActionForm> : null}
         <CopyButton text={m.text} />
-        {t.thread_url ? <a href={t.thread_url} target="_blank" rel="noreferrer noopener" className="inline-flex h-7 items-center rounded-[var(--radius-control)] border border-line-strong bg-surface px-2.5 text-[13px]">Open the video</a> : null}
+        {t.thread_url ? <a href={t.thread_url} target="_blank" rel="noreferrer noopener" className="inline-flex h-7 items-center rounded-[var(--radius-control)] border border-line-strong bg-surface px-2.5 text-[13px]">Open the post</a> : null}
         <form action={markReplyPostedAction.bind(null, slug, m.id)}><Button size="sm" variant="ghost">I posted it myself</Button></form>
       </div>
     </div>
@@ -124,7 +124,7 @@ function Bubble({ m, ours, brand }: { m: Msg; ours: boolean; brand: string }) {
         <p className={`mt-0.5 inline-block max-w-[62ch] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13.5px] leading-relaxed ${ours ? "rounded-tl-sm bg-green-soft" : "rounded-tl-sm bg-paper"}`}>{m.text}</p>
         {ours && m.like_count !== null ? (
           <p className="mt-1 text-[12px] text-muted">
-            {m.like_count} like{m.like_count === 1 ? "" : "s"}{m.reply_count !== null ? `, ${m.reply_count} repl${m.reply_count === 1 ? "y" : "ies"}` : ""} on YouTube
+            {m.like_count} like{m.like_count === 1 ? "" : "s"}{m.reply_count !== null ? `, ${m.reply_count} repl${m.reply_count === 1 ? "y" : "ies"}` : ""}
           </p>
         ) : null}
       </div>
@@ -147,7 +147,7 @@ export function ThreadCard({ slug, t, canPost, brand, connected, queue = false }
     <li className={`rounded-[var(--radius-panel)] border bg-surface p-4 ${t.risk === "high" ? "border-red/50" : "border-line"}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[12.5px] text-muted">
         <span className="min-w-0">
-          {t.thread_url ? <a href={t.thread_url} target="_blank" rel="noreferrer noopener" className="font-medium text-ink underline underline-offset-2">{t.subject ?? "Video"}</a> : <span className="font-medium text-ink">{t.subject}</span>}
+          {t.thread_url ? <a href={t.thread_url} target="_blank" rel="noreferrer noopener" className="font-medium text-ink underline underline-offset-2">{t.subject ?? "Open"}</a> : <span className="font-medium text-ink">{t.subject}</span>}
           <span className="ml-2">{formatDateTime(t.created_at)}</span>
         </span>
         {t.risk === "high" ? <Status tone="red">High risk</Status> : t.risk === "medium" ? <Status tone="amber">Careful</Status> : null}

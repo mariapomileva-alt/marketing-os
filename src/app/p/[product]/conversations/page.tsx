@@ -8,6 +8,7 @@ import { Status } from "@/components/ui/status";
 import { formatDateTime } from "@/lib/format";
 import { Tabs, tabParam } from "@/components/ui/tabs";
 import { loadYoutube, YoutubeTab } from "./youtube-tab";
+import { loadSocial, SocialTab } from "./social-tab";
 
 export const metadata = { title: "Conversations" };
 // A search plus a few AI drafts can take a minute; server actions on this page share this limit.
@@ -15,17 +16,21 @@ export const maxDuration = 120;
 
 export default async function ConversationsPage({ params, searchParams }: PageProps<"/p/[product]/conversations">) {
   const { product: slug } = await params;
-  const tab = tabParam(await searchParams, ["youtube", "other"], "youtube");
+  const tab = tabParam(await searchParams, ["youtube", "threads", "instagram", "other"], "youtube");
   const product = await getProduct(slug);
   const header = (
     <>
       <PageHeader title="Conversations" description="Comments and replies, drafted by AI where useful and always approved by you. The team writes as itself, never as a customer, and mentions the product only when it truly helps." />
-      <Tabs base={`/p/${slug}/conversations`} current={tab} tabs={[{ id: "youtube", label: "YouTube" }, { id: "other", label: "Instagram, Threads, Facebook" }]} />
+      <Tabs base={`/p/${slug}/conversations`} current={tab} tabs={[{ id: "youtube", label: "YouTube" }, { id: "threads", label: "Threads" }, { id: "instagram", label: "Instagram" }, { id: "other", label: "Comments log" }]} />
     </>
   );
   if (tab === "youtube") {
     const y = await db((tx, ctx) => loadYoutube(tx, ctx.workspaceId, product.id));
     return (<>{header}<YoutubeTab slug={slug} data={y} /></>);
+  }
+  if (tab === "threads" || tab === "instagram") {
+    const sd = await db((tx, ctx) => loadSocial(tx, ctx.workspaceId, product.id, tab));
+    return (<>{header}<SocialTab slug={slug} channel={tab} data={sd} /></>);
   }
   const d = await db(async (tx) => ({
     convs: await tx.query<{ id: string; channel: string; thread_url: string | null; status: string; sensitive: boolean; created_at: string; post: string | null; messages: Array<{ id: string; direction: string; author_handle: string | null; text: string; status: string; occurred_at: string }> }>(
@@ -33,7 +38,7 @@ export default async function ConversationsPage({ params, searchParams }: PagePr
               coalesce((select json_agg(json_build_object('id', m.id, 'direction', m.direction, 'author_handle', m.author_handle, 'text', m.text, 'status', m.status, 'occurred_at', m.occurred_at) order by m.occurred_at)
                           from conversation_messages m where m.conversation_id = c.id), '[]') messages
          from conversations c left join publications p on p.id = c.publication_id left join content_items i on i.id = p.content_item_id
-        where c.product_id = $1 and c.channel <> 'youtube' order by c.sensitive desc, c.created_at desc limit 100`,
+        where c.product_id = $1 and c.channel not in ('youtube', 'threads') order by c.sensitive desc, c.created_at desc limit 100`,
       [product.id],
     ),
     pubs: await tx.query<{ id: string; title: string }>("select p.id, i.title from publications p join content_items i on i.id = p.content_item_id where p.product_id = $1 order by p.published_at desc limit 50", [product.id]),

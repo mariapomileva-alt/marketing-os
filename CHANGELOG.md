@@ -1,5 +1,11 @@
 # Changelog
 
+## Threads and Instagram in Conversations
+- Conversations tabs: YouTube, Threads, Instagram, Comments log.
+- Threads: connect the account (Meta OAuth, long-lived token encrypted, refreshed before expiry); keyword search finds posts, every post recorded with a reason (ads, crises, kids, own posts, recent contact skipped); replies drafted for approval and posted from the same queue as YouTube (10 min apart, daytime, daily cap); replies people write back are read daily and on demand; likes and replies on our replies; approved Threads posts from Content Studio published now or at their calendar time, with views, likes and replies as metrics.
+- Instagram: add a reel by hand, the agent drafts a comment, you approve, copy and post it yourself (the API does not allow comments on other accounts' media).
+- Posting gate and queue are channel-aware; the daily cap and gap are per connected account.
+
 ## Website traffic by source, YouTube comment stats
 - Own cookieless site counter (`/t.js` + `/api/t`): visits, visitors (daily hash, no IP stored) and App Store button clicks per source (UTM tags, then referrer, then in-app browser: Instagram, Threads, Facebook, TikTok). With an App Store provider token the counter adds campaign tags to App Store links, so Apple counts installs per source.
 - Analytics: "Website visitors by source", "YouTube comments" (likes and replies on what we posted, read daily and on "Check for new replies"), and a setup panel with the snippet, a Cursor prompt, tagged links and App Store campaign links.

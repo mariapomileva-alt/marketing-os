@@ -8,7 +8,7 @@ import { approveDraft, receiveReply, rejectDraft, runDiscovery, updateYtSettings
 import { configuredSource, demoSource } from "@/server/youtube/source";
 import { appUrl, notifyTelegram } from "@/server/notify/telegram";
 import { postApproved, postGate, publishingEnabled, refreshCommentStats, refreshTokenFor, syncReplies, youtubeConnection } from "@/server/services/youtube-publish";
-import { liveWriteApi } from "@/server/youtube/live";
+import { liveApis, liveWriteApi } from "@/server/youtube/live";
 import { commentStats, revokeToken } from "@/server/youtube/write";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 
@@ -86,19 +86,18 @@ export async function logYtReplyAction(slug: string, conversationId: string, _: 
 export async function approveYtDraftAction(slug: string, messageId: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
     const product = await getProduct(slug);
-    const r = await db((tx, ctx) => approveDraft(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, str(data.get("text")) || null), { reason: "YouTube draft approved" });
+    const r = await db((tx, ctx) => approveDraft(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, str(data.get("text")) || null), { reason: "Draft approved" });
     if (!r.ok) return fail(`Not approved: ${r.problems.join(" ")}`);
-    if (!publishingEnabled()) {
-      revalidatePath(`/p/${slug}`, "layout");
-      return ok("Approved. Posting from here is switched off, so copy the text, post it as the Back channel and press “I posted it”.");
-    }
-    // Approval and posting are separate transactions: the approval stays recorded even if YouTube refuses.
+    // Approval and posting are separate transactions: the approval stays recorded even if the platform refuses.
     const p = await db(async (tx, ctx) => {
       const g = await postGate(tx, product.id, messageId);
-      if (!g.allowed) return { posted: false, reason: g.reason };
-      return postApproved(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, liveWriteApi());
-    }, { reason: "YouTube post after approval" });
+      const automatic = g.message.channel !== "instagram" && publishingEnabled(g.message.channel) && Boolean(g.connection);
+      if (!automatic) return { posted: false, manual: true, reason: g.reason };
+      if (!g.allowed) return { posted: false, manual: false, reason: g.reason };
+      return { ...(await postApproved(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, liveApis())), manual: false };
+    }, { reason: "Post after approval" });
     revalidatePath(`/p/${slug}`, "layout");
+    if (p.manual) return ok(`Approved. ${p.reason}`);
     return p.posted ? ok(`Approved and posted. ${p.reason}`) : ok(`Approved and queued. It goes out automatically when the limits allow (${p.reason})`);
   } catch (e) {
     return toFailure(e, msg);
@@ -109,7 +108,7 @@ export async function approveYtDraftAction(slug: string, messageId: string, _: A
 export async function postYtNowAction(slug: string, messageId: string, _: ActionResult | null): Promise<ActionResult> {
   try {
     const product = await getProduct(slug);
-    const p = await db((tx, ctx) => postApproved(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, liveWriteApi()), { reason: "YouTube post after approval" });
+    const p = await db((tx, ctx) => postApproved(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, messageId, liveApis()), { reason: "Post after approval" });
     revalidatePath(`/p/${slug}`, "layout");
     return p.posted ? ok(p.reason) : fail(p.reason);
   } catch (e) {

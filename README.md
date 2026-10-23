@@ -100,3 +100,15 @@ tests/                unit, integration (real database, RLS on), e2e (Playwright
 4. Connections → Connect YouTube channel, sign in with the account that owns the channel and choose the channel.
 
 While the consent screen is in Testing, Google expires the token after 7 days: reconnect, or switch the app to In production.
+
+## Threads
+
+1. developers.facebook.com → Create app → use case "Access the Threads API". Permissions: threads_basic, threads_content_publish, threads_manage_replies, threads_read_replies, threads_keyword_search, threads_manage_insights.
+2. Redirect callback URL: `https://<APP_URL>/api/threads/oauth/callback`. Add your Threads account as a Threads Tester and accept the invite in the Threads app (Settings → Account → Website permissions → Invites).
+3. Vercel: `THREADS_APP_ID`, `THREADS_APP_SECRET`, `THREADS_PUBLISHING_ENABLED=true`. Redeploy, then Connections → Connect Threads.
+
+Keyword search returns only your own posts until Meta approves `threads_keyword_search` (App Review). Replies under your posts, publishing approved posts and insights work in development mode for tester accounts.
+
+## Instagram
+
+The Instagram API does not allow commenting on other accounts' media. Reels are added by hand (link + what it says), the agent drafts a comment, you approve it and post it yourself.

@@ -10,6 +10,8 @@ import { formatDateTime } from "@/lib/format";
 import { disconnectYoutubeAction } from "@/app/actions/youtube";
 import { publishingEnabled } from "@/server/services/youtube-publish";
 import { oauthConfigured } from "@/server/youtube/write";
+import { disconnectThreadsAction } from "@/app/actions/threads";
+import { threadsOauthConfigured } from "@/server/threads/api";
 
 export const metadata = { title: "Connections" };
 
@@ -23,6 +25,14 @@ const YT_MESSAGES: Record<string, string> = {
 export default async function ConnectionsPage({ params, searchParams }: PageProps<"/p/[product]/connections">) {
   const { product: slug } = await params;
   const ytParam = (await searchParams).yt;
+  const thParam = (await searchParams).th;
+  const TH: Record<string, string> = {
+    connected: "Threads account connected. Approved replies and posts can now be published from it.",
+    denied: "Threads sign-in was cancelled. Nothing was connected.",
+    bad_state: "The sign-in link expired or was opened in another browser. Press Connect Threads again.",
+    not_configured: "Threads sign-in is not set up yet: THREADS_APP_ID and THREADS_APP_SECRET are missing in Vercel.",
+  };
+  const th = typeof thParam === "string" ? (TH[thParam] ?? (thParam.startsWith("error:") ? `Could not connect Threads: ${thParam.slice(6)}` : null)) : null;
   const yt = typeof ytParam === "string" ? (YT_MESSAGES[ytParam] ?? (ytParam.startsWith("error:") ? `Could not connect: ${ytParam.slice(6)}` : null)) : null;
   const product = await getProduct(slug);
   const d = await db(async (tx, ctx) => ({
@@ -32,8 +42,8 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
          from ai_provider_connections c left join secrets s on s.id = c.secret_id where c.workspace_id = $1 order by c.created_at desc`,
       [ctx.workspaceId],
     ),
-    channels: await tx.query<{ id: string; channel: string; account_label: string; mode: string; status: string; paused_reason: string | null; last_error: string | null; created_at: string; revoked_at: string | null; pubs: number }>(
-      `select c.id, c.channel, c.account_label, c.mode, c.status, c.paused_reason, c.last_error, c.created_at::text, c.revoked_at::text,
+    channels: await tx.query<{ id: string; channel: string; adapter_kind: string; account_label: string; mode: string; status: string; paused_reason: string | null; last_error: string | null; created_at: string; revoked_at: string | null; pubs: number }>(
+      `select c.id, c.channel, c.adapter_kind, c.account_label, c.mode, c.status, c.paused_reason, c.last_error, c.created_at::text, c.revoked_at::text,
               (select count(*)::int from publications p where p.connection_id = c.id) pubs
          from channel_connections c where c.product_id = $1 order by c.created_at desc`,
       [product.id],
@@ -99,6 +109,28 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
         })()}
       </Section>
 
+      <Section title="Threads account" description="Lets Marketing OS publish the replies and posts you approve, as your Threads account, and read replies, likes and views. Nothing is posted without your approval.">
+        {th ? <p className="mb-3 rounded-[var(--radius-panel)] border border-line bg-surface p-3 text-[13px]">{th}</p> : null}
+        {(() => {
+          const active = d.channels.find((x) => x.channel === "threads" && x.status !== "revoked" && x.adapter_kind === "official_api");
+          if (active) {
+            return (
+              <div className="flex flex-wrap items-center gap-3">
+                <Status tone={tone(active.status)}>{active.status === "connected" ? `Posting as ${active.account_label}` : `Paused: ${active.paused_reason ?? active.status}`}</Status>
+                {!publishingEnabled("threads") ? <span className="text-[13px] text-muted">Posting is switched off on the server (THREADS_PUBLISHING_ENABLED is not true).</span> : null}
+                <a href={`/api/threads/oauth/start?product=${slug}`} className="text-[13px] underline">Reconnect</a>
+                <form action={disconnectThreadsAction.bind(null, slug)}><Button size="sm" variant="danger">Disconnect Threads</Button></form>
+              </div>
+            );
+          }
+          return threadsOauthConfigured() ? (
+            <a href={`/api/threads/oauth/start?product=${slug}`} className="inline-flex h-9 items-center rounded-[var(--radius-control)] bg-green px-4 text-[14px] font-medium text-white hover:bg-green-hover">Connect Threads</a>
+          ) : (
+            <p className="text-[13px] text-muted">Threads sign-in is not set up yet. Add THREADS_APP_ID and THREADS_APP_SECRET in Vercel (see README, “Threads”), redeploy, then a Connect button appears here.</p>
+          );
+        })()}
+      </Section>
+
       <Section title={`Channels for ${product.name}`}>
         <Table>
           <thead><tr><th>Channel</th><th>What works in this build</th><th>Connection</th><th /></tr></thead>
@@ -110,10 +142,10 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
                 <td className="font-medium">{c.name}</td>
                 <td className="max-w-[360px] text-muted">{c.status === "planned" ? <DataFlag kind="planned" /> : c.capabilities}{c.note ? <div className="text-[12px]">{c.note}</div> : null}</td>
                 <td>
-                  {!active && c.id === "youtube" ? <span className="text-muted">Connect above</span> : active ? <><Status tone={tone(active.status)}>{active.account_label || "Connected"}</Status><div className="text-[12px] text-muted">{active.mode === "draft_only" ? "Draft only" : "Requires approval"}, {active.pubs} publications{active.paused_reason ? `, paused: ${active.paused_reason}` : ""}</div></> : <span className="text-muted">{c.status === "planned" ? "Not available yet" : "Not connected"}</span>}
+                  {!active && (c.id === "youtube" || c.id === "threads") ? <span className="text-muted">Connect above</span> : active ? <><Status tone={tone(active.status)}>{active.account_label || "Connected"}</Status><div className="text-[12px] text-muted">{active.mode === "draft_only" ? "Draft only" : "Requires approval"}, {active.pubs} publications{active.paused_reason ? `, paused: ${active.paused_reason}` : ""}</div></> : <span className="text-muted">{c.status === "planned" ? "Not available yet" : "Not connected"}</span>}
                   {conns.filter((x) => x.status === "revoked").map((x) => <div key={x.id} className="text-[12px] text-faint">Disconnected {formatDateTime(x.revoked_at)}, {x.pubs} publications kept</div>)}
                 </td>
-                <td>{active && c.id !== "youtube" ? <form action={revokeChannelAction.bind(null, slug, active.id)}><Button size="sm" variant="danger">Disconnect</Button></form> : null}</td>
+                <td>{active && c.id !== "youtube" && !(c.id === "threads" && active.adapter_kind === "official_api") ? <form action={revokeChannelAction.bind(null, slug, active.id)}><Button size="sm" variant="danger">Disconnect</Button></form> : null}</td>
               </tr>
             );
           })}</tbody>

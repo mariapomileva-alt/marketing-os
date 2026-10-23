@@ -44,7 +44,7 @@ export async function updateYtSettings(tx: Tx, workspaceId: string, productId: s
   );
 }
 
-async function productRules(tx: Tx, productId: string): Promise<GuardrailRule[]> {
+export async function productRules(tx: Tx, productId: string): Promise<GuardrailRule[]> {
   const rows = await tx.query<{ code: string; rule_type: GuardrailRule["ruleType"]; patterns: unknown; instruction: string; severity: "block" | "warn"; rationale: string; active: boolean }>(
     "select code, rule_type, patterns, instruction, severity, rationale, active from product_guardrails where product_id = $1",
     [productId],
@@ -52,17 +52,20 @@ async function productRules(tx: Tx, productId: string): Promise<GuardrailRule[]>
   return rows.map((r) => ({ code: r.code, ruleType: r.rule_type, patterns: r.patterns, instruction: r.instruction, severity: r.severity, rationale: r.rationale, active: r.active }) as GuardrailRule);
 }
 
-async function previousTeamTexts(tx: Tx, productId: string): Promise<string[]> {
+export type CommunityChannel = "youtube" | "threads" | "instagram";
+export const CHANNEL_NAME: Record<CommunityChannel, string> = { youtube: "YouTube", threads: "Threads", instagram: "Instagram" };
+
+export async function previousTeamTexts(tx: Tx, productId: string, channel: CommunityChannel = "youtube"): Promise<string[]> {
   const rows = await tx.query<{ text: string }>(
     `select m.text from conversation_messages m join conversations c on c.id = m.conversation_id
-      where m.product_id = $1 and c.channel = 'youtube' and m.direction = 'outbound' and m.status in ('draft', 'approved', 'posted')
+      where m.product_id = $1 and c.channel = $2 and m.direction = 'outbound' and m.status in ('draft', 'approved', 'posted')
       order by m.created_at desc limit 300`,
-    [productId],
+    [productId, channel],
   );
   return rows.map((r) => r.text);
 }
 
-async function brandName(tx: Tx, productId: string, s: YtSettings) {
+export async function brandName(tx: Tx, productId: string, s: YtSettings) {
   if (s.brand_name?.trim()) return s.brand_name.trim();
   return (await tx.one<{ name: string }>("select name from products where id = $1", [productId])).name;
 }
@@ -73,19 +76,19 @@ export interface DraftCheck {
   ok: boolean;
 }
 
-export function checkDraft(text: string, previous: string[], name: string, rules: GuardrailRule[]): DraftCheck {
+export function checkDraft(text: string, previous: string[], name: string, rules: GuardrailRule[], channel: CommunityChannel = "youtube"): DraftCheck {
   const voice = checkVoice(text, previous, name);
-  const findings = checkText({ text, channel: "youtube", format: "helpful_comment" }, rules);
+  const findings = checkText({ text, channel, format: "helpful_comment" }, rules);
   const guardrailBlocks = outcomeOf(findings) === "block" ? findings.filter((f) => f.severity === "block").map((f) => f.message) : [];
   return { voice, guardrailBlocks, ok: voice.ok && guardrailBlocks.length === 0 };
 }
 
 /** Puts one outbound draft into the conversation and, when it passed every check, into the Approval Queue. */
-async function queueDraft(
+export async function queueDraft(
   tx: Tx,
   actor: Actor,
   productId: string,
-  conv: { id: string; thread_url: string | null; subject: string | null },
+  conv: { id: string; thread_url: string | null; subject: string | null; channel?: string },
   text: string,
   variant: "helpful" | "with_mention" | "reply" | "safety",
   check: DraftCheck,
@@ -100,12 +103,13 @@ async function queueDraft(
      JSON.stringify({ ...check.voice, guardrailBlocks: check.guardrailBlocks }), agentRunId],
   );
   if (!check.ok) return { messageId: m.id, queued: false };
+  const channel = (conv.channel ?? "youtube") as CommunityChannel;
   const payload = {
     contentVersionId: m.id,
     versionHash: createHash("sha256").update(text).digest("hex"),
-    channel: "youtube",
+    channel,
     format: variant === "reply" || variant === "safety" ? "reply" : "comment",
-    destination: { account: "YouTube channel of the team", method: "manual" as const, targetUrl: conv.thread_url },
+    destination: { account: `${CHANNEL_NAME[channel]} account of the team`, method: "manual" as const, targetUrl: conv.thread_url },
     text,
     utmUrl: null,
     media: [],
@@ -113,12 +117,12 @@ async function queueDraft(
   await tx.query(
     `insert into approval_items (workspace_id, product_id, item_type, conversation_message_id, subject_summary, payload_snapshot, payload_hash, destination, reason_in_queue)
      values ($1,$2,'reply',$3,$4,$5,$6,$7,$8)`,
-    [actor.workspaceId, productId, m.id, `YouTube · ${conv.subject ?? "comment"}`.slice(0, 200), canonicalJson(payload), approvalHash(payload), JSON.stringify(payload.destination), reasonInQueue],
+    [actor.workspaceId, productId, m.id, `${CHANNEL_NAME[channel]} · ${conv.subject ?? "comment"}`.slice(0, 200), canonicalJson(payload), approvalHash(payload), JSON.stringify(payload.destination), reasonInQueue],
   );
   return { messageId: m.id, queued: true };
 }
 
-async function startRun(tx: Tx, actor: Actor, productId: string, step: string) {
+export async function startRun(tx: Tx, actor: Actor, productId: string, step: string) {
   return tx.one<{ id: string }>(
     "insert into workflow_runs (workspace_id, product_id, workflow, input, status, current_step) values ($1,$2,'youtube_community',$3,'running',$4) returning id",
     [actor.workspaceId, productId, JSON.stringify({ step }), step],
@@ -254,8 +258,8 @@ export async function receiveReply(
   tx: Tx, actor: Actor, productId: string, conversationId: string, author: string | null, text: string,
   opts: { externalId?: string; occurredAt?: string } = {},
 ) {
-  const conv = await tx.one<{ id: string; thread_url: string | null; subject: string | null; external_ref: string | null }>(
-    "select id, thread_url, subject, external_ref from conversations where id = $1 and product_id = $2 and channel = 'youtube'",
+  const conv = await tx.one<{ id: string; thread_url: string | null; subject: string | null; external_ref: string | null; channel: CommunityChannel }>(
+    "select id, thread_url, subject, external_ref, channel from conversations where id = $1 and product_id = $2 and channel in ('youtube', 'threads', 'instagram')",
     [conversationId, productId],
   );
   const cls = classifyMessage(text);
@@ -275,12 +279,12 @@ export async function receiveReply(
   const s = await getYtSettings(tx, actor.workspaceId, productId);
   const name = await brandName(tx, productId, s);
   const rules = await productRules(tx, productId);
-  const previous = await previousTeamTexts(tx, productId);
+  const previous = await previousTeamTexts(tx, productId, conv.channel);
 
   if (high) {
     // No AI, no product, no ordinary conversation: a fixed caring note that a person may send or not.
     const note = safetyDraft(/[а-яё]/i.test(text) ? "ru" : "en");
-    const check = checkDraft(note, [], name, rules); // similarity to earlier safety notes is expected and fine
+    const check = checkDraft(note, [], name, rules, conv.channel); // similarity to earlier safety notes is expected and fine
     await queueDraft(tx, actor, productId, conv, note, "safety", { ...check, ok: check.guardrailBlocks.length === 0 }, null,
       `HIGH RISK: ${cls.reason} Decide yourself whether and how to answer.`);
     return { kind: cls.kind, risk: cls.risk, queued: true };
@@ -293,12 +297,15 @@ export async function receiveReply(
   const productMentioned = thread.some((m) => m.direction === "outbound" && new RegExp(`\\b${name}\\b`).test(m.text));
   const wf = await startRun(tx, actor, productId, "reply");
   const r = await runAgent(tx, {
-    actor, productId, workflowRunId: wf.id, step: "community_reply", task: "community_reply", promptKey: "community_reply.v2",
+    actor, productId, workflowRunId: wf.id, step: "community_reply", task: "community_reply",
+    promptKey: conv.channel === "youtube" ? "community_reply.v2" : "community_social_reply.v1",
     schema: communityReplySchema, sourceIds: [],
-    input: { productName: name, video: conv.subject, thread, message: text, messageKind: cls.kind, productAlreadyMentioned: productMentioned, highRisk: false },
+    input: conv.channel === "youtube"
+      ? { productName: name, video: conv.subject, thread, message: text, messageKind: cls.kind, productAlreadyMentioned: productMentioned, highRisk: false }
+      : { platform: CHANNEL_NAME[conv.channel], productName: name, post: conv.subject, thread, message: text, messageKind: cls.kind, productAlreadyMentioned: productMentioned, highRisk: false },
   });
   await tx.query("update workflow_runs set status = 'waiting_for_human' where id = $1", [wf.id]);
-  const check = checkDraft(r.output.text, previous, name, rules);
+  const check = checkDraft(r.output.text, previous, name, rules, conv.channel);
   if (r.output.handoff_to_human) check.voice.warnings.push("The drafter asks a person to decide whether to answer at all.");
   const q = await queueDraft(tx, actor, productId, conv, r.output.text, "reply", check, r.agentRunId,
     `${r.output.handoff_to_human ? "Drafter asks you to decide. " : ""}What they mean: ${r.output.understanding} (${cls.kind.replaceAll("_", " ")}, risk ${cls.risk}).`);
@@ -320,21 +327,22 @@ export async function approveDraft(tx: Tx, actor: Actor, productId: string, mess
   if (text !== m.text) {
     const s = await getYtSettings(tx, actor.workspaceId, productId);
     const name = await brandName(tx, productId, s);
-    const others = (await previousTeamTexts(tx, productId)).filter((t) => t !== m.text);
-    const check = checkDraft(text, m.variant === "safety" ? [] : others, name, await productRules(tx, productId));
+    const channel = (await tx.one<{ channel: CommunityChannel }>("select channel from conversations where id = $1", [m.conversation_id])).channel;
+    const others = (await previousTeamTexts(tx, productId, channel)).filter((t) => t !== m.text);
+    const check = checkDraft(text, m.variant === "safety" ? [] : others, name, await productRules(tx, productId), channel);
     const blocking = [...check.guardrailBlocks, ...check.voice.problems];
     if (blocking.length) return { ok: false as const, problems: blocking };
     await tx.query("update approval_items set state = 'invalidated' where conversation_message_id = $1 and state = 'pending'", [m.id]);
     await tx.query("update conversation_messages set text = $2, voice = $3, mentions_product = $4 where id = $1", [m.id, text, JSON.stringify({ ...check.voice, edited: true }), check.voice.mentionsProduct]);
     const conv = await tx.one<{ id: string; thread_url: string | null; subject: string | null }>("select id, thread_url, subject from conversations where id = $1", [m.conversation_id]);
     const payload = {
-      contentVersionId: m.id, versionHash: createHash("sha256").update(text).digest("hex"), channel: "youtube", format: "comment",
-      destination: { account: "YouTube channel of the team", method: "manual" as const, targetUrl: conv.thread_url }, text, utmUrl: null, media: [],
+      contentVersionId: m.id, versionHash: createHash("sha256").update(text).digest("hex"), channel, format: "comment",
+      destination: { account: `${CHANNEL_NAME[channel]} account of the team`, method: "manual" as const, targetUrl: conv.thread_url }, text, utmUrl: null, media: [],
     };
     approvalId = (await tx.one<{ id: string }>(
       `insert into approval_items (workspace_id, product_id, item_type, conversation_message_id, subject_summary, payload_snapshot, payload_hash, destination, reason_in_queue)
        values ($1,$2,'reply',$3,$4,$5,$6,$7,'Edited by you in the thread view.') returning id`,
-      [actor.workspaceId, productId, m.id, `YouTube · ${conv.subject ?? "comment"}`.slice(0, 200), canonicalJson(payload), approvalHash(payload), JSON.stringify(payload.destination)],
+      [actor.workspaceId, productId, m.id, `${CHANNEL_NAME[channel]} · ${conv.subject ?? "comment"}`.slice(0, 200), canonicalJson(payload), approvalHash(payload), JSON.stringify(payload.destination)],
     )).id;
   } else {
     approvalId = (await tx.one<{ id: string }>("select id from approval_items where conversation_message_id = $1 and state = 'pending' order by created_at desc limit 1", [m.id])).id;
@@ -350,6 +358,7 @@ export async function approveDraft(tx: Tx, actor: Actor, productId: string, mess
     for (const sib of siblings) await decideApproval(tx, actor, productId, sib.id, "rejected", "Another variant was chosen");
   }
   await tx.query("update yt_videos set status = 'approved' where conversation_id = $1 and status in ('drafted', 'reviewed')", [m.conversation_id]);
+  await tx.query("update social_posts set status = 'approved' where conversation_id = $1 and status in ('drafted', 'reviewed')", [m.conversation_id]);
   return { ok: true as const, problems: [] };
 }
 

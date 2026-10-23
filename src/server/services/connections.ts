@@ -5,7 +5,7 @@ import { encryptSecret, lastFour } from "@/server/security/crypto";
 export const CHANNEL_REGISTRY: Array<{ id: string; name: string; status: "available" | "planned"; adapter: "export" | "official_api"; capabilities: string; note?: string }> = [
   { id: "instagram", name: "Instagram", status: "available", adapter: "export", capabilities: "Export for manual posting; metrics by CSV or manual entry" },
   { id: "facebook", name: "Facebook Page", status: "available", adapter: "export", capabilities: "Export for manual posting; metrics by CSV or manual entry" },
-  { id: "threads", name: "Threads", status: "available", adapter: "export", capabilities: "Draft + export for manual posting", note: "Official API publishing after approval is planned for v0.2." },
+  { id: "threads", name: "Threads", status: "available", adapter: "official_api", capabilities: "Posts and replies published after your approval, replies and insights read back (official API, Meta sign-in)" },
   { id: "website", name: "Website", status: "available", adapter: "export", capabilities: "Landing pages for tracking links; article export" },
   { id: "meta_ads", name: "Meta Ads", status: "available", adapter: "export", capabilities: "Report import by CSV", note: "Read-only API sync in v0.2; changes with approval in v0.4." },
   { id: "google_ads", name: "Google Ads", status: "available", adapter: "export", capabilities: "Report import by CSV", note: "Read-only API sync in v0.2; changes with approval in v0.4." },

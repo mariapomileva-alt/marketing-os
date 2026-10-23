@@ -5,6 +5,7 @@ import { approvedQueueItem, buildApprovalPayload, getItem, reviewsFor, versionsO
 import {
   backToDraftAction, createUtmAction, markPublishedAction, runReviewsAction, saveEditAction, scheduleAction, submitForApprovalAction, updateExperimentAction,
 } from "@/app/actions/content";
+import { publishThreadsPostAction } from "@/app/actions/threads";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -139,6 +140,11 @@ export default async function ItemPage({ params }: PageProps<"/p/[product]/studi
                   <ActionForm action={scheduleAction.bind(null, slug, itemId)} submitLabel={item.status === "scheduled" ? "Move" : "Place on calendar"} className="flex flex-col gap-2">
                     <Field label="Date and time" htmlFor="scheduled_for"><Input id="scheduled_for" name="scheduled_for" type="datetime-local" required defaultValue={item.scheduled_for ? item.scheduled_for.slice(0, 16) : ""} /></Field>
                   </ActionForm>
+                  {item.channel === "threads" ? (
+                    <ActionForm action={publishThreadsPostAction.bind(null, slug, itemId)} submitLabel="Publish on Threads now" pendingLabel="Publishing…" className="flex flex-col gap-2 border-b border-line pb-3">
+                      <p className="text-[13px] text-muted">Publishes this exact approved version from the connected Threads account. Placed on the calendar, it goes out by itself at that time.</p>
+                    </ActionForm>
+                  ) : null}
                   <Button asChild variant="primary"><a href={`/p/${slug}/studio/${itemId}/export`}>Download export for {STUDIO_CHANNELS[item.channel] ?? item.channel}</a></Button>
                   <ActionForm action={markPublishedAction.bind(null, slug, itemId)} submitLabel="Mark as published" className="flex flex-col gap-2 border-t border-line pt-3">
                     <p className="text-[13px] text-muted">After you post it, paste the link to the live post so metrics can be matched.</p>
