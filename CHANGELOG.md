@@ -1,5 +1,8 @@
 # Changelog
 
+## Sign in with a password
+- Login page: email + password (the email link stays as an option). The first password comes from `OWNER_PASSWORD` for an address in `ALLOWED_EMAILS`; Supabase stores only its hash.
+
 ## YouTube: approve and post, live conversations
 - Connect the product's YouTube channel with Google sign-in (Connections → Connect YouTube channel). The token is encrypted server-side; Disconnect revokes it at Google.
 - With `YOUTUBE_PUBLISHING_ENABLED=true` and a connected channel, **Approve and post** publishes the exact approved text as the channel. Limits: daily cap, 10 min gap, 08–23 Riga. Every attempt is in outbound_actions; a YouTube error pauses the channel instead of retrying. "Post now" retries an approved draft later.

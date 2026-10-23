@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { authMode, getSessionUser } from "@/server/auth/session";
 import { missingHostedSettings } from "@/server/env";
-import { devSignInAction, magicLinkAction } from "@/app/actions/auth";
+import { devSignInAction, magicLinkAction, passwordSignInAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
@@ -47,11 +47,24 @@ export default async function LoginPage() {
           </form>
         </div>
       ) : (
-        <ActionForm action={magicLinkAction} submitLabel="Send sign-in link" pendingLabel="Sending…">
-          <Field label="Email" htmlFor="email">
-            <Input id="email" name="email" type="email" autoComplete="email" required />
-          </Field>
-        </ActionForm>
+        <div className="flex flex-col gap-4">
+          <ActionForm action={passwordSignInAction} submitLabel="Sign in" pendingLabel="Signing in…">
+            <Field label="Email" htmlFor="email">
+              <Input id="email" name="email" type="email" autoComplete="email" required />
+            </Field>
+            <Field label="Password" htmlFor="password">
+              <Input id="password" name="password" type="password" autoComplete="current-password" required />
+            </Field>
+          </ActionForm>
+          <details className="text-[13px] text-muted">
+            <summary className="cursor-pointer">Sign in with an email link instead</summary>
+            <ActionForm action={magicLinkAction} submitLabel="Send sign-in link" submitVariant="secondary" pendingLabel="Sending…" className="mt-3 flex flex-col gap-3">
+              <Field label="Email" htmlFor="email-link">
+                <Input id="email-link" name="email" type="email" autoComplete="email" required />
+              </Field>
+            </ActionForm>
+          </details>
+        </div>
       )}
     </main>
   );

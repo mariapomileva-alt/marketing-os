@@ -5,11 +5,12 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getPool } from "@/server/db/client";
-import { supabaseAnonKey, supabaseUrl } from "@/server/env";
+import { createClient } from "@supabase/supabase-js";
+import { supabaseAnonKey, supabaseServiceKey, supabaseUrl } from "@/server/env";
 
 /**
  * Authentication. Two modes:
- *  - "supabase": Supabase Auth (email magic link). Used in every deployed environment.
+ *  - "supabase": Supabase Auth (email + password, or email magic link). Used in every deployed environment.
  *  - "dev": a single local owner without email, for local development and tests only.
  *    Refused when NODE_ENV=production. The UI shows a visible "Development sign-in" banner.
  */
@@ -111,6 +112,35 @@ export async function sendMagicLink(email: string, redirectTo: string): Promise<
   const listed = allowedEmails()?.includes(email.trim().toLowerCase()) ?? false;
   const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo, shouldCreateUser: listed } });
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/**
+ * Email + password sign-in. The first password comes from OWNER_PASSWORD (set by the owner in the hosting settings,
+ * at least 12 characters): when an allowed address signs in with exactly that password, the server sets it as the
+ * account's Supabase password (creating the account if needed) and signs in. Supabase stores only a hash.
+ */
+export async function passwordSignIn(emailRaw: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  const email = emailRaw.trim().toLowerCase();
+  const allowed = allowedEmails();
+  if (allowed && !allowed.includes(email)) return { ok: false, error: "Wrong email or password." };
+  const supabase = await supabaseClient();
+  const first = await supabase.auth.signInWithPassword({ email, password });
+  if (!first.error) return { ok: true };
+
+  const owner = process.env.OWNER_PASSWORD ?? "";
+  const matches = owner.length >= 12 && password.length === owner.length && timingSafeEqual(Buffer.from(password), Buffer.from(owner));
+  const serviceKey = supabaseServiceKey();
+  const url = supabaseUrl();
+  if (!matches || !allowed || !serviceKey || !url) return { ok: false, error: "Wrong email or password." };
+
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const existing = await getPool().query<{ id: string }>("select id from auth.users where lower(email) = $1 limit 1", [email]);
+  const res = existing.rows[0]
+    ? await admin.auth.admin.updateUserById(existing.rows[0].id, { password, email_confirm: true })
+    : await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  if (res.error) return { ok: false, error: `Could not set the password: ${res.error.message}` };
+  const second = await supabase.auth.signInWithPassword({ email, password });
+  return second.error ? { ok: false, error: second.error.message } : { ok: true };
 }
 
 export async function exchangeCode(code: string): Promise<boolean> {
