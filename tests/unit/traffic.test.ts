@@ -35,3 +35,24 @@ describe("traffic source", () => {
     expect(appStoreCampaignUrl("https://apps.apple.com/app/id6811918141", "123456", "youtube_channel")).toBe("https://apps.apple.com/app/id6811918141?pt=123456&ct=youtube_channel&mt=8");
   });
 });
+
+describe("AI assistants and app referrers", () => {
+  const src = (i: Parameters<typeof classifySource>[0]) => classifySource(i).source;
+  it("recognises AI assistants by referrer and by tag", () => {
+    expect(src({ referrer: "https://chatgpt.com/" })).toBe("chatgpt");
+    expect(src({ utmSource: "chatgpt.com" })).toBe("chatgpt");
+    expect(src({ referrer: "https://www.perplexity.ai/search?q=x" })).toBe("perplexity");
+    expect(src({ referrer: "https://gemini.google.com/app" })).toBe("gemini");
+    expect(src({ referrer: "https://www.google.com/" })).toBe("google");
+    expect(src({ referrer: "https://claude.ai/chat/1" })).toBe("claude");
+    expect(src({ referrer: "https://copilot.microsoft.com/" })).toBe("copilot");
+    expect(src({ referrer: "https://chat.deepseek.com/" })).toBe("deepseek");
+  });
+  it("recognises android app referrers and in-app browsers", () => {
+    expect(src({ referrer: "android-app://com.whatsapp/" })).toBe("whatsapp");
+    expect(src({ referrer: "android-app://org.telegram.messenger/" })).toBe("telegram");
+    expect(src({ referrer: "android-app://com.google.android.gm/" })).toBe("email");
+    expect(src({ userAgent: "Mozilla/5.0 (iPhone) [LinkedInApp]" })).toBe("linkedin");
+    expect(src({ referrer: "https://duckduckgo.com/" })).toBe("duckduckgo");
+  });
+});

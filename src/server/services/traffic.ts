@@ -70,3 +70,58 @@ export async function topYoutubeComments(tx: Tx, productId: string) {
     [productId],
   );
 }
+
+const SEARCH = ["google", "bing", "duckduckgo", "yandex"];
+
+export interface PageRow {
+  path: string;
+  visitors: number;
+  entries: number;
+  views: number;
+  ai: number;
+  search: number;
+  app_store_clicks: number;
+  sources: Array<{ source: string; entries: number }>;
+}
+
+/**
+ * Pages (articles first of all) by the visits they bring in: a visit "enters" through its first page, and the App Store
+ * clicks of that visit count for the page it entered through. Older events without a landing page count by their own page.
+ */
+export async function pagePerformance(tx: Tx, productId: string, from: Date, aiSources: readonly string[]): Promise<PageRow[]> {
+  const base = `select coalesce(landing_path, path) lp, path, kind, source, visitor_hash, occurred_at from site_events where product_id = $1 and occurred_at >= $2`;
+  const rows = await tx.query<Omit<PageRow, "sources" | "views">>(
+    `with e as (${base})
+     select lp as path,
+            count(distinct visitor_hash || to_char(occurred_at, 'YYYY-MM-DD')) filter (where kind = 'pageview' and path = lp)::int visitors,
+            count(*) filter (where kind = 'pageview' and path = lp)::int entries,
+            count(*) filter (where kind = 'pageview' and path = lp and source = any($3))::int ai,
+            count(*) filter (where kind = 'pageview' and path = lp and source = any($4))::int search,
+            count(*) filter (where kind = 'app_store_click')::int app_store_clicks
+       from e group by lp having count(*) filter (where kind = 'pageview' and path = lp) > 0
+      order by entries desc limit 40`,
+    [productId, from.toISOString(), [...aiSources], SEARCH],
+  );
+  const views = await tx.query<{ path: string; views: number }>(
+    "select path, count(*)::int views from site_events where product_id = $1 and occurred_at >= $2 and kind = 'pageview' group by path",
+    [productId, from.toISOString()],
+  );
+  const src = await tx.query<{ lp: string; source: string; entries: number }>(
+    `with e as (${base}) select lp, source, count(*)::int entries from e where kind = 'pageview' and path = lp group by lp, source order by entries desc`,
+    [productId, from.toISOString()],
+  );
+  const v = new Map(views.map((x) => [x.path, x.views]));
+  return rows.map((r) => ({ ...r, views: v.get(r.path) ?? r.entries, sources: src.filter((s) => s.lp === r.path).slice(0, 4).map(({ source, entries }) => ({ source, entries })) }));
+}
+
+/** Visits that arrived with no referrer and no tag: where they land, on what device, from which country, at what hour. */
+export async function directBreakdown(tx: Tx, productId: string, from: Date) {
+  const p = [productId, from.toISOString()];
+  const where = `product_id = $1 and occurred_at >= $2 and kind = 'pageview' and source = 'direct' and path = coalesce(landing_path, path)`;
+  const q = (sql: string) => tx.query<{ key: string; n: number }>(sql, p);
+  const pages = await q(`select path key, count(*)::int n from site_events where ${where} group by 1 order by 2 desc limit 8`);
+  const devices = await q(`select coalesce(device, 'unknown') key, count(*)::int n from site_events where ${where} group by 1 order by 2 desc`);
+  const countries = await q(`select coalesce(country, '—') key, count(*)::int n from site_events where ${where} group by 1 order by 2 desc limit 8`);
+  const hours = await q(`select extract(hour from occurred_at at time zone 'Europe/Riga')::int::text key, count(*)::int n from site_events where ${where} group by 1 order by 1::int`);
+  return { pages, devices, countries, hours };
+}

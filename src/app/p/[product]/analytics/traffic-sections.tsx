@@ -3,9 +3,9 @@ import { CopyButton } from "@/components/content/copy-button";
 import { ActionForm } from "@/components/ui/action-form";
 import { Field, Input } from "@/components/ui/form";
 import { EmptyState, Section, Table } from "@/components/ui/layout";
-import { appStoreCampaignUrl, LINK_PLACEMENTS, SOURCE_LABEL, taggedUrl, type Source } from "@/domain/traffic";
+import { appStoreCampaignUrl, isAiSource, LINK_PLACEMENTS, SOURCE_LABEL, taggedUrl, type Source } from "@/domain/traffic";
 import { formatDateTime, formatNumber, formatPercent } from "@/lib/format";
-import type { SiteSettings, SourceRow } from "@/server/services/traffic";
+import type { PageRow, SiteSettings, SourceRow } from "@/server/services/traffic";
 
 type Traffic = { rows: SourceRow[]; campaigns: Array<{ campaign: string; source: string; visits: number; app_store_clicks: number }>; first: string | null };
 
@@ -24,6 +24,7 @@ export function WebsiteTraffic({ traffic, period }: { traffic: Traffic; period: 
             <span className="num font-semibold">{formatNumber(total)}</span> visits, <span className="num font-semibold">{formatNumber(clicks)}</span> App Store clicks
             {total ? <span className="text-muted"> ({formatPercent(clicks / total)} of visits)</span> : null}
           </p>
+          <AiSummary rows={traffic.rows} total={total} />
           <Table>
             <thead><tr><th>Source</th><th className="w-[38%]" aria-label="Share of visits" /><th className="text-right">Visits</th><th className="text-right">Visitors</th><th className="text-right">App Store clicks</th><th className="text-right">Click rate</th></tr></thead>
             <tbody>
@@ -154,6 +155,103 @@ Do not change it, do not load it twice, keep it on all pages including 404. Do n
           ) : <p className="text-muted">Add the App Store link and provider token above. With the token, the counter also tags the site&apos;s App Store button, so Apple shows installs per source (web_instagram, web_youtube…).</p>}
         </li>
       </ol>
+    </Section>
+  );
+}
+
+function AiSummary({ rows, total }: { rows: SourceRow[]; total: number }) {
+  const ai = rows.filter((r) => isAiSource(r.source));
+  const visits = ai.reduce((n, r) => n + r.visits, 0);
+  const clicks = ai.reduce((n, r) => n + r.app_store_clicks, 0);
+  return (
+    <div className="mb-3 rounded-[var(--radius-panel)] border border-line bg-surface px-4 py-3 text-[13.5px]">
+      <p>
+        <span className="font-medium">From AI assistants:</span> <span className="num font-semibold">{formatNumber(visits)}</span> visits
+        {total ? <span className="text-muted"> ({formatPercent(visits / total)} of all)</span> : null}, <span className="num">{formatNumber(clicks)}</span> App Store clicks
+        {ai.length ? <span className="text-muted"> · {ai.map((r) => `${SOURCE_LABEL[r.source]} ${r.visits}`).join(", ")}</span> : null}
+      </p>
+      <p className="mt-1 text-[12px] text-muted">
+        Counted when ChatGPT, Perplexity, Gemini, Claude, Copilot, DeepSeek or Grok link to the site (by their referrer or the utm_source=chatgpt.com tag ChatGPT adds). Mentions without a click, and some app links that hide where they came from, cannot be seen by any counter.
+      </p>
+    </div>
+  );
+}
+
+const isArticle = (p: string) => p !== "/" && !/^\/(privacy|terms|support|contact|404)/.test(p);
+
+export function PageTraffic({ pages, period }: { pages: PageRow[]; period: string }) {
+  const articles = pages.filter((p) => isArticle(p.path));
+  const home = pages.find((p) => p.path === "/");
+  return (
+    <Section
+      title="Articles: who they bring in"
+      description={`Each visit counts for the page it started on, ${period}. “From AI” is ChatGPT and other assistants, “From search” is Google, Bing, DuckDuckGo and Yandex. App Store clicks count for the page where the visit began, even if the button was pressed on another page.`}
+    >
+      {articles.length ? (
+        <Table>
+          <thead><tr><th>Page</th><th className="text-right">Visits started here</th><th className="text-right">From AI</th><th className="text-right">From search</th><th className="text-right">App Store clicks</th><th>Top sources</th></tr></thead>
+          <tbody>
+            {articles.map((p) => (
+              <tr key={p.path}>
+                <td className="max-w-[320px] truncate" title={p.path}>{p.path}</td>
+                <td className="num text-right">{formatNumber(p.entries)}</td>
+                <td className={`num text-right ${p.ai ? "font-semibold" : "text-faint"}`}>{p.ai ? formatNumber(p.ai) : "—"}</td>
+                <td className="num text-right">{p.search ? formatNumber(p.search) : "—"}</td>
+                <td className="num text-right">{formatNumber(p.app_store_clicks)}</td>
+                <td className="text-[12.5px] text-muted">{p.sources.map((x) => `${SOURCE_LABEL[x.source as Source] ?? x.source} ${x.entries}`).join(", ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      ) : (
+        <EmptyState title="No visits have started on an article yet">Visits that begin on the home page are not shown here.</EmptyState>
+      )}
+      {home ? <p className="mt-2 text-[12.5px] text-muted">Home page: {formatNumber(home.entries)} visits started there, {formatNumber(home.app_store_clicks)} App Store clicks.</p> : null}
+    </Section>
+  );
+}
+
+type Bucket = Array<{ key: string; n: number }>;
+
+export function DirectVisits({ direct, total, domain }: { direct: { pages: Bucket; devices: Bucket; countries: Bucket; hours: Bucket }; total: number; domain: string | null }) {
+  const n = direct.devices.reduce((a, b) => a + b.n, 0);
+  const list = (title: string, b: Bucket, fmt: (k: string) => string = (k) => k) => (
+    <div className="min-w-0">
+      <p className="mb-1 text-[12.5px] font-medium">{title}</p>
+      {b.length ? (
+        <ul className="flex flex-col gap-0.5 text-[13px]">
+          {b.map((x) => <li key={x.key} className="flex justify-between gap-3"><span className="truncate" title={x.key}>{fmt(x.key)}</span><span className="num text-muted">{x.n}</span></li>)}
+        </ul>
+      ) : <p className="text-[13px] text-faint">—</p>}
+    </div>
+  );
+  const peak = [...direct.hours].sort((a, b) => b.n - a.n).slice(0, 3).map((h) => `${h.key}:00`).join(", ");
+  return (
+    <Section
+      title="Direct / unknown: what we can tell"
+      description="These visits arrived without a referrer and without a tag. The browser simply did not say where the person came from, so no counter can name the source; but where they landed and on what device usually gives it away."
+    >
+      {n ? (
+        <>
+          <p className="mb-3 text-[13.5px]"><span className="num font-semibold">{formatNumber(n)}</span> direct visits{total ? <span className="text-muted"> ({formatPercent(n / total)} of all)</span> : null}{peak ? <span className="text-muted"> · busiest hours (Riga): {peak}</span> : null}</p>
+          <div className="grid gap-4 rounded-[var(--radius-panel)] border border-line bg-surface p-4 md:grid-cols-3">
+            {list("Landed on", direct.pages)}
+            {list("Device", direct.devices)}
+            {list("Country", direct.countries)}
+          </div>
+        </>
+      ) : <EmptyState title="No direct visits in this period" />}
+      <details className="mt-3 text-[13px]">
+        <summary className="cursor-pointer text-muted">Why visits end up here, and how to shrink this group</summary>
+        <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-muted">
+          <li>Links opened from messengers and apps: WhatsApp, iMessage, Telegram, Notes, Slack, email apps, and the ChatGPT or Perplexity mobile apps when they open the link in Safari. They send no referrer.</li>
+          <li>Instagram and TikTok links opened outside their in-app browser (“Open in Safari”), and the link in a Reel or story that someone copied and pasted.</li>
+          <li>People who typed backapp.live or used a bookmark, someone who saw the name in a video or an App Store page.</li>
+          <li>Privacy settings: Safari private mode, Brave, Firefox strict mode and some VPNs strip the referrer.</li>
+          <li>You and your team. Open {domain ? <a className="underline underline-offset-2" href={`https://${domain}/?mos_ignore=1`} target="_blank" rel="noreferrer noopener">{domain}/?mos_ignore=1</a> : "the site with ?mos_ignore=1"} once on each of your phones and computers, and those browsers stop being counted (?mos_ignore=0 undoes it).</li>
+          <li>What helps most: use the tagged links below everywhere you put a link (bio, stories, video descriptions, Threads). A landing on an article page usually means search or an AI assistant; a landing on the home page usually means a typed address or a bio link without a tag.</li>
+        </ul>
+      </details>
     </Section>
   );
 }

@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/form";
 import { formatNumber, formatPercent } from "@/lib/format";
 import { nowMs } from "@/lib/time";
-import { getSiteSettings, topYoutubeComments, trafficBySource, youtubeCommentTotals } from "@/server/services/traffic";
+import { directBreakdown, getSiteSettings, pagePerformance, topYoutubeComments, trafficBySource, youtubeCommentTotals } from "@/server/services/traffic";
+import { AI_SOURCES } from "@/domain/traffic";
 import { appUrl } from "@/server/notify/telegram";
-import { CounterSetup, WebsiteTraffic, YoutubeCommentStats } from "./traffic-sections";
+import { CounterSetup, DirectVisits, PageTraffic, WebsiteTraffic, YoutubeCommentStats } from "./traffic-sections";
 
 export const metadata = { title: "Analytics" };
 
@@ -42,6 +43,8 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps<
       products: await productSummaries(tx, ctx.workspaceId, from, to),
       site: await getSiteSettings(tx, ctx.workspaceId, product.id),
       traffic: await trafficBySource(tx, product.id, from),
+      pages: await pagePerformance(tx, product.id, from, AI_SOURCES),
+      direct: await directBreakdown(tx, product.id, from),
       ytTotals: await youtubeCommentTotals(tx, product.id, from),
       ytTop: await topYoutubeComments(tx, product.id),
       demoCount: (await tx.one<{ n: number }>("select count(*)::int n from publications where product_id = $1 and is_demo", [product.id])).n,
@@ -98,6 +101,8 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps<
       </Section>
 
       <WebsiteTraffic traffic={d.traffic} period={period} />
+      <PageTraffic pages={d.pages} period={period} />
+      <DirectVisits direct={d.direct} total={d.traffic.rows.reduce((n, r) => n + r.visits, 0)} domain={d.site.domain} />
       <YoutubeCommentStats totals={d.ytTotals} top={d.ytTop} />
 
       {d.rows.length ? (

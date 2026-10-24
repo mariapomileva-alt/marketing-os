@@ -3,28 +3,51 @@
  * otherwise the in-app browser's user agent (Instagram, Threads and Facebook often send no referrer, but their
  * in-app browsers name themselves). Anything else with no referrer is "direct".
  */
-export const SOURCES = ["instagram", "threads", "youtube", "facebook", "tiktok", "x", "telegram", "reddit", "google", "bing", "app_store", "email", "other", "direct"] as const;
+export const AI_SOURCES = ["chatgpt", "perplexity", "gemini", "claude", "copilot", "deepseek", "grok", "ai_other"] as const;
+export const SOURCES = [
+  "instagram", "threads", "youtube", "facebook", "tiktok", "x", "telegram", "whatsapp", "linkedin", "pinterest", "snapchat", "reddit",
+  "google", "bing", "duckduckgo", "yandex", ...AI_SOURCES, "app_store", "email", "other", "direct",
+] as const;
+export const isAiSource = (s: string) => (AI_SOURCES as readonly string[]).includes(s);
 export type Source = (typeof SOURCES)[number];
 
 export const SOURCE_LABEL: Record<Source, string> = {
   instagram: "Instagram", threads: "Threads", youtube: "YouTube", facebook: "Facebook", tiktok: "TikTok", x: "X / Twitter",
-  telegram: "Telegram", reddit: "Reddit", google: "Google search", bing: "Bing", app_store: "App Store", email: "Email", other: "Other sites", direct: "Direct / unknown",
+  telegram: "Telegram", whatsapp: "WhatsApp", linkedin: "LinkedIn", pinterest: "Pinterest", snapchat: "Snapchat", reddit: "Reddit",
+  google: "Google search", bing: "Bing", duckduckgo: "DuckDuckGo", yandex: "Yandex",
+  chatgpt: "ChatGPT", perplexity: "Perplexity", gemini: "Gemini", claude: "Claude", copilot: "Microsoft Copilot", deepseek: "DeepSeek", grok: "Grok", ai_other: "Other AI assistants",
+  app_store: "App Store", email: "Email", other: "Other sites", direct: "Direct / unknown",
 };
 
 const UTM_ALIASES: Array<[RegExp, Source]> = [
   [/^(ig|insta|instagram)/, "instagram"], [/^threads/, "threads"], [/^(yt|youtube)/, "youtube"], [/^(fb|facebook|meta)/, "facebook"],
   [/^tiktok/, "tiktok"], [/^(x|twitter)$/, "x"], [/^(tg|telegram)/, "telegram"], [/^reddit/, "reddit"], [/^google/, "google"],
-  [/^bing/, "bing"], [/^(email|newsletter|mail)/, "email"],
+  [/^bing/, "bing"], [/^(email|newsletter|mail)/, "email"], [/^(wa|whatsapp)/, "whatsapp"], [/^linkedin/, "linkedin"], [/^pinterest/, "pinterest"],
+  // AI assistants tag the links they show: ChatGPT adds utm_source=chatgpt.com, others do similar.
+  [/^(chatgpt|openai)/, "chatgpt"], [/^perplexity/, "perplexity"], [/^gemini/, "gemini"], [/^claude/, "claude"], [/^copilot/, "copilot"],
+  [/^deepseek/, "deepseek"], [/^grok/, "grok"], [/^(you\.com|phind|mistral|meta\.ai)/, "ai_other"],
 ];
 
 const HOSTS: Array<[RegExp, Source]> = [
+  [/^com\.google\.android\.gm$/, "email"], // Gmail on Android (android-app:// referrer)
   [/(^|\.)instagram\.com$/, "instagram"], [/(^|\.)threads\.(net|com)$/, "threads"], [/(^|\.)(youtube\.com|youtu\.be)$/, "youtube"],
   [/(^|\.)(facebook\.com|fb\.com|fb\.me)$/, "facebook"], [/(^|\.)tiktok\.com$/, "tiktok"], [/(^|\.)(t\.co|x\.com|twitter\.com)$/, "x"],
-  [/(^|\.)(t\.me|telegram\.org|web\.telegram\.org)$/, "telegram"], [/(^|\.)reddit\.com$/, "reddit"], [/(^|\.)google\.[a-z.]+$/, "google"],
-  [/(^|\.)bing\.com$/, "bing"], [/(^|\.)apps\.apple\.com$/, "app_store"], [/(mail\.|outlook\.|gmail)/, "email"],
+  [/(^|\.)(t\.me|telegram\.org|web\.telegram\.org)$/, "telegram"], [/(^|\.)reddit\.com$/, "reddit"],
+  [/^gemini\.google\.com$|^bard\.google\.com$/, "gemini"], [/(^|\.)google\.[a-z.]+$|^com\.google\.android\.googlequicksearchbox$/, "google"],
+  [/(^|\.)(chatgpt\.com|chat\.openai\.com|openai\.com)$/, "chatgpt"], [/(^|\.)perplexity\.ai$/, "perplexity"],
+  [/(^|\.)claude\.ai$/, "claude"], [/^copilot\.microsoft\.com$/, "copilot"], [/(^|\.)deepseek\.com$/, "deepseek"], [/(^|\.)(grok\.com|x\.ai)$/, "grok"],
+  [/(^|\.)(you\.com|phind\.com|chat\.mistral\.ai|meta\.ai|poe\.com|kagi\.com)$/, "ai_other"],
+  [/(^|\.)bing\.com$/, "bing"], [/(^|\.)duckduckgo\.com$/, "duckduckgo"], [/(^|\.)(yandex\.[a-z]+|ya\.ru)$/, "yandex"],
+  [/(^|\.)(linkedin\.com|lnkd\.in)$/, "linkedin"], [/(^|\.)pinterest\.[a-z.]+$|^pin\.it$/, "pinterest"], [/(^|\.)snapchat\.com$/, "snapchat"],
+  [/(^|\.)(whatsapp\.com|wa\.me)$|^com\.whatsapp$/, "whatsapp"], [/^org\.telegram\.messenger$/, "telegram"],
+  [/(^|\.)apps\.apple\.com$/, "app_store"], [/(mail\.|outlook\.|gmail)/, "email"],
 ];
 
-const AGENTS: Array<[RegExp, Source]> = [[/Barcelona/i, "threads"], [/Instagram/i, "instagram"], [/FBAN|FBAV|FB_IAB/i, "facebook"], [/musical_ly|BytedanceWebview|TikTok/i, "tiktok"]];
+// In-app browsers that send no referrer but name themselves in the user agent.
+const AGENTS: Array<[RegExp, Source]> = [
+  [/Barcelona/i, "threads"], [/Instagram/i, "instagram"], [/FBAN|FBAV|FB_IAB/i, "facebook"], [/musical_ly|BytedanceWebview|TikTok/i, "tiktok"],
+  [/LinkedInApp/i, "linkedin"], [/Pinterest/i, "pinterest"], [/Snapchat/i, "snapchat"], [/Twitter/i, "x"], [/Telegram/i, "telegram"], [/WhatsApp/i, "whatsapp"],
+];
 
 export function classifySource(input: { utmSource?: string | null; referrer?: string | null; userAgent?: string | null; ownHost?: string | null }): { source: Source; referrerHost: string | null } {
   let referrerHost: string | null = null;
