@@ -3,8 +3,9 @@ import { timingSafeEqual } from "node:crypto";
 import { withContext } from "@/server/db/client";
 import { createBrief } from "@/server/services/brief";
 import { briefVoice } from "@/server/services/brief-voice";
+import { syncCalendarLive } from "@/server/services/calendar-live";
 
-/** Every morning (Vercel Cron, see vercel.json), after the YouTube sync: the owner's brief for each active product. Read-only. */
+/** Every morning (Vercel Cron, see vercel.json), after the YouTube sync: calendar sync, then the owner's brief for each active product. Read-only. */
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
@@ -23,13 +24,15 @@ export async function GET(request: NextRequest) {
   );
   const out = [];
   for (const p of products) {
+    // The calendar first: it mirrors what went out on the platforms, read-only.
+    const calendar = await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "calendar sync" }, (tx) => syncCalendarLive(tx, p.workspace_id, p.id)).catch((e) => ({ error: (e as Error).message.slice(0, 200) }));
     try {
       const r = await withContext({ userId: p.owner_id, role: "service", actorType: "ai", reason: "morning brief" }, async (tx) =>
         createBrief(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.id, await briefVoice(p.workspace_id)),
       );
-      out.push({ product: p.slug, id: r.id });
+      out.push({ product: p.slug, id: r.id, calendar });
     } catch (e) {
-      out.push({ product: p.slug, error: (e as Error).message.slice(0, 300) });
+      out.push({ product: p.slug, error: (e as Error).message.slice(0, 300), calendar });
     }
   }
   return NextResponse.json({ briefs: out });

@@ -210,3 +210,25 @@ export async function scheduleVideo(token: string, videoId: string, publishAt: D
       : { privacyStatus: "public", selfDeclaredMadeForKids: false, containsSyntheticMedia: true },
   });
 }
+
+export interface OwnVideo { id: string; title: string; publishedAt: string | null; publishAt: string | null; privacy: string; thumbnail: string | null; seconds: number | null }
+
+/** Our channel's latest uploads with their privacy and scheduled time (youtube.force-ssl covers reading our own videos). */
+export async function myUploads(token: string, max = 50): Promise<OwnVideo[]> {
+  const ch = await call<{ items?: Array<{ contentDetails?: { relatedPlaylists?: { uploads?: string } } }> }>("GET", "channels?part=contentDetails&mine=true", token);
+  const uploads = ch.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploads) return [];
+  const pl = await call<{ items?: Array<{ contentDetails?: { videoId?: string } }> }>("GET", `playlistItems?part=contentDetails&maxResults=${max}&playlistId=${uploads}`, token);
+  const ids = (pl.items ?? []).map((i) => i.contentDetails?.videoId).filter((x): x is string => Boolean(x));
+  if (!ids.length) return [];
+  const v = await call<{ items?: Array<{ id: string; snippet?: { title?: string; publishedAt?: string; thumbnails?: Record<string, { url?: string }> }; status?: { privacyStatus?: string; publishAt?: string }; contentDetails?: { duration?: string } }> }>(
+    "GET", `videos?part=snippet,status,contentDetails&id=${ids.join(",")}`, token);
+  const secs = (d?: string) => {
+    const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(d ?? "");
+    return m ? Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0) : null;
+  };
+  return (v.items ?? []).map((x) => ({
+    id: x.id, title: x.snippet?.title ?? "", publishedAt: x.snippet?.publishedAt ?? null, publishAt: x.status?.publishAt ?? null,
+    privacy: x.status?.privacyStatus ?? "unknown", thumbnail: x.snippet?.thumbnails?.medium?.url ?? x.snippet?.thumbnails?.default?.url ?? null, seconds: secs(x.contentDetails?.duration),
+  }));
+}

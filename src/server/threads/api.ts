@@ -115,3 +115,16 @@ export async function threadsInsights(token: string, mediaId: string, f: Fetch =
   };
   return { views: get("views"), likes: get("likes"), replies: get("replies"), reposts: get("reposts"), quotes: get("quotes") };
 }
+
+export interface ThreadsOwnPost { id: string; text: string; permalink: string | null; timestamp: string | null; media_type: string | null; thumbnail_url: string | null; is_reply: boolean }
+
+/** Our own recent Threads posts (threads_basic), for the calendar. */
+export async function threadsMyPosts(token: string, f: Fetch = fetch): Promise<ThreadsOwnPost[]> {
+  const r = await call<{ data?: Array<Record<string, unknown>> }>(f, "GET", `${API}/me/threads`, {
+    fields: "id,text,permalink,timestamp,media_type,thumbnail_url,media_url,is_reply", limit: "50", access_token: token,
+  });
+  return (r.data ?? []).map((p) => ({
+    id: String(p.id), text: String(p.text ?? ""), permalink: (p.permalink as string) ?? null, timestamp: (p.timestamp as string) ?? null,
+    media_type: (p.media_type as string) ?? null, thumbnail_url: ((p.thumbnail_url ?? (p.media_type === "IMAGE" ? p.media_url : null)) as string) ?? null, is_reply: Boolean(p.is_reply),
+  }));
+}

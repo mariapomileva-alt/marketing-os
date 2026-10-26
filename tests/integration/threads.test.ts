@@ -123,7 +123,7 @@ describe("Instagram, comments under our own reels", () => {
     { id: "c2", text: "thanks from the team!", username: "backapp.live", timestamp: "2026-10-23T08:05:00Z", like_count: 0, replies: [] },
   ];
   const api = {
-    media: async () => [{ id: "media1", caption: "The first minute of panic", permalink: "https://www.instagram.com/reel/x/", timestamp: null, comments_count: 2, like_count: 10, media_product_type: "REELS" }],
+    media: async () => [{ id: "media1", caption: "The first minute of panic", permalink: "https://www.instagram.com/reel/x/", timestamp: null, comments_count: 2, like_count: 10, media_product_type: "REELS", media_type: "VIDEO", thumbnail_url: null }],
     comments: async () => comments,
     reply: async (_t: string, commentId: string, text: string) => { sent.push({ commentId, text }); return { id: `rep${sent.length}` }; },
     refresh: async () => ({ accessToken: "t2", expiresAt: new Date(Date.now() + 60 * 86_400_000) }),

@@ -63,15 +63,18 @@ export interface IgMedia {
   comments_count: number;
   like_count: number;
   media_product_type: string | null;
+  media_type: string | null;
+  thumbnail_url: string | null;
 }
 
 export async function instagramMedia(token: string, f: Fetch = fetch): Promise<IgMedia[]> {
   const r = await call<{ data?: Array<Record<string, unknown>> }>(f, "GET", `${API}/me/media`, {
-    fields: "id,caption,media_type,media_product_type,permalink,timestamp,comments_count,like_count", limit: "25", access_token: token,
+    fields: "id,caption,media_type,media_product_type,permalink,timestamp,comments_count,like_count,thumbnail_url,media_url", limit: "50", access_token: token,
   });
   return (r.data ?? []).map((m) => ({
     id: String(m.id), caption: String(m.caption ?? ""), permalink: (m.permalink as string) ?? null, timestamp: (m.timestamp as string) ?? null,
     comments_count: Number(m.comments_count ?? 0), like_count: Number(m.like_count ?? 0), media_product_type: (m.media_product_type as string) ?? null,
+    media_type: (m.media_type as string) ?? null, thumbnail_url: ((m.thumbnail_url ?? (m.media_type === "VIDEO" ? null : m.media_url)) as string) ?? null,
   }));
 }
 
