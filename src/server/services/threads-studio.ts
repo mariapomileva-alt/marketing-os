@@ -1,3 +1,4 @@
+import { styleNotes } from "@/domain/youtube";
 import type { Tx } from "@/server/db/client";
 import type { Actor } from "./content";
 import { decideApproval, editContent, runAgent, runReviews, scheduleItem, submitForApproval } from "./content";
@@ -95,6 +96,7 @@ export async function generateThreadsPosts(tx: Tx, actor: Actor, productId: stri
     ARTICLES: articles.map((a) => ({ title: a.title, url: a.url })),
     KNOWLEDGE: knowledge,
     RECENT: recent.map((r) => `${r.format}: ${r.text.slice(0, 160)}`),
+    STYLE_NOTES: styleNotes(recent.filter((r) => r.format !== "question").map((r) => r.text), "posts"),
     PERFORMANCE: await performanceSummary(tx, productId),
   };
   let r: { output: ThreadsBatchOutput; agentRunId: string; isMock: boolean };

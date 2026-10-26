@@ -187,6 +187,41 @@ const EMOJI = /\p{Extended_Pictographic}/gu;
 /** Phrases that make a comment read as written by a bot or a marketing team. */
 const BOT_PHRASES = /\b(great (video|point|content)|i (really )?appreciate|resonates?|it'?s important to (remember|note)|on (this|your) journey|valuable (insights?|content)|delve|in today'?s world|as someone who|absolutely!|game[- ]changer|thanks for sharing this valuable)\b/iu;
 
+/** The tired question shape: "Does anyone else…?", "Has anyone here…?", "Am I the only one…?" */
+const ANYONE_ELSE = /\b(does|did|do|has|have|is|anyone|am i the only)\b[^?]{0,20}\b(anyone|anybody|only one)\b[^?]*\?["”’)\s]*$/iu;
+/** "It's not X, it's Y" / "isn't about X — it's Y" reveals and "Not the X. The Y." corrections: the commonest AI tell. */
+const REVEAL = /\b(it'?s|this is|that'?s|it is|this isn'?t|it isn'?t|that isn'?t)( not)? (just |really |about |only )*[^.?!\n]{2,40}(,|;|—|–| -)\s*(it'?s|but|it is)\b|(^|[.!?\n]\s*)not (the|a|just) [^.?!\n]{2,40}\.\s+(the|a|just|it'?s) /iu;
+/** Openings the drafter fell into: quoting a phrase and calling it "such a…", or "I'm glad you…". */
+const SUCH_A_OPENING = /^\W*["“'‘][^"”’]{3,140}["”’]\s+(is|was)\s+(such|so|quietly)\b/iu;
+const GLAD_OPENING = /^\s*i'?m (so |really |really glad|glad)/iu;
+const endsWithQuestion = (t: string) => /\?["”’)\s]*$/u.test(t.trim());
+
+/**
+ * What the team's recent texts keep doing, as plain instructions for the next draft. Counted, not guessed, so the
+ * drafter gets told exactly which habit to break this time (e.g. "8 of the last 10 ended with a question").
+ */
+export function styleNotes(previous: string[], kind = "texts"): string[] {
+  const recent = previous.filter((t) => t?.trim()).slice(0, 10);
+  if (recent.length < 3) return [];
+  const notes: string[] = [];
+  const q = recent.filter(endsWithQuestion).length;
+  if (q / recent.length > 0.34) notes.push(`${q} of the last ${recent.length} ${kind} ended with a question. This one must not end with a question: end on a thought, a small concrete detail or simple recognition.`);
+  const anyone = recent.filter((t) => ANYONE_ELSE.test(t)).length;
+  if (anyone) notes.push(`${anyone} of the last ${recent.length} ${kind} asked "does anyone else / has anyone…". Never use that question shape.`);
+  const such = recent.filter((t) => SUCH_A_OPENING.test(t)).length;
+  if (such >= 2) notes.push(`${such} recent ${kind} opened by quoting a phrase and calling it "such a …". Open some other way: with your own thought, a detail, or the person's situation.`);
+  const suchA = recent.filter((t) => /\b(is|was) (such a|so|quietly the)\b/iu.test(t)).length;
+  if (suchA >= 3) notes.push(`${suchA} recent ${kind} praise a phrase as "such a … one" / "quietly the kindest part". Skip the praise; react with your own idea.`);
+  const glad = recent.filter((t) => GLAD_OPENING.test(t)).length;
+  if (glad >= 2) notes.push(`${glad} recent ${kind} opened with "I'm glad…". Do not open that way.`);
+  const reveal = recent.filter((t) => REVEAL.test(t)).length;
+  if (reveal >= 2) notes.push(`${reveal} recent ${kind} used an "it's not X, it's Y" turn. Say the point directly instead.`);
+  const firsts = new Map<string, number>();
+  for (const t of recent) { const w = normalise(t).split(" ")[0]; if (w) firsts.set(w, (firsts.get(w) ?? 0) + 1); }
+  for (const [w, n] of firsts) if (n >= 3 && !["i", "a"].includes(w)) notes.push(`${n} recent ${kind} start with "${w}". Start differently.`);
+  return notes;
+}
+
 export function checkVoice(draft: string, previous: string[], productName = "Back"): VoiceCheck {
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -215,6 +250,11 @@ export function checkVoice(draft: string, previous: string[], productName = "Bac
   if (/#\w/.test(draft)) problems.push("Hashtags read as marketing in a comment.");
   if (/^\s*[-•*]\s/m.test(draft)) warnings.push("Lists look formal in a YouTube comment.");
   if ((draft.match(/—/g) ?? []).length > 2) warnings.push("Many dashes; real comments rarely have more than one.");
+  const recent = previous.slice(0, 10);
+  if (ANYONE_ELSE.test(draft) && recent.some((p) => ANYONE_ELSE.test(p))) problems.push('Asks "does anyone else…?" again: the team\'s most repeated closing. End some other way.');
+  if (endsWithQuestion(draft) && recent.length >= 4 && recent.slice(0, 4).filter(endsWithQuestion).length >= 3) problems.push("Ends with a question again; most recent comments already did. End on a thought instead.");
+  if (REVEAL.test(draft)) warnings.push('"It\'s not X, it\'s Y" turn reads as AI-written; say the point directly.');
+  if (SUCH_A_OPENING.test(draft) && recent.some((p) => SUCH_A_OPENING.test(p))) warnings.push('Opens like recent comments (quote + "such a…").');
 
   return { ok: problems.length === 0, problems, warnings, scores: { maxSimilarity, promo, exclamations, emoji, words }, mentionsProduct };
 }

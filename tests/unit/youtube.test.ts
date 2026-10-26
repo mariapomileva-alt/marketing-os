@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVoice, classifyMessage, parseIsoDuration, safetyDraft, scoreVideo, similarity, type VideoCandidate } from "@/domain/youtube";
+import { checkVoice, styleNotes, classifyMessage, parseIsoDuration, safetyDraft, scoreVideo, similarity, type VideoCandidate } from "@/domain/youtube";
 
 const settings = { queries: ["panic attack"], minDurationSeconds: 61, channelCooldownDays: 30 };
 const now = new Date("2026-10-22T12:00:00Z");
@@ -134,5 +134,34 @@ describe("query rotation", () => {
     expect(d2[0]).not.toBe(d1[0]);
     const covered = new Set([0, 1, 2].flatMap((i) => queriesForRun(q, 15, new Date(Date.UTC(2026, 9, 23 + i)))));
     expect(covered.size).toBe(40); // three days cover the whole list
+  });
+});
+
+describe("breaking the team's habits", () => {
+  const habit = [
+    "The one-breath idea works because it is so small. Does anyone else find it easier after the first one?",
+    "The playlist turning into a trigger is a sneaky one. Has anyone here had a calming thing flip like that?",
+    "That 'no need to explain' line is the kindest part. Does anyone else find breathing easier once they stop trying?",
+    "Putting the GP check in its own chapter matters. Did anyone else find the waiting harder than the visit?",
+  ];
+
+  it("counts what recent comments keep doing and says what to change", () => {
+    const notes = styleNotes(habit, "comments").join(" ");
+    expect(notes).toMatch(/4 of the last 4 comments ended with a question/);
+    expect(notes).toMatch(/does anyone else/);
+    expect(styleNotes(habit.slice(0, 2))).toEqual([]);
+  });
+
+  it("stops another 'does anyone else' and another closing question", () => {
+    const r = checkVoice("Night panic has its own rules. Does anyone else feel it worse after midnight?", habit);
+    expect(r.ok).toBe(false);
+    expect(r.problems.join(" ")).toMatch(/does anyone else/);
+    expect(r.problems.join(" ")).toMatch(/question again/);
+    expect(checkVoice("Naming three sounds in the room is small enough to remember when your head is loud. The fridge counts.", habit).ok).toBe(true);
+  });
+
+  it("warns about the 'not X, it's Y' turn", () => {
+    expect(checkVoice("This isn't about willpower, it's about giving your body a minute.", []).warnings.join(" ")).toMatch(/not X/);
+    expect(checkVoice("What does panic say at 3am?\n\nNot the polished version. The actual sentence in your head.", []).warnings.join(" ")).toMatch(/not X/);
   });
 });
