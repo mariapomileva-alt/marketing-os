@@ -9,11 +9,14 @@ type Fetch = typeof fetch;
 export const CALM_VOICE_INSTRUCTIONS =
   "Speak slowly, softly and warmly, like a calm friend sitting next to someone at night. Low energy, gentle, unhurried. Leave natural space at commas. Never sound like an announcer.";
 
-export async function speak(apiKey: string, text: string, voice: string, f: Fetch = fetch): Promise<Uint8Array> {
+export const BRIEF_VOICE_INSTRUCTIONS =
+  "A calm, warm colleague giving a short morning update over coffee. Clear and friendly, unhurried, lightly encouraging. Natural pauses between topics.";
+
+export async function speak(apiKey: string, text: string, voice: string, f: Fetch = fetch, instructions = CALM_VOICE_INSTRUCTIONS): Promise<Uint8Array> {
   const res = await f("https://api.openai.com/v1/audio/speech", {
     method: "POST",
     headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: "gpt-4o-mini-tts", voice, input: text, instructions: CALM_VOICE_INSTRUCTIONS, response_format: "mp3" }),
+    body: JSON.stringify({ model: "gpt-4o-mini-tts", voice, input: text, instructions, response_format: "mp3" }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };

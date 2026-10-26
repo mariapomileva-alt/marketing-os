@@ -185,6 +185,22 @@ function mockCalmVideo(c: Ctx) {
   };
 }
 
+function mockMorningBrief(c: Ctx) {
+  const f = (c.FACTS ?? {}) as { website?: { visits?: { yesterday?: number; last7?: number } }; waiting_for_you?: { approvals?: number } };
+  const v = f.website?.visits ?? {};
+  const waiting = f.waiting_for_you?.approvals ?? 0;
+  return {
+    greeting: "[MOCK] Доброе утро!",
+    summary: `[MOCK] Вчера на сайт пришло ${v.yesterday ?? 0} человек, за неделю ${v.last7 ?? 0}. Это пример сводки: подключите Claude в Connections, и здесь появится настоящий разбор.`,
+    spoken: `[MOCK] Доброе утро. Вчера на сайт пришло ${v.yesterday ?? 0} человек. Это пример голосовой сводки, настоящая появится после подключения Claude.`,
+    worked: [{ text: "[MOCK] Здесь будет то, что откликнулось.", section: "analytics" }],
+    done: [{ text: "[MOCK] Здесь будет то, что мы сделали вчера.", section: null }],
+    todo: [{ text: `[MOCK] Посмотреть очередь одобрения (${waiting}).`, why: "Без вашего одобрения ничего не публикуется.", section: "approvals" }],
+    missing: [{ text: "[MOCK] Продажи не видны: App Store Connect не подключён.", section: "connections" }],
+    outside: [],
+  };
+}
+
 export class MockProvider implements LLMProvider {
   readonly id = "mock" as const;
   readonly isMock = true;
@@ -199,6 +215,7 @@ export class MockProvider implements LLMProvider {
       : req.task === "community_comment" ? mockCommunityComment(c)
       : req.task === "community_reply" ? mockCommunityReply(c)
       : req.task === "calm_video" ? mockCalmVideo(c)
+      : req.task === "morning_brief" ? mockMorningBrief(c)
       : mockReview(req.task);
     const output = req.schema.parse(raw);
     const rawText = JSON.stringify(raw);

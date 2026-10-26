@@ -1,10 +1,10 @@
 import {
-  Activity, BarChart3, BookOpen, CalendarDays, CheckSquare, Cog, FlaskConical, Gauge, Image as ImageIcon, Layers,
+  Activity, BarChart3, BookOpen, CalendarDays, CheckSquare, Cog, FlaskConical, Image as ImageIcon, Layers, Sun,
   Clapperboard, Lightbulb, MessagesSquare, PenLine, Plug, Radar, Send, Swords, Users, Workflow,
 } from "lucide-react";
 
 /**
- * Left navigation (brief §5). Groups follow the flywheel: understand → make → ship and learn → system.
+ * Left navigation. Ordered by how often the owner needs a place: today, daily work, creating, results, what we know, setup.
  * `mvp` marks sections with v0.1 functionality; the others render an honest "planned" state.
  */
 import type { LucideIcon } from "lucide-react";
@@ -13,47 +13,56 @@ export interface NavItem {
   slug: string;
   label: string;
   icon: LucideIcon;
+  hint?: string;
 }
 
 export const NAV: ReadonlyArray<{ group: string; items: ReadonlyArray<NavItem> }> = [
   {
-    group: "Understand",
+    group: "",
+    items: [{ slug: "overview", label: "Today", icon: Sun, hint: "Morning brief: what worked, what to do today" }],
+  },
+  {
+    group: "Every day",
     items: [
-      { slug: "overview", label: "Overview", icon: Gauge },
-      { slug: "products", label: "Products", icon: Layers },
-      { slug: "knowledge", label: "Knowledge", icon: BookOpen },
-      { slug: "audience", label: "Audience & AJTBD", icon: Users },
-      { slug: "competitors", label: "Competitors", icon: Swords },
-      { slug: "signals", label: "Signals & Research", icon: Radar },
+      { slug: "approvals", label: "Approve", icon: CheckSquare, hint: "Everything waiting for your yes before it goes out" },
+      { slug: "conversations", label: "Conversations", icon: MessagesSquare, hint: "Comments and replies on YouTube, Threads, Instagram" },
+      { slug: "calm", label: "Calm Videos", icon: Clapperboard, hint: "Long calm videos, shorts and reels" },
     ],
   },
   {
-    group: "Make",
+    group: "Create",
     items: [
-      { slug: "ideas", label: "Hooks & Ideas", icon: Lightbulb },
-      { slug: "studio", label: "Content Studio", icon: PenLine },
-      { slug: "creatives", label: "Creative Library", icon: ImageIcon },
-      { slug: "calm", label: "Calm Videos", icon: Clapperboard },
-      { slug: "calendar", label: "Calendar", icon: CalendarDays },
-      { slug: "approvals", label: "Approval Queue", icon: CheckSquare },
+      { slug: "studio", label: "Posts", icon: PenLine, hint: "Write and edit posts (Content Studio)" },
+      { slug: "ideas", label: "Ideas & hooks", icon: Lightbulb, hint: "Topics and first lines to try" },
+      { slug: "creatives", label: "Media library", icon: ImageIcon, hint: "Videos, music and images we can use" },
+      { slug: "calendar", label: "Calendar", icon: CalendarDays, hint: "What goes out when" },
     ],
   },
   {
-    group: "Ship and learn",
+    group: "Results",
     items: [
-      { slug: "publications", label: "Publications", icon: Send },
-      { slug: "conversations", label: "Conversations", icon: MessagesSquare },
-      { slug: "experiments", label: "Experiments", icon: FlaskConical },
-      { slug: "analytics", label: "Analytics", icon: BarChart3 },
+      { slug: "analytics", label: "Analytics", icon: BarChart3, hint: "Site visitors, sources, articles, AI assistants" },
+      { slug: "publications", label: "Published", icon: Send, hint: "Everything that went out, with its numbers" },
+      { slug: "experiments", label: "Experiments", icon: FlaskConical, hint: "Tests: which version works better" },
     ],
   },
   {
-    group: "System",
+    group: "What we know",
     items: [
-      { slug: "connections", label: "Connections", icon: Plug },
-      { slug: "automations", label: "Automations", icon: Workflow },
-      { slug: "activity", label: "Activity Log", icon: Activity },
-      { slug: "settings", label: "Settings", icon: Cog },
+      { slug: "knowledge", label: "Knowledge", icon: BookOpen, hint: "Our articles and methodology the AI writes from" },
+      { slug: "products", label: "Product & rules", icon: Layers, hint: "Facts about Back and the safety rules" },
+      { slug: "audience", label: "Audience", icon: Users, hint: "Who our people are and what they need" },
+      { slug: "competitors", label: "Competitors", icon: Swords, hint: "Who else helps with panic, and what they do" },
+      { slug: "signals", label: "Research", icon: Radar, hint: "Saved posts and observations from the market" },
+    ],
+  },
+  {
+    group: "Setup",
+    items: [
+      { slug: "connections", label: "Connections", icon: Plug, hint: "YouTube, Threads, Instagram, AI keys" },
+      { slug: "automations", label: "Automations", icon: Workflow, hint: "What runs by itself and when" },
+      { slug: "activity", label: "Activity log", icon: Activity, hint: "Every action, who did it and when" },
+      { slug: "settings", label: "Settings", icon: Cog, hint: "Workspace settings" },
     ],
   },
 ];

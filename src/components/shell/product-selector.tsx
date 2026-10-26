@@ -18,14 +18,14 @@ export function ProductSelector({ current, products }: { current: SelectorProduc
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
-        className="flex h-9 min-w-0 max-w-[60vw] items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-surface pl-2 pr-2.5 text-left hover:bg-sage-tint sm:max-w-[320px]"
+        className="flex h-9 min-w-0 max-w-[60vw] items-center gap-2 rounded-[var(--radius-control)] border border-night-line bg-night-raise pl-2 pr-2.5 text-left text-night-ink hover:border-night-muted/50 sm:max-w-[320px]"
         aria-label={`Selected product: ${current.name}. Switch product`}
       >
-        <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-[5px] bg-green text-[12px] font-semibold text-white">
+        <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-[5px] bg-mint text-[12px] font-semibold text-night">
           {current.name.slice(0, 1).toUpperCase()}
         </span>
         <span className="truncate text-[14px] font-semibold">{current.name}</span>
-        <ChevronsUpDown aria-hidden className="ml-auto size-3.5 shrink-0 text-muted" />
+        <ChevronsUpDown aria-hidden className="ml-auto size-3.5 shrink-0 text-night-muted" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="start" sideOffset={6} className="z-50 min-w-[260px] rounded-[var(--radius-panel)] border border-line bg-surface p-1 shadow-[0_8px_24px_rgba(30,38,34,0.12)]">

@@ -117,3 +117,22 @@ export const calmVideoSchema = z.object({
     .max(140),
 });
 export type CalmVideoOutput = z.infer<typeof calmVideoSchema>;
+
+/** The owner's morning brief: plain-language summary of yesterday and the week, what to do today, and outside news. */
+const briefItem = z.object({
+  text: z.string().min(3).max(320),
+  section: z.string().max(40).nullable().describe("App section slug to open, e.g. analytics, conversations, calm, approvals; null if none"),
+});
+export const morningBriefSchema = z.object({
+  greeting: z.string().min(3).max(120),
+  summary: z.string().min(40).max(700).describe("Three or four calm sentences: the most important thing first"),
+  spoken: z.string().min(80).max(1800).describe("The same brief as natural speech, 45–90 seconds when read aloud"),
+  worked: z.array(briefItem).max(5),
+  done: z.array(briefItem).max(6),
+  todo: z.array(briefItem.extend({ why: z.string().max(200) })).max(5),
+  missing: z.array(briefItem).max(4),
+  outside: z
+    .array(z.object({ kind: z.enum(["trend", "competitor", "platform"]), text: z.string().min(10).max(320), idea: z.string().max(240), source_url: z.string().max(500).nullable() }))
+    .max(5),
+});
+export type MorningBriefOutput = z.infer<typeof morningBriefSchema>;

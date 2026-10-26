@@ -62,6 +62,8 @@ interface RunArgs<T> {
   schema: z.ZodType<T>;
   input: Record<string, unknown>;
   sourceIds: string[];
+  webSearch?: boolean;
+  maxTokens?: number;
 }
 
 /** Runs one model call and records it in agent_runs, success or failure (input, sources, prompt version, model, output, cost, duration). */
@@ -72,7 +74,7 @@ export async function runAgent<T>(tx: Tx, a: RunArgs<T>): Promise<{ output: T; a
   const role = PROMPTS.find((p) => p.key === a.promptKey)!.role;
   const started = Date.now();
   try {
-    const r = await provider.generate({ task: a.task, system: pv.system_prompt, input: JSON.stringify(a.input), schema: a.schema, context: a.input });
+    const r = await provider.generate({ task: a.task, system: pv.system_prompt, input: JSON.stringify(a.input), schema: a.schema, context: a.input, webSearch: a.webSearch, maxTokens: a.maxTokens });
     const run = await tx.one<{ id: string }>(
       `insert into agent_runs (workspace_id, product_id, workflow_run_id, step, role, provider, model, is_mock, prompt_template_version_id,
          input_snapshot, source_ids, output, raw_output, input_tokens, output_tokens, cost_usd, duration_ms)

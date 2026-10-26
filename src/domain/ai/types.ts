@@ -11,6 +11,8 @@ export interface GenerateRequest<T> {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Let the model search the web (Anthropic's server-side web search). Ignored by the mock. */
+  webSearch?: boolean;
 }
 
 export interface GenerateResult<T> {
@@ -31,7 +33,7 @@ export interface LLMProvider {
   embed?(texts: string[]): Promise<{ vectors: number[][]; model: string; dims: number }>;
 }
 
-export type AiTask = "hooks" | "content" | "brand_review" | "compliance_review" | "experiment_review" | "community_comment" | "community_reply" | "calm_video";
+export type AiTask = "hooks" | "content" | "brand_review" | "compliance_review" | "experiment_review" | "community_comment" | "community_reply" | "calm_video" | "morning_brief";
 
 export class AiOutputError extends Error {
   constructor(message: string, readonly raw: string) {

@@ -24,24 +24,25 @@ export default async function ProductLayout({ children, params }: LayoutProps<"/
       {ctx.user.mode === "dev" ? (
         <div className="bg-amber-tint px-4 py-1 text-center text-[12px] text-amber">Development sign-in: local owner without password. Not for production.</div>
       ) : null}
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-paper/95 px-3 backdrop-blur sm:px-4">
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 bg-night px-3 text-night-ink sm:px-4">
         <MobileNav productSlug={product.slug} approvals={approvals} />
-        <Link href={`/p/${product.slug}/overview`} className="hidden text-[13px] font-semibold text-green lg:block lg:w-[208px]">
+        <Link href={`/p/${product.slug}/overview`} className="hidden items-center gap-2 text-[14px] font-semibold tracking-[-0.01em] text-night-ink lg:flex lg:w-[208px]">
+          <span aria-hidden className="size-2.5 rounded-full bg-mint shadow-[0_0_10px_2px_rgba(159,220,184,.45)]" />
           God of Marketing
         </Link>
         <ProductSelector current={{ slug: product.slug, name: product.name, isDemo: product.is_demo }} products={products.map((p) => ({ slug: p.slug, name: p.name, isDemo: p.is_demo }))} />
         <div className="ml-auto flex items-center gap-3">
           <Link href={`/p/${product.slug}/connections`} className="hidden sm:block" aria-label={problems ? `${problems} integration problems` : "Integrations healthy"}>
-            {problems ? <Status tone="red">{problems} integration {problems === 1 ? "problem" : "problems"}</Status> : <Status tone="green">Integrations OK</Status>}
+            {problems ? <Status tone="red" className="text-night-ink">{problems} integration {problems === 1 ? "problem" : "problems"}</Status> : <Status tone="green" className="text-night-muted">Integrations OK</Status>}
           </Link>
           <form action={signOutAction}>
-            <button type="submit" className="text-[13px] text-muted hover:text-ink">
+            <button type="submit" className="text-[13px] text-night-muted hover:text-night-ink">
               Sign out
             </button>
           </form>
         </div>
       </header>
-      <div className="flex">
+      <div className="flex lg:bg-[linear-gradient(to_right,var(--night)_232px,transparent_232px)]">
         <DesktopNav productSlug={product.slug} approvals={approvals} />
         <main id="main" className="min-w-0 flex-1 px-4 py-6 sm:px-8 lg:py-8">
           <div className="mx-auto max-w-[1180px]">{children}</div>

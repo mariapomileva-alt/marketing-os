@@ -25,6 +25,14 @@
   --slate: #34586e;
   --slate-tint: #e3ecf1;
   --focus: #2f6f57;
+  /* Night: the frame (header, sidebar) and the morning brief. Deep forest, never pure black; mint is the only light. */
+  --night: #0f1f19;
+  --night-raise: #162b23;
+  --night-line: #25402f;
+  --night-ink: #e6efe9;
+  --night-muted: #93ab9d;
+  --mint: #9fdcb8;
+  --mint-deep: #4fae7f;
 }
 
 @theme inline {
@@ -46,6 +54,13 @@
   --color-red-tint: var(--red-tint);
   --color-slate: var(--slate);
   --color-slate-tint: var(--slate-tint);
+  --color-night: var(--night);
+  --color-night-raise: var(--night-raise);
+  --color-night-line: var(--night-line);
+  --color-night-ink: var(--night-ink);
+  --color-night-muted: var(--night-muted);
+  --color-mint: var(--mint);
+  --color-mint-deep: var(--mint-deep);
   --font-sans: "Schibsted Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
   --radius-control: 6px;
   --radius-panel: 10px;
@@ -84,3 +99,9 @@ h3 { font-size: 16px; line-height: 1.4; font-weight: 600; }
 
 /* Long-form text (rationales, knowledge chunks) keeps a readable measure. */
 .prose-measure { max-width: 72ch; }
+
+/* The brief's orb: breathes slowly at rest; the voice drives it while it speaks (see brief-orb.tsx). */
+@keyframes orb-breathe { 0%, 100% { transform: scale(0.96); } 50% { transform: scale(1.03); } }
+@keyframes orb-drift { to { transform: rotate(360deg); } }
+.orb-breathe { animation: orb-breathe 7s ease-in-out infinite; }
+.orb-drift { animation: orb-drift 40s linear infinite; }
