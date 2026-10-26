@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { Tx } from "@/server/db/client";
 import { BACK_APP, BACK_APP_CLAIMS, BACK_APP_GUARDRAILS } from "@/domain/seed/back-app";
 import { DEFAULT_UTM } from "@/domain/utm";
+import { BACK_RULES_DOC, BACK_RULES_PACK, BACK_RULES_PACK_GUARDRAILS } from "@/domain/seed/back-rules-2026-10";
+import { ingestSource } from "./knowledge";
 
 export const productInputSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
@@ -184,4 +186,76 @@ export async function allowedHosts(tx: Tx, productId: string): Promise<string[]>
     }
   }
   return [...hosts];
+}
+
+const union = (a: string[], b: string[]) => [...a, ...b.filter((x) => !a.some((y) => y.trim().toLowerCase() === x.trim().toLowerCase()))];
+
+/** Whether the rules pack of 26 Oct 2026 is already applied to this product. */
+export async function rulesPackApplied(tx: Tx, productId: string) {
+  return !!(await tx.maybeOne("select 1 from product_guardrails where product_id = $1 and code = $2", [productId, BACK_RULES_PACK_GUARDRAILS[0].code]));
+}
+
+/**
+ * Applies "Back voice, phrases and rules (26 Oct 2026)": profile and tone, approved facts and prohibited claims,
+ * new safety rules, links, and the full document as knowledge. Safe to run again: nothing is added twice, and lists
+ * keep what the owner already wrote.
+ */
+export async function applyBackRulesPack(tx: Tx, actor: { workspaceId: string; userId: string }, productId: string) {
+  const pk = BACK_RULES_PACK;
+  const cur = await getProfile(tx, productId);
+  await tx.query(
+    `update products set short_description=$2, website_url=coalesce(nullif(website_url, ''), $3), countries=$4, pain_points=$5, triggers=$6,
+       desired_emotional_states=$7, advantages=$8, prohibited_topics=$9, legal_restrictions=$10 where id=$1`,
+    [productId, pk.profile.short_description, pk.profile.website_url, union(cur.countries, pk.profile.countries), union(cur.pain_points, pk.profile.pain_points),
+     union(cur.triggers, pk.profile.triggers), union(cur.desired_emotional_states, pk.profile.desired_emotional_states), union(cur.advantages, pk.profile.advantages),
+     union(cur.prohibited_topics, pk.profile.prohibited_topics), pk.profile.legal_restrictions],
+  );
+  const keep = <T extends { text: string }>(a: T[], b: T[]) => [...a, ...b.filter((x) => !a.some((y) => y.text === x.text))];
+  await tx.query(
+    "update brand_profiles set tone_of_voice = $2, good_examples = $3, bad_examples = $4 where product_id = $1",
+    [productId, pk.profile.tone_of_voice, JSON.stringify(keep(cur.good_examples, pk.profile.good_examples)), JSON.stringify(keep(cur.bad_examples, pk.profile.bad_examples))],
+  );
+
+  const existing = new Set((await listClaims(tx, productId)).filter((c) => !c.archived).map((c) => `${c.kind}:${c.statement.trim().toLowerCase()}`));
+  let claims = 0;
+  for (const [kind, list] of [["approved_fact", pk.facts], ["prohibited_claim", pk.prohibited]] as const) {
+    for (const statement of list) {
+      if (existing.has(`${kind}:${statement.toLowerCase()}`)) continue;
+      await tx.query(
+        "insert into product_claims (workspace_id, product_id, kind, statement, rationale, approved_by, approved_at) values ($1,$2,$3,$4,$5,$6, now())",
+        [actor.workspaceId, productId, kind, statement, pk.title, actor.userId],
+      );
+      claims++;
+    }
+  }
+
+  let rules = 0;
+  for (const g of BACK_RULES_PACK_GUARDRAILS) {
+    const r = await tx.query(
+      `insert into product_guardrails (workspace_id, product_id, code, rule_type, patterns, instruction, severity, rationale)
+       values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (product_id, code) do nothing returning id`,
+      [actor.workspaceId, productId, g.code, g.ruleType, JSON.stringify(g.patterns ?? []), g.instruction ?? "", g.severity, g.rationale ?? ""],
+    );
+    rules += r.length;
+  }
+  // The crisis line wording is now approved (it was pending as D-13).
+  await tx.query(
+    "update product_guardrails set rationale = $2 where product_id = $1 and code = 'backapp.crisis_safety_line'",
+    [productId, `Content that mentions suicide, self-harm or an emergency must include the emergency line. Approved wording: ${pk.crisisLine}`],
+  );
+
+  const links = await listLinks(tx, productId);
+  let linksAdded = 0;
+  for (const l of pk.links) {
+    if (links.some((x) => x.url.replace(/\/$/, "") === l.url)) continue;
+    await tx.query("insert into product_links (workspace_id, product_id, kind, label, url, cta_text) values ($1,$2,$3,$4,$5,$6)", [actor.workspaceId, productId, l.kind, l.label, l.url, l.cta_text]);
+    linksAdded++;
+  }
+
+  const doc = await ingestSource(tx, {
+    workspaceId: actor.workspaceId, productId, scope: "product", sourceType: "doc", title: pk.title, confidence: "high",
+    containsPersonalData: false, consentRecorded: false, filename: "back-voice-and-rules.md", mimeType: "text/markdown",
+    bytes: new TextEncoder().encode(BACK_RULES_DOC), provenance: { pack: pk.id, approvedBy: "owner" }, chunkAs: "markdown",
+  });
+  return { claims, rules, links: linksAdded, knowledgeChunks: doc.duplicate ? 0 : doc.chunks };
 }

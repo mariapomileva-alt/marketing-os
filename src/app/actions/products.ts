@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { seedDemo } from "@/server/services/demo";
-import { createBackApp, createProduct, productInputSchema, profileUpdateSchema, slugify, updateProfile } from "@/server/services/products";
+import { applyBackRulesPack, createBackApp, createProduct, productInputSchema, profileUpdateSchema, slugify, updateProfile } from "@/server/services/products";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 
 export async function createProductAction(_: ActionResult | null, data: FormData): Promise<ActionResult> {
@@ -150,4 +150,15 @@ export async function addTermAction(productSlug: string, _: ActionResult | null,
   }
   revalidatePath(`/p/${productSlug}/products`);
   return ok("Added.");
+}
+
+export async function applyRulesPackAction(productSlug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(productSlug);
+    const r = await db((tx, ctx) => applyBackRulesPack(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id), { reason: "Applied rules pack: Back voice, phrases and rules (26 Oct 2026)" });
+    revalidatePath(`/p/${productSlug}`, "layout");
+    return ok(`Rules applied: profile and tone updated, ${r.claims} facts and prohibited claims, ${r.rules} safety rules, ${r.links} links, ${r.knowledgeChunks ? "the document added to Knowledge" : "the document was already in Knowledge"}.`);
+  } catch (e) {
+    return toFailure(e, describeDbError);
+  }
 }

@@ -1,7 +1,7 @@
 import { db, getProduct } from "@/server/context";
-import { getProfile, listClaims, listGuardrails, listLinks, listLocales, listTerms } from "@/server/services/products";
+import { getProfile, rulesPackApplied, listClaims, listGuardrails, listLinks, listLocales, listTerms } from "@/server/services/products";
 import {
-  addClaimAction, addLinkAction, addLocaleAction, addTermAction, approveClaimAction, archiveClaimAction, toggleGuardrailAction, updateProfileAction,
+  addClaimAction, addLinkAction, applyRulesPackAction, addLocaleAction, addTermAction, approveClaimAction, archiveClaimAction, toggleGuardrailAction, updateProfileAction,
 } from "@/app/actions/products";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
@@ -17,13 +17,14 @@ const listField = (v: string[]) => v.join("\n");
 export default async function ProductsPage({ params }: PageProps<"/p/[product]/products">) {
   const { product: slug } = await params;
   const product = await getProduct(slug);
-  const { profile, claims, guardrails, links, locales, terms } = await db(async (tx) => ({
+  const { profile, claims, guardrails, links, locales, terms, packApplied } = await db(async (tx) => ({
     profile: await getProfile(tx, product.id),
     claims: await listClaims(tx, product.id),
     guardrails: await listGuardrails(tx, product.id),
     links: await listLinks(tx, product.id),
     locales: await listLocales(tx, product.id),
     terms: await listTerms(tx, product.id),
+    packApplied: await rulesPackApplied(tx, product.id),
   }));
   const vocabularies = ["format", "goal", "funnel_stage", "cta", "topic", "visual_device", "emotional_trigger"];
   const vocabLabel: Record<string, string> = { format: "Formats", goal: "Goals", funnel_stage: "Funnel stages", cta: "CTAs", topic: "Topics", visual_device: "Visual devices", emotional_trigger: "Emotional triggers" };
@@ -35,6 +36,22 @@ export default async function ProductsPage({ params }: PageProps<"/p/[product]/p
         description="Everything the system may say about this product, how it should sound, and what it must never say. AI drafts use only the approved facts below."
         flags={profile.is_demo ? <DataFlag kind="demo" /> : null}
       />
+
+      {profile.slug === "back-app" ? (
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-panel)] border border-line bg-surface px-5 py-4">
+          <div className="max-w-[70ch]">
+            <p className="text-[14px] font-medium">Back voice, phrases and rules (26 Oct 2026)</p>
+            <p className="mt-1 text-[13px] text-muted">
+              {packApplied
+                ? "Applied. Every draft uses this tone, these facts and prohibited claims, the extra safety rules, and the full document from Knowledge. Applying again adds only what is missing."
+                : "Adds the approved rules document to this product: tone and examples, product facts and claims we never make, safety rules (medication advice, invented proof, bot and sales phrases, AI-style turns), website and App Store links, and the document itself to Knowledge."}
+            </p>
+          </div>
+          <ActionForm action={applyRulesPackAction.bind(null, slug)} submitLabel={packApplied ? "Apply again" : "Apply rules"} pendingLabel="Applying…" submitVariant={packApplied ? "ghost" : "primary"} className="flex items-center gap-3 [&_p]:max-w-[360px] [&_p]:text-[12px]">
+            <span className="sr-only">Apply the rules document to this product</span>
+          </ActionForm>
+        </div>
+      ) : null}
 
       <Section title="Basics and positioning">
         <ActionForm action={updateProfileAction.bind(null, slug)} submitLabel="Save profile" className="grid gap-4 rounded-[var(--radius-panel)] border border-line bg-surface p-5 md:grid-cols-2">
