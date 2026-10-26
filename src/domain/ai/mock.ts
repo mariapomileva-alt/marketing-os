@@ -201,6 +201,17 @@ function mockMorningBrief(c: Ctx) {
   };
 }
 
+function mockThreadsPosts(c: Ctx) {
+  const n = Math.max(1, Math.min(4, Number(c.COUNT ?? 2)));
+  const all = [
+    { format: "tip", topic: "first minute", source_kind: "knowledge", source_title: null, source_url: null, text: "[MOCK] When panic starts, you don't have to calm down.\n\nYou only have to find the floor with your feet. That's the whole first step.", why: "Small and doable anywhere." },
+    { format: "question", topic: "night panic", source_kind: "knowledge", source_title: null, source_url: null, text: "[MOCK] What's the one sentence you wish someone had said to you during your first panic attack?", why: "Invites replies." },
+    { format: "normalize", topic: "panic in public", source_kind: "knowledge", source_title: null, source_url: null, text: "[MOCK] Nobody on the train can tell.\n\nIt feels like everyone can see it. They can't. You're allowed to just sit there and let it pass.", why: "Names a common fear." },
+    { format: "myth", topic: "breathing", source_kind: "knowledge", source_title: null, source_url: null, text: "[MOCK] 'Just take a deep breath' isn't always the answer.\n\nIf breathing makes it louder, try looking at one thing in the room instead. Both are allowed.", why: "Gentle myth-busting." },
+  ];
+  return { posts: all.slice(0, n) };
+}
+
 export class MockProvider implements LLMProvider {
   readonly id = "mock" as const;
   readonly isMock = true;
@@ -217,6 +228,7 @@ export class MockProvider implements LLMProvider {
       : req.task === "calm_video" ? mockCalmVideo(c)
       : req.task === "morning_brief" ? mockMorningBrief(c)
       : req.task === "morning_brief_translate" ? (c.BRIEF as Record<string, unknown>)
+      : req.task === "threads_posts" ? mockThreadsPosts(c)
       : mockReview(req.task);
     const output = req.schema.parse(raw);
     const rawText = JSON.stringify(raw);

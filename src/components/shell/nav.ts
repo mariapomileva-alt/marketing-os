@@ -1,5 +1,5 @@
 import {
-  Activity, BarChart3, BookOpen, CalendarDays, CheckSquare, Cog, FlaskConical, Image as ImageIcon, Layers, Sun,
+  Activity, AtSign, BarChart3, BookOpen, CalendarDays, CheckSquare, Cog, FlaskConical, Image as ImageIcon, Layers, Sun,
   Clapperboard, Lightbulb, MessagesSquare, PenLine, Plug, Radar, Send, Swords, Users, Workflow,
 } from "lucide-react";
 
@@ -25,6 +25,7 @@ export const NAV: ReadonlyArray<{ group: string; items: ReadonlyArray<NavItem> }
     group: "Every day",
     items: [
       { slug: "approvals", label: "Approve", icon: CheckSquare, hint: "Everything waiting for your yes before it goes out" },
+      { slug: "threads", label: "Threads", icon: AtSign, hint: "Our own Threads posts: approve today's, see what works" },
       { slug: "conversations", label: "Conversations", icon: MessagesSquare, hint: "Comments and replies on YouTube, Threads, Instagram" },
       { slug: "calm", label: "Calm Videos", icon: Clapperboard, hint: "Long calm videos, shorts and reels" },
     ],

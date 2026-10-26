@@ -29,7 +29,7 @@ const T = {
     addCompetitors: ["Add competitors in ", "Competitors", " and the brief will watch them."], missing: "What's missing", missingEmpty: "Everything needed is connected.",
     waiting: "Waiting for you", approve: "Needs approval", problem: "Connection problem",
     kind: { trend: "Trend", competitor: "Competitor", platform: "Platform" },
-    place: { overview: "Today", analytics: "Analytics", conversations: "Conversations", approvals: "Approve", calm: "Calm Videos", knowledge: "Knowledge", studio: "Posts", ideas: "Ideas", competitors: "Competitors", connections: "Connections", calendar: "Calendar" } as Record<string, string>,
+    place: { overview: "Today", threads: "Threads", analytics: "Analytics", conversations: "Conversations", approvals: "Approve", calm: "Calm Videos", knowledge: "Knowledge", studio: "Posts", ideas: "Ideas", competitors: "Competitors", connections: "Connections", calendar: "Calendar" } as Record<string, string>,
   },
   ru: {
     locale: "ru-RU", hello: "Доброе утро", listen: "Послушать сводку", text: "Текст", voice: "Голос",
@@ -44,7 +44,7 @@ const T = {
     addCompetitors: ["Добавьте конкурентов в разделе ", "Конкуренты", ", и сводка будет следить за ними."], missing: "Чего не хватает", missingEmpty: "Всё нужное подключено.",
     waiting: "Ждёт вас", approve: "Нужно одобрить", problem: "Проблема с подключением",
     kind: { trend: "Тренд", competitor: "Конкурент", platform: "Платформа" },
-    place: { overview: "Сегодня", analytics: "Аналитика", conversations: "Разговоры", approvals: "Одобрение", calm: "Calm Videos", knowledge: "Знания", studio: "Посты", ideas: "Идеи", competitors: "Конкуренты", connections: "Подключения", calendar: "Календарь" } as Record<string, string>,
+    place: { overview: "Сегодня", threads: "Threads", analytics: "Аналитика", conversations: "Разговоры", approvals: "Одобрение", calm: "Calm Videos", knowledge: "Знания", studio: "Посты", ideas: "Идеи", competitors: "Конкуренты", connections: "Подключения", calendar: "Календарь" } as Record<string, string>,
   },
 } as const;
 

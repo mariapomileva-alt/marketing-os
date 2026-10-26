@@ -4,6 +4,8 @@ import { withContext } from "@/server/db/client";
 import { queueToken } from "@/server/security/queue-token";
 import { drainQueue } from "@/server/services/youtube-publish";
 import { dueThreadsPosts, publishThreadsPost } from "@/server/services/threads";
+import { scheduleApprovedStudioPosts } from "@/server/services/threads-studio";
+import { refreshStudioStatsLive } from "@/server/services/threads-studio-live";
 import { liveApis, liveThreadsApi } from "@/server/youtube/live";
 import { publishDueReels } from "@/server/services/calm-shorts";
 import { channelConnection, threadsToken } from "@/server/services/youtube-publish";
@@ -41,6 +43,7 @@ export async function GET(request: NextRequest) {
       );
       // Approved Threads posts placed on the calendar go out when their time comes.
       const posts = await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "scheduled Threads posts (approved only)" }, async (tx) => {
+        await scheduleApprovedStudioPosts(tx, p.product_id);
         const out = [];
         for (const item of await dueThreadsPosts(tx, p.product_id)) out.push(await publishThreadsPost(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.product_id, item.id, liveThreadsApi()));
         return out;
@@ -55,7 +58,11 @@ export async function GET(request: NextRequest) {
           create: instagramCreateReel, status: instagramContainerStatus, publish: instagramPublish,
         });
       });
-      results.push({ product: p.product_id, ...r, posts, reels });
+      // About once an hour: reactions on our Threads Studio posts, so the analytics stay fresh.
+      const studioStats = new Date().getUTCMinutes() < 5
+        ? await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "Threads reactions" }, (tx) => refreshStudioStatsLive(tx, p.product_id, 15)).catch((e) => ({ error: (e as Error).message }))
+        : null;
+      results.push({ product: p.product_id, ...r, posts, reels, studioStats });
     } catch (e) {
       results.push({ product: p.product_id, error: (e as Error).message });
     }

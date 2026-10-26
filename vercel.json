@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/brief",
       "schedule": "20 6 * * *"
+    },
+    {
+      "path": "/api/cron/threads",
+      "schedule": "50 5 * * *"
     }
   ]
 }

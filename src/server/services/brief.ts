@@ -11,7 +11,7 @@ import { pagePerformance } from "./traffic";
  * and what competitors did. A spoken version is voiced with the workspace's OpenAI key when one is connected.
  */
 export const BRIEF_SECTIONS: Record<string, string> = {
-  overview: "Today", analytics: "Analytics (site visitors, sources, articles)", conversations: "Conversations (comments and replies on YouTube, Threads, Instagram)",
+  overview: "Today", threads: "Threads Studio (our own Threads posts: approve, results)", analytics: "Analytics (site visitors, sources, articles)", conversations: "Conversations (comments and replies on YouTube, Threads, Instagram)",
   approvals: "Approval Queue", calm: "Calm Videos (long videos and shorts)", knowledge: "Knowledge (our articles and methodology)",
   studio: "Content Studio (posts)", ideas: "Hooks & Ideas", competitors: "Competitors", connections: "Connections (integrations)", calendar: "Calendar",
 };
@@ -69,7 +69,8 @@ export async function gatherFacts(tx: Tx, productId: string) {
             (select count(*)::int from conversations where product_id = $1 and status = 'needs_reply' and channel = 'instagram') instagram_needs_reply,
             (select count(*)::int from calm_videos where product_id = $1 and status = 'review') calm_videos_to_watch,
             (select count(*)::int from calm_shorts where product_id = $1 and status = 'review') shorts_to_watch,
-            (select count(*)::int from calm_shorts where product_id = $1 and status = 'planned') shorts_not_chosen`,
+            (select count(*)::int from calm_shorts where product_id = $1 and status = 'planned') shorts_not_chosen,
+            (select count(*)::int from threads_studio_posts m join content_items i on i.id = m.content_item_id where m.product_id = $1 and i.status = 'needs_human_review') threads_posts_to_approve`,
     [productId],
   );
   const calm = await tx.one<Record<string, number | string | null>>(
@@ -77,6 +78,23 @@ export async function gatherFacts(tx: Tx, productId: string) {
             (select count(*)::int from calm_shorts where product_id = $1 and status in ('scheduled', 'published') and publish_at >= now() - interval '7 days' and publish_at < now()) shorts_published_7d,
             (select to_char(min(publish_at) at time zone 'Europe/Riga', 'YYYY-MM-DD HH24:MI') || ' Riga time' from calm_videos where product_id = $1 and status = 'scheduled' and publish_at > now()) next_video_at,
             (select count(*)::int from calm_videos where product_id = $1 and status = 'failed' and updated_at > now() - interval '3 days') videos_failed_recently`,
+    [productId],
+  );
+  const threadsStudio = await tx.one<{ published_7d: number; views_7d: number; likes_7d: number; replies_7d: number; reposts_7d: number; scheduled_next: number }>(
+    `select count(*) filter (where i.published_at >= now() - interval '7 days')::int published_7d,
+            coalesce(sum(m.views) filter (where i.published_at >= now() - interval '7 days'), 0)::int views_7d,
+            coalesce(sum(m.likes) filter (where i.published_at >= now() - interval '7 days'), 0)::int likes_7d,
+            coalesce(sum(m.replies) filter (where i.published_at >= now() - interval '7 days'), 0)::int replies_7d,
+            coalesce(sum(coalesce(m.reposts, 0) + coalesce(m.quotes, 0)) filter (where i.published_at >= now() - interval '7 days'), 0)::int reposts_7d,
+            count(*) filter (where i.status = 'scheduled')::int scheduled_next
+       from threads_studio_posts m join content_items i on i.id = m.content_item_id where m.product_id = $1`,
+    [productId],
+  );
+  const threadsBest = await tx.maybeOne<{ text: string; format: string; views: number | null; likes: number | null; replies: number | null }>(
+    `select left(coalesce(v.body->>'body', ''), 200) text, m.format, m.views, m.likes, m.replies from threads_studio_posts m
+       join content_items i on i.id = m.content_item_id join content_versions v on v.id = i.current_version_id
+      where m.product_id = $1 and i.published_at >= now() - interval '14 days' and m.stats_checked_at is not null
+      order by coalesce(m.likes, 0) + 2 * coalesce(m.replies, 0) + 3 * (coalesce(m.reposts, 0) + coalesce(m.quotes, 0)) desc limit 1`,
     [productId],
   );
   const connections = await tx.query<{ channel: string; status: string; problem: string | null }>(
@@ -99,6 +117,7 @@ export async function gatherFacts(tx: Tx, productId: string) {
       youtube: { our_comments_posted: triple(convRow, "yt_posted"), replies_from_people: triple(convRow, "yt_replies_in"), likes_on_our_comments_30d: likes.likes, replies_on_our_comments_30d: likes.replies,
         best_comment_30d: bestComment ? { text: bestComment.text.slice(0, 200), likes: bestComment.like_count ?? 0, replies: bestComment.reply_count ?? 0, video: bestComment.video } : null },
       threads: { our_posts_and_replies: triple(convRow, "threads_posted"), messages_from_people: triple(convRow, "threads_in") },
+      threads_studio_our_posts: { ...threadsStudio, best_post_14d: threadsBest },
       instagram: { our_replies: triple(convRow, "ig_posted"), comments_from_people: triple(convRow, "ig_in") },
     },
     calm_videos: calm,

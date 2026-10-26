@@ -136,3 +136,23 @@ export const morningBriefSchema = z.object({
     .max(5),
 });
 export type MorningBriefOutput = z.infer<typeof morningBriefSchema>;
+
+/** Threads Studio: a small batch of our own Threads posts, each tagged so we can learn which kinds work. */
+export const THREADS_FORMATS = ["tip", "myth", "normalize", "question", "article", "list", "trend", "product"] as const;
+export const threadsBatchSchema = z.object({
+  posts: z
+    .array(
+      z.object({
+        format: z.enum(THREADS_FORMATS),
+        topic: z.string().min(2).max(60).describe("2–4 words, e.g. 'night panic', 'breathing', 'panic in public'"),
+        source_kind: z.enum(["article", "knowledge", "product", "trend"]),
+        source_title: z.string().max(200).nullable(),
+        source_url: z.string().max(500).nullable().describe("Our article URL for 'article' posts, or the page read for 'trend' posts"),
+        text: z.string().min(40).max(480),
+        why: z.string().max(240).describe("One line: why this could resonate"),
+      }),
+    )
+    .min(1)
+    .max(4),
+});
+export type ThreadsBatchOutput = z.infer<typeof threadsBatchSchema>;
