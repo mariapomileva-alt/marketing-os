@@ -75,7 +75,7 @@ export async function gatherFacts(tx: Tx, productId: string) {
   const calm = await tx.one<Record<string, number | string | null>>(
     `select (select count(*)::int from calm_videos where product_id = $1 and status in ('scheduled', 'published') and publish_at >= now() - interval '7 days' and publish_at < now()) videos_published_7d,
             (select count(*)::int from calm_shorts where product_id = $1 and status in ('scheduled', 'published') and publish_at >= now() - interval '7 days' and publish_at < now()) shorts_published_7d,
-            (select min(publish_at)::text from calm_videos where product_id = $1 and status = 'scheduled' and publish_at > now()) next_video_at,
+            (select to_char(min(publish_at) at time zone 'Europe/Riga', 'YYYY-MM-DD HH24:MI') || ' Riga time' from calm_videos where product_id = $1 and status = 'scheduled' and publish_at > now()) next_video_at,
             (select count(*)::int from calm_videos where product_id = $1 and status = 'failed' and updated_at > now() - interval '3 days') videos_failed_recently`,
     [productId],
   );
