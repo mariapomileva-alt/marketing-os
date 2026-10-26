@@ -38,6 +38,7 @@ describe("morning brief", () => {
     await as((tx) => createBrief(tx, owner, productId, voice));
     await as((tx) => createBrief(tx, owner, productId, voice));
     const b = await as((tx) => latestBrief(tx, productId));
+    expect(b?.brief_en?.greeting).toMatch(/MOCK/);
     expect(b?.brief?.greeting).toMatch(/MOCK/);
     expect(b?.is_mock).toBe(true);
     expect(spoken).toHaveLength(0); // the mock brief is never voiced

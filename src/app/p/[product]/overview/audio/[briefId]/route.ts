@@ -3,11 +3,12 @@ import { db, getProduct } from "@/server/context";
 import { fileStore } from "@/server/storage";
 
 /** The spoken brief, served from our own origin (so the page can draw the voice) and only to workspace members. */
-export async function GET(_req: Request, ctx: RouteContext<"/p/[product]/overview/audio/[briefId]">) {
+export async function GET(req: Request, ctx: RouteContext<"/p/[product]/overview/audio/[briefId]">) {
   const { product: slug, briefId } = await ctx.params;
   if (!/^[0-9a-f-]{36}$/.test(briefId)) return new NextResponse("Not found", { status: 404 });
   const product = await getProduct(slug);
-  const b = await db((tx) => tx.maybeOne<{ audio_path: string | null }>("select audio_path from daily_briefs where id = $1 and product_id = $2", [briefId, product.id]));
+  const en = new URL(req.url).searchParams.get("lang") === "en";
+  const b = await db((tx) => tx.maybeOne<{ audio_path: string | null }>(`select ${en ? "audio_path_en" : "audio_path"} audio_path from daily_briefs where id = $1 and product_id = $2`, [briefId, product.id]));
   if (!b?.audio_path) return new NextResponse("Not found", { status: 404 });
   const bytes = await fileStore().get(b.audio_path);
   return new NextResponse(Buffer.from(bytes), { headers: { "content-type": "audio/mpeg", "content-length": String(bytes.byteLength), "cache-control": "private, max-age=3600" } });

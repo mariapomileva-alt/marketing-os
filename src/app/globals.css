@@ -105,3 +105,14 @@ h3 { font-size: 16px; line-height: 1.4; font-weight: 600; }
 @keyframes orb-drift { to { transform: rotate(360deg); } }
 .orb-breathe { animation: orb-breathe 7s ease-in-out infinite; }
 .orb-drift { animation: orb-drift 40s linear infinite; }
+
+/* A faint measuring grid behind the console, fading out from the centre. */
+.grid-field {
+  background-image:
+    linear-gradient(to right, rgba(159, 220, 184, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(159, 220, 184, 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse 70% 80% at 30% 40%, #000 30%, transparent 85%);
+}
+@keyframes orb-scan { to { transform: rotate(-360deg); } }
+.orb-scan { animation: orb-scan 18s linear infinite; transform-origin: center; }

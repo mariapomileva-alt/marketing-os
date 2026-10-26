@@ -119,50 +119,85 @@ export interface BriefVoice {
   put(key: string, bytes: Uint8Array): Promise<void>;
 }
 
-export async function createBrief(tx: Tx, actor: Actor, productId: string, voice: BriefVoice | null, opts: { language?: string; webSearch?: boolean } = {}) {
+export type BriefLang = "en" | "ru";
+
+/**
+ * Writes the brief in English (with web search), translates it to Russian, voices both. One row per product and day;
+ * rebuilding replaces it. A failed translation or voice leaves that part empty with the reason, never a fake.
+ */
+export async function createBrief(tx: Tx, actor: Actor, productId: string, voice: BriefVoice | null, opts: { webSearch?: boolean } = {}) {
   const facts = await gatherFacts(tx, productId);
-  const language = opts.language ?? "ru";
   const wf = await tx.one<{ id: string }>(
     "insert into workflow_runs (workspace_id, product_id, workflow, input, status, current_step) values ($1,$2,'morning_brief',$3,'running','brief') returning id",
     [actor.workspaceId, productId, JSON.stringify({ day: facts.day })],
   );
-  const args = { actor, productId, workflowRunId: wf.id, step: "morning_brief", task: "morning_brief" as const, promptKey: "morning_brief.v1", schema: morningBriefSchema, sourceIds: [], maxTokens: 6000,
-    input: { LANGUAGE: language === "ru" ? "Russian" : "English", FACTS: facts } };
+  const base = { actor, productId, workflowRunId: wf.id, sourceIds: [], maxTokens: 6000, schema: morningBriefSchema };
+  const args = { ...base, step: "morning_brief", task: "morning_brief" as const, promptKey: "morning_brief.v1", input: { LANGUAGE: "English", FACTS: facts } };
   let webSearch = opts.webSearch ?? true;
-  let r: { output: MorningBriefOutput; agentRunId: string; isMock: boolean };
+  let en: { output: MorningBriefOutput; agentRunId: string; isMock: boolean };
   try {
-    r = await runAgent(tx, { ...args, webSearch });
+    en = await runAgent(tx, { ...args, webSearch });
   } catch (e) {
     // Web search can be switched off for the organisation; the brief still works without the outside section.
     if (!webSearch || !/web_search|tool|search/i.test((e as Error).message)) throw e;
     webSearch = false;
-    r = await runAgent(tx, { ...args, webSearch: false });
+    en = await runAgent(tx, { ...args, webSearch: false });
   }
-  let audioPath: string | null = null;
-  let error: string | null = null;
-  if (voice && !r.isMock) {
-    try {
-      const key = `${actor.workspaceId}/${productId}/briefs/${facts.day}-${Date.now()}.mp3`;
-      await voice.put(key, await voice.speak(r.output.spoken));
-      audioPath = key;
-    } catch (e) {
-      error = `Voice: ${(e as Error).message.slice(0, 200)}`;
+  const problems: string[] = [];
+  let ru: MorningBriefOutput | null = null;
+  try {
+    ru = (await runAgent(tx, { ...base, step: "morning_brief_translate", task: "morning_brief_translate", promptKey: "morning_brief_translate.v1", input: { TARGET: "Russian", BRIEF: en.output } })).output;
+  } catch (e) {
+    problems.push(`Russian version: ${(e as Error).message.slice(0, 160)}`);
+  }
+  const audio: Record<BriefLang, string | null> = { en: null, ru: null };
+  if (voice && !en.isMock) {
+    for (const [lang, b] of [["en", en.output], ["ru", ru]] as const) {
+      if (!b) continue;
+      try {
+        const key = `${actor.workspaceId}/${productId}/briefs/${facts.day}-${lang}-${Date.now()}.mp3`;
+        await voice.put(key, await voice.speak(b.spoken));
+        audio[lang] = key;
+      } catch (e) {
+        problems.push(`Voice (${lang}): ${(e as Error).message.slice(0, 160)}`);
+      }
     }
   }
   await tx.query("update workflow_runs set status = 'completed', current_step = 'done' where id = $1", [wf.id]);
   return tx.one<{ id: string }>(
-    `insert into daily_briefs (workspace_id, product_id, day, facts, brief, audio_path, language, is_mock, web_search, agent_run_id, error)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-     on conflict (product_id, day) do update set facts = excluded.facts, brief = excluded.brief, audio_path = excluded.audio_path, language = excluded.language,
-       is_mock = excluded.is_mock, web_search = excluded.web_search, agent_run_id = excluded.agent_run_id, error = excluded.error, updated_at = now(), created_at = now()
+    `insert into daily_briefs (workspace_id, product_id, day, facts, brief_en, brief, audio_path_en, audio_path, language, is_mock, web_search, agent_run_id, error)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,'en',$9,$10,$11,$12)
+     on conflict (product_id, day) do update set facts = excluded.facts, brief_en = excluded.brief_en, brief = excluded.brief, audio_path_en = excluded.audio_path_en,
+       audio_path = excluded.audio_path, language = excluded.language, is_mock = excluded.is_mock, web_search = excluded.web_search,
+       agent_run_id = excluded.agent_run_id, error = excluded.error, updated_at = now(), created_at = now()
      returning id`,
-    [actor.workspaceId, productId, facts.day, JSON.stringify(facts), JSON.stringify(r.output), audioPath, language, r.isMock, webSearch, r.agentRunId, error],
+    [actor.workspaceId, productId, facts.day, JSON.stringify(facts), JSON.stringify(en.output), ru ? JSON.stringify(ru) : null, audio.en, audio.ru,
+     en.isMock, webSearch, en.agentRunId, problems.length ? problems.join(" ") : null],
   );
 }
 
 export async function latestBrief(tx: Tx, productId: string) {
-  return tx.maybeOne<{ id: string; day: string; facts: BriefFacts; brief: MorningBriefOutput | null; audio_path: string | null; is_mock: boolean; web_search: boolean; error: string | null; created_at: string }>(
-    "select id, day::text, facts, brief, audio_path, is_mock, web_search, error, created_at::text from daily_briefs where product_id = $1 order by day desc limit 1",
+  return tx.maybeOne<{ id: string; day: string; facts: BriefFacts; brief: MorningBriefOutput | null; brief_en: MorningBriefOutput | null; audio_path: string | null; audio_path_en: string | null; is_mock: boolean; web_search: boolean; error: string | null; created_at: string }>(
+    "select id, day::text, facts, brief, brief_en, audio_path, audio_path_en, is_mock, web_search, error, created_at::text from daily_briefs where product_id = $1 order by day desc limit 1",
     [productId],
   );
+}
+
+/** Last 14 days (Riga), oldest first, for the small charts under the numbers on the Today screen. */
+export async function dailySeries(tx: Tx, productId: string) {
+  const rows = await tx.query<{ visits: number; ai: number; app_store: number; replies: number; ours: number }>(
+    `with days as (
+       select d, d + interval '1 day' e from generate_series(
+         (date_trunc('day', now() at time zone 'Europe/Riga') - interval '13 days') at time zone 'Europe/Riga',
+         date_trunc('day', now() at time zone 'Europe/Riga') at time zone 'Europe/Riga', interval '1 day') d)
+     select (select count(*) from site_events s where s.product_id = $1 and s.kind = 'pageview' and s.occurred_at >= days.d and s.occurred_at < days.e)::int visits,
+            (select count(*) from site_events s where s.product_id = $1 and s.kind = 'pageview' and s.source = any($2) and s.occurred_at >= days.d and s.occurred_at < days.e)::int ai,
+            (select count(*) from site_events s where s.product_id = $1 and s.kind = 'app_store_click' and s.occurred_at >= days.d and s.occurred_at < days.e)::int app_store,
+            (select count(*) from conversation_messages m where m.product_id = $1 and m.direction = 'inbound' and m.occurred_at >= days.d and m.occurred_at < days.e)::int replies,
+            (select count(*) from conversation_messages m where m.product_id = $1 and m.direction = 'outbound' and m.status = 'posted' and m.occurred_at >= days.d and m.occurred_at < days.e)::int ours
+       from days order by days.d`,
+    [productId, [...AI_SOURCES]],
+  );
+  const col = (k: keyof (typeof rows)[number]) => rows.map((r) => r[k]);
+  return { visits: col("visits"), ai: col("ai"), app_store: col("app_store"), replies: col("replies"), ours: col("ours") };
 }

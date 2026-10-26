@@ -216,6 +216,7 @@ export class MockProvider implements LLMProvider {
       : req.task === "community_reply" ? mockCommunityReply(c)
       : req.task === "calm_video" ? mockCalmVideo(c)
       : req.task === "morning_brief" ? mockMorningBrief(c)
+      : req.task === "morning_brief_translate" ? (c.BRIEF as Record<string, unknown>)
       : mockReview(req.task);
     const output = req.schema.parse(raw);
     const rawText = JSON.stringify(raw);

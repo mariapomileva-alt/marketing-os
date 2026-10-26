@@ -27,8 +27,8 @@ function NavList({ productSlug, approvals, onNavigate }: { productSlug: string; 
                     title={item.hint}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex h-8 items-center gap-2.5 rounded-[var(--radius-control)] px-2 text-[13.5px] text-night-ink/80 hover:bg-night-raise hover:text-night-ink",
-                      active && "bg-night-raise font-medium text-mint hover:text-mint",
+                      "relative flex h-8 items-center gap-2.5 rounded-[var(--radius-control)] px-2 text-[13.5px] text-night-ink/80 hover:bg-night-raise hover:text-night-ink",
+                      active && "bg-night-raise font-medium text-mint hover:text-mint before:absolute before:-left-3 before:top-1.5 before:h-5 before:w-[2px] before:rounded-r before:bg-mint before:shadow-[0_0_10px_1px_rgba(159,220,184,.55)]",
                     )}
                   >
                     <Icon aria-hidden className="size-4 shrink-0 opacity-80" strokeWidth={1.75} />

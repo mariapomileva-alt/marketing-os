@@ -81,7 +81,12 @@ export function BriefOrb({ src, label }: { src: string | null; label: string }) 
             </div>
           </div>
         </div>
+        <svg viewBox="-160 -160 320 320" className="orb-scan absolute inset-0 size-full" aria-hidden>
+          <circle r={146} fill="none" stroke="var(--mint)" strokeOpacity={0.5} strokeWidth={1} strokeDasharray="60 857" strokeLinecap="round" />
+          <circle r={146} fill="none" stroke="var(--mint)" strokeOpacity={0.12} strokeWidth={1} />
+        </svg>
         <svg viewBox="-160 -160 320 320" className="absolute inset-0 size-full" aria-hidden>
+          <circle r={104} fill="none" stroke="var(--mint)" strokeOpacity={0.18} strokeWidth={1} strokeDasharray="1 5" />
           {Array.from({ length: TICKS }, (_, i) => (
             <line
               key={i}

@@ -25,6 +25,7 @@ export default async function ProductLayout({ children, params }: LayoutProps<"/
         <div className="bg-amber-tint px-4 py-1 text-center text-[12px] text-amber">Development sign-in: local owner without password. Not for production.</div>
       ) : null}
       <header className="sticky top-0 z-30 flex h-14 items-center gap-3 bg-night px-3 text-night-ink sm:px-4">
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-mint/40 via-night-line to-transparent" />
         <MobileNav productSlug={product.slug} approvals={approvals} />
         <Link href={`/p/${product.slug}/overview`} className="hidden items-center gap-2 text-[14px] font-semibold tracking-[-0.01em] text-night-ink lg:flex lg:w-[208px]">
           <span aria-hidden className="size-2.5 rounded-full bg-mint shadow-[0_0_10px_2px_rgba(159,220,184,.45)]" />
