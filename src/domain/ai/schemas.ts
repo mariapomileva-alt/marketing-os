@@ -159,11 +159,19 @@ export type ThreadsBatchOutput = z.infer<typeof threadsBatchSchema>;
 
 /** Content desk: a morning's ready-to-approve Instagram posts, carousels and article ideas, each with its research. */
 export const HOOK_MECHANISMS = ["question", "statement", "micro_step", "story", "myth", "number"] as const;
+/** Scenes recorded from the real app that a Reel can use (see scripts/reels/shots). */
+export const REEL_SHOTS = ["home", "breathe", "try_another", "ground", "listen", "move", "read", "distract", "call_person"] as const;
+export const reelSpecSchema = z.object({
+  intro_style: z.enum(["dark", "light"]),
+  intro_lines: z.array(z.string().min(1).max(28)).min(1).max(4).describe("The hook as 1–4 short lines shown one by one in the first two seconds"),
+  scenes: z.array(z.object({ shot: z.enum(REEL_SHOTS), caption: z.string().max(48).default("") })).min(2).max(3),
+});
+export type ReelSpec = z.infer<typeof reelSpecSchema>;
 export const contentDeskSchema = z.object({
   items: z
     .array(
       z.object({
-        kind: z.enum(["post", "carousel", "article"]),
+        kind: z.enum(["post", "carousel", "article", "reel"]),
         topic: z.string().min(2).max(60).describe("2–4 words"),
         insight: z.string().min(10).max(400).describe("What the research found: the real need, question or pattern behind this piece"),
         why_now: z.string().max(300).describe("Why this, now: a trend, a question people asked us, a gap, what worked before"),
@@ -172,6 +180,7 @@ export const contentDeskSchema = z.object({
         chosen_hook: z.number().int().min(0).max(2),
         caption: z.string().max(2000).default("").describe("Instagram caption (posts, carousels) or a 2–3 sentence summary (articles)"),
         slides: z.array(z.object({ title: z.string().min(2).max(110), text: z.string().max(240).default("") })).max(8).default([]),
+        reel: reelSpecSchema.nullable().default(null),
         article: z
           .object({
             title: z.string().max(110),

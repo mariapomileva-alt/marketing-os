@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
-import { approveDeskItem, generateDesk, rejectDeskItem, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
+import { approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
+import type { ReelSpec } from "@/domain/ai/schemas";
 import { liveDeskMedia } from "@/server/desk/live";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 
@@ -20,6 +21,8 @@ const settingsSchema = z.object({
   articles_per_week: z.coerce.number().int().min(0).max(7),
   post_time: z.string(),
   carousel_time: z.string(),
+  reels_per_week: z.coerce.number().int().min(0).max(7),
+  reel_time: z.string(),
   web_research: z.boolean(),
 });
 
@@ -29,6 +32,7 @@ export async function saveDeskSettingsAction(slug: string, _: ActionResult | nul
     const parsed = settingsSchema.safeParse({
       enabled: data.get("enabled") === "on", posts_per_day: data.get("posts_per_day"), carousels_per_day: data.get("carousels_per_day"),
       articles_per_week: data.get("articles_per_week"), post_time: str(data.get("post_time")), carousel_time: str(data.get("carousel_time")),
+      reels_per_week: data.get("reels_per_week"), reel_time: str(data.get("reel_time")),
       web_research: data.get("web_research") === "on",
     });
     if (!parsed.success) return fail(parsed.error.issues.map((i) => i.message).join(" "));
@@ -74,6 +78,7 @@ export async function approveDeskAction(slug: string, itemId: string, _: ActionR
     const product = await getProduct(slug);
     const r = await db((tx, ctx) => approveDeskItem(tx, actorOf(ctx), product.id, itemId, liveDeskMedia(), editsFrom(data)), { reason: "Content desk piece approved" });
     revalidatePath(path(slug));
+    if (!r.scheduledFor) return ok(r.note ?? "Saved.");
     return ok(r.kind === "article" ? `Approved. Planned for ${when(r.scheduledFor)}: copy the brief for the article.` : `Approved. It goes out on Instagram on ${when(r.scheduledFor)}.`);
   } catch (e) {
     return toFailure(e, msg);
@@ -86,6 +91,28 @@ export async function rejectDeskAction(slug: string, itemId: string, _: ActionRe
     await db((tx, ctx) => rejectDeskItem(tx, actorOf(ctx), product.id, itemId), { reason: "Content desk piece removed" });
     revalidatePath(path(slug));
     return ok("Removed.");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+export async function rerenderReelAction(slug: string, itemId: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const scenes: ReelSpec["scenes"] = [];
+    for (let i = 0; i < 3; i++) {
+      const shot = data.get(`shot_${i}`);
+      if (typeof shot !== "string" || !shot) continue;
+      scenes.push({ shot: shot as ReelSpec["scenes"][number]["shot"], caption: str(data.get(`scene_caption_${i}`)) });
+    }
+    const spec = {
+      intro_style: str(data.get("intro_style")) === "light" ? "light" : "dark",
+      intro_lines: str(data.get("intro_lines")).split("\n").map((l) => l.trim()).filter(Boolean),
+      scenes,
+    } as ReelSpec;
+    await db((tx) => rerenderReel(tx, product.id, itemId, spec), { reason: "Reel text changed, made again" });
+    revalidatePath(path(slug));
+    return ok("Saved. The Reel is being made again (usually within two hours).");
   } catch (e) {
     return toFailure(e, msg);
   }

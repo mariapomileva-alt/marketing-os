@@ -47,6 +47,14 @@ export async function updateCalmSettings(tx: Tx, workspaceId: string, productId:
 
 export const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
 
+/** The product a renderer key belongs to (null for an unknown key); also marks the renderer as seen. */
+export async function rendererProduct(tx: Tx, token: string) {
+  const s = await tx.maybeOne<{ product_id: string }>("select product_id from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
+  if (!s) return null;
+  await tx.query("update calm_settings set renderer_seen_at = now() where product_id = $1", [s.product_id]);
+  return s.product_id;
+}
+
 /** A new key for the GitHub renderer. Only its hash is stored; the key is shown to the owner once. */
 export async function createRendererToken(tx: Tx, workspaceId: string, productId: string) {
   await getCalmSettings(tx, workspaceId, productId);

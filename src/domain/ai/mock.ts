@@ -213,13 +213,19 @@ function mockThreadsPosts(c: Ctx) {
 }
 
 function mockContentDesk(c: Ctx) {
-  const k = (c.COUNTS ?? {}) as { posts?: number; carousels?: number; articles?: number };
+  const k = (c.COUNTS ?? {}) as { posts?: number; carousels?: number; articles?: number; reels?: number };
   const hooks = (a: string) => [
     { text: `[MOCK] ${a}`, mechanism: "statement" },
     { text: "[MOCK] What if the first minute didn't have to be perfect?", mechanism: "question" },
     { text: "[MOCK] One thing to try before you reach for your phone", mechanism: "micro_step" },
   ];
   const items = [];
+  for (let i = 0; i < (k.reels ?? 0); i++) items.push({
+    kind: "reel", topic: "night panic", insight: "[MOCK] Night panic is the most common question we get.", why_now: "[MOCK] Calm night content gets saved.",
+    sources: [], hooks: [{ text: "3:07 am Heart racing. Nobody awake.", mechanism: "story" }, ...hooks("Breathing at your own pace").slice(1)], chosen_hook: 0,
+    caption: "[MOCK] For the nights that feel too long.\n\n#panicattack", slides: [], article: null,
+    reel: { intro_style: "dark", intro_lines: ["3:07 am", "Heart racing.", "Nobody awake."], scenes: [{ shot: "breathe", caption: "One tap. Breathe at your own pace." }, { shot: "listen", caption: "Works offline, even at night" }] },
+  });
   for (let i = 0; i < (k.carousels ?? 1); i++) items.push({
     kind: "carousel", topic: "night panic", insight: "[MOCK] People ask what to do at 3am when nobody is awake.", why_now: "[MOCK] Two people asked this under our posts this week.",
     sources: [{ title: "NHS: panic disorder", url: "https://www.nhs.uk/mental-health/conditions/panic-disorder/" }],

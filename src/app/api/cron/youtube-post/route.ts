@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
         return publishDueInstagramPosts(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.product_id, {
           token: async () => ({ token: await threadsToken(tx, conn, { refresh: instagramRefresh }), igUserId: conn.external_account_id! }),
           fileUrl: async (path) => (await fileStore().signedUrl(path, 3600)) ?? "",
-          image: instagramCreateImage, carousel: instagramCreateCarousel, status: instagramContainerStatus, publish: instagramPublish, permalink: instagramPermalink,
+          image: instagramCreateImage, carousel: instagramCreateCarousel, reel: instagramCreateReel, status: instagramContainerStatus, publish: instagramPublish, permalink: instagramPermalink,
           enabled: publishingEnabled("instagram"),
         });
       }).catch((e) => ({ error: (e as Error).message }));

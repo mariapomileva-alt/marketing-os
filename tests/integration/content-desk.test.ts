@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closePools, withContext, type Tx } from "@/server/db/client";
 import { createBackApp } from "@/server/services/products";
 import type { Actor } from "@/server/services/content";
-import { approveDeskItem, deskItems, generateDesk, nextDeskSlot, publishDueInstagramPosts, rejectDeskItem, type DeskMedia, type IgImagesApi } from "@/server/services/content-desk";
+import { approveDeskItem, claimReelJob, deskItems, finishReelRender, generateDesk, hookLines, nextDeskSlot, publishDueInstagramPosts, rejectDeskItem, rerenderReel, type DeskMedia, type IgImagesApi } from "@/server/services/content-desk";
 import { asUser, createOwner, pool } from "../helpers/db";
 
 let owner: { userId: string; workspaceId: string };
@@ -50,7 +50,7 @@ describe("content desk", () => {
     const post = (await as((tx) => deskItems(tx, productId))).find((i) => i.kind === "post")!;
     const before = drawn.length;
     const a = await as((tx) => approveDeskItem(tx, actor, productId, post.id, media, { hookIndex: 1, caption: "A calmer caption.\n\n#panicattack" }));
-    expect(riga(a.scheduledFor)).toMatch(/18:30/);
+    expect(riga(a.scheduledFor!)).toMatch(/18:30/);
     expect(drawn.length).toBe(before + 1);
     expect(drawn.at(-1)!.titles[0]).toBe(post.hooks[1].text);
     const after = (await as((tx) => deskItems(tx, productId))).find((i) => i.id === post.id)!;
@@ -67,7 +67,7 @@ describe("content desk", () => {
   it("an article idea is planned for a Monday, Wednesday or Friday at 15:00", async () => {
     const art = (await as((tx) => deskItems(tx, productId))).find((i) => i.kind === "article")!;
     const a = await as((tx) => approveDeskItem(tx, actor, productId, art.id, media));
-    expect(riga(a.scheduledFor)).toMatch(/^(Mon|Wed|Fri) 15:00$/);
+    expect(riga(a.scheduledFor!)).toMatch(/^(Mon|Wed|Fri) 15:00$/);
     expect(art.body.body).toMatch(/Search: /);
   });
 
@@ -85,6 +85,7 @@ describe("content desk", () => {
       fileUrl: async (p) => `https://storage/${p}`,
       image: async (_t, _u, url, caption, item) => { calls.push(`image ${item ? "item" : caption}`); return "c1"; },
       carousel: async () => "car1",
+      reel: async () => "reel1",
       status: async () => "FINISHED",
       publish: async () => { calls.push("publish"); return "m1"; },
       permalink: async () => "https://www.instagram.com/p/abc/",
@@ -105,5 +106,54 @@ describe("content desk", () => {
     const carousel = (await as((tx) => deskItems(tx, productId))).find((i) => i.kind === "carousel")!;
     await as((tx) => rejectDeskItem(tx, actor, productId, carousel.id));
     expect((await as((tx) => deskItems(tx, productId))).some((i) => i.id === carousel.id)).toBe(false);
+  });
+
+  it("a Reel waits for the renderer, can be approved only once made, and is published in two steps", async () => {
+    const r = await as((tx) => generateDesk(tx, actor, productId, media, { posts: 0, carousels: 0, articles: 0, reels: 1 }));
+    const id = r.created[0].id;
+    let reel = (await as((tx) => deskItems(tx, productId))).find((i) => i.id === id)!;
+    expect(reel).toMatchObject({ kind: "reel", render_status: "waiting", status: "needs_human_review" });
+    expect(reel.reel?.scenes.map((s) => s.shot)).toEqual(["breathe", "listen"]);
+    await expect(as((tx) => approveDeskItem(tx, actor, productId, id, media))).rejects.toThrow(/still being made/);
+
+    const job = await as((tx) => claimReelJob(tx, productId));
+    expect(job?.id).toBe(id);
+    expect(await as((tx) => claimReelJob(tx, productId))).toBeNull(); // taken
+    await as((tx) => finishReelRender(tx, productId, id, { storageKey: "elsewhere/x.mp4" }));
+    expect((await as((tx) => deskItems(tx, productId))).find((i) => i.id === id)!.render_status).toBe("failed");
+    await as((tx) => rerenderReel(tx, productId, id, { intro_style: "light", intro_lines: ["Calm for the", "first minute"], scenes: [{ shot: "home", caption: "" }, { shot: "ground", caption: "Feet on the floor" }] }));
+    const job2 = (await as((tx) => claimReelJob(tx, productId)))!;
+    expect(job2.spec.intro_lines).toEqual(["Calm for the", "first minute"]);
+    await as((tx) => finishReelRender(tx, productId, id, { storageKey: job2.storageKey }));
+    reel = (await as((tx) => deskItems(tx, productId))).find((i) => i.id === id)!;
+    expect(reel.render_status).toBe("ready");
+    expect(reel.video_asset_id).toBeTruthy();
+
+    // A different hook makes the Reel again instead of approving it.
+    const again = await as((tx) => approveDeskItem(tx, actor, productId, id, media, { hookIndex: 1 }));
+    expect(again.scheduledFor).toBeNull();
+    const job3 = (await as((tx) => claimReelJob(tx, productId)))!;
+    await as((tx) => finishReelRender(tx, productId, id, { storageKey: job3.storageKey }));
+    const a = await as((tx) => approveDeskItem(tx, actor, productId, id, media));
+    expect(riga(a.scheduledFor!)).toMatch(/20:00/);
+
+    let status = "IN_PROGRESS";
+    const calls: string[] = [];
+    const api: IgImagesApi = {
+      token: async () => ({ token: "t", igUserId: "ig1" }), fileUrl: async (p) => `https://storage/${p}`,
+      image: async () => "c", carousel: async () => "car", reel: async (_t, _u, url, caption) => { calls.push(`reel ${url.endsWith(".mp4")} ${caption.length > 0}`); return "rc1"; },
+      status: async () => status, publish: async () => { calls.push("publish"); return "m9"; }, permalink: async () => "https://www.instagram.com/reel/xyz/", enabled: true,
+    };
+    const later = new Date(Date.now() + 90 * 86_400_000);
+    expect((await as((tx) => publishDueInstagramPosts(tx, actor, productId, api, later)))[0].result).toBe("processing");
+    expect((await as((tx) => publishDueInstagramPosts(tx, actor, productId, api, later)))[0].result).toBe("processing");
+    status = "FINISHED";
+    expect((await as((tx) => publishDueInstagramPosts(tx, actor, productId, api, later)))[0].result).toBe("published");
+    expect(calls).toEqual(["reel true true", "publish"]);
+  });
+
+  it("splits a hook into short opening lines", () => {
+    expect(hookLines("3:07 am. Heart racing. Nobody awake.")).toEqual(["3:07 am.", "Heart racing.", "Nobody awake."]);
+    expect(hookLines("An anxiety app that won't make you breathe right").every((l) => l.length <= 28)).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
-# Renders calm affirmation videos for Marketing OS and uploads them to YouTube as PRIVATE.
+# Renders calm affirmation videos for Marketing OS and uploads them to YouTube as PRIVATE,
+# then makes the content desk's Reels (uploaded to private storage for the owner to watch and approve).
 # Nothing becomes public here: the owner watches each video and approves it in Marketing OS.
 # Needs: repository secret MOS_RENDER_TOKEN (Marketing OS → Calm Videos → Create renderer key)
 #        repository variable MOS_URL (e.g. https://marketing-os-kappa-one.vercel.app)
@@ -23,7 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts/render-calm.mjs
+          sparse-checkout: |
+            scripts/render-calm.mjs
+            scripts/render-reel.mjs
+            scripts/reels/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v4
         with:
@@ -35,11 +39,25 @@ jobs:
           MOS_URL: ${{ vars.MOS_URL }}
           MOS_RENDER_TOKEN: ${{ secrets.MOS_RENDER_TOKEN }}
         run: node scripts/render-calm.mjs
+      - name: Prepare the Reel renderer (headless browser, music)
+        if: ${{ !cancelled() }}
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null
+          pip install --quiet --break-system-packages numpy scipy
+      - name: Make waiting Reels (content desk)
+        if: ${{ !cancelled() }}
+        env:
+          MOS_URL: ${{ vars.MOS_URL }}
+          MOS_RENDER_TOKEN: ${{ secrets.MOS_RENDER_TOKEN }}
+        run: node scripts/render-reel.mjs
       - name: Keep the video files (download from the run page)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: calm-videos
-          path: out/*.mp4
+          path: |
+            out/*.mp4
+            out/reels/*.mp4
           if-no-files-found: ignore
           retention-days: 14

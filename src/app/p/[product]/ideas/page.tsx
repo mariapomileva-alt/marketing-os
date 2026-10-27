@@ -13,7 +13,7 @@ import { DeskCard, type DeskCardData } from "./desk-card";
 
 const TZ = "Europe/Riga";
 const when = (iso: string) => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: TZ }).format(new Date(iso));
-const KIND: Record<string, string> = { post: "Post", carousel: "Carousel", article: "Article" };
+const KIND: Record<string, string> = { post: "Post", carousel: "Carousel", article: "Article", reel: "Reel" };
 
 export const metadata = { title: "Ideas & hooks" };
 export const maxDuration = 300;
@@ -48,17 +48,18 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
     id: x.id, kind: x.kind, topic: x.topic, insight: x.insight, why_now: x.why_now, sources: x.sources, hooks: x.hooks, chosen_hook: x.chosen_hook,
     caption: x.body.caption ?? "", slides: (x.body.slides ?? []).map((s) => ({ title: s.title, text: s.text ?? "" })), brief: x.body.body ?? "",
     images: x.image_asset_ids.map((id) => `/p/${slug}/creatives/${id}`), render_error: x.render_error, blocked: x.status === "draft" ? x.blocked_reason : null,
+    reel: x.reel, video: x.video_asset_id ? `/p/${slug}/creatives/${x.video_asset_id}` : null, render_status: x.render_status,
   });
   const s = d.deskSettings;
   return (
     <>
       <PageHeader
         title="Ideas & hooks"
-        description={`Every morning at 7:40 the desk researches what people with panic ask and share right now, what worked for us and what we have not covered yet, then prepares ready pieces: ${s.carousels_per_day} carousel(s) and ${s.posts_per_day} post(s) a day for Instagram, drawn in Back's look, and ${s.articles_per_week} article idea(s) a week. Approve puts a piece on the calendar.`}
+        description={`Every morning at 7:40 the desk researches what people with panic ask and share right now, what worked for us and what we have not covered yet, then prepares ready pieces: ${s.reels_per_week} Reel(s) a week made from the real app, ${s.carousels_per_day} carousel(s) and ${s.posts_per_day} post(s) a day for Instagram, drawn in Back's look, and ${s.articles_per_week} article idea(s) a week. Approve puts a piece on the calendar.`}
       />
       <Section
         title={`Today's desk${waiting.length ? ` · ${waiting.length} waiting` : ""}`}
-        description={d.ig?.status === "connected" ? (publishingEnabled("instagram") ? `Approved posts go out on Instagram by themselves: carousels at ${s.carousel_time}, posts at ${s.post_time} (Riga), one of each a day.` : "Instagram posting is switched off on the server (INSTAGRAM_PUBLISHING_ENABLED), so approved posts wait on the calendar.") : "Instagram is not connected: approved posts wait on the calendar until it is (Connections)."}
+        description={d.ig?.status === "connected" ? (publishingEnabled("instagram") ? `Approved pieces go out on Instagram by themselves: carousels at ${s.carousel_time}, posts at ${s.post_time}, Reels at ${s.reel_time} (Riga), one of each a day.` : "Instagram posting is switched off on the server (INSTAGRAM_PUBLISHING_ENABLED), so approved posts wait on the calendar.") : "Instagram is not connected: approved posts wait on the calendar until it is (Connections)."}
       >
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <ActionForm action={generateDeskAction.bind(null, slug)} submitLabel="Research and prepare now" pendingLabel="Researching and drawing, 1–2 minutes…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Prepare the desk now</span></ActionForm>
@@ -89,6 +90,8 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
             <label className="flex items-center gap-2 text-[13.5px] md:col-span-3"><input type="checkbox" name="enabled" defaultChecked={s.enabled} className="size-4" /> Prepare a desk every morning</label>
             <Field label="Carousels a day" htmlFor="dk-c"><Select id="dk-c" name="carousels_per_day" defaultValue={String(s.carousels_per_day)}>{[0, 1, 2, 3].map((n) => <option key={n}>{n}</option>)}</Select></Field>
             <Field label="Posts a day" htmlFor="dk-p"><Select id="dk-p" name="posts_per_day" defaultValue={String(s.posts_per_day)}>{[0, 1, 2, 3].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+            <Field label="Reels a week" htmlFor="dk-r"><Select id="dk-r" name="reels_per_week" defaultValue={String(s.reels_per_week)}>{[0, 1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+            <Field label="Reel time (Riga)" htmlFor="dk-rt"><Input id="dk-rt" name="reel_time" defaultValue={s.reel_time} /></Field>
             <Field label="Article ideas a week" htmlFor="dk-a"><Select id="dk-a" name="articles_per_week" defaultValue={String(s.articles_per_week)}>{[0, 1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}</Select></Field>
             <Field label="Carousel time (Riga)" htmlFor="dk-ct"><Input id="dk-ct" name="carousel_time" defaultValue={s.carousel_time} /></Field>
             <Field label="Post time (Riga)" htmlFor="dk-pt"><Input id="dk-pt" name="post_time" defaultValue={s.post_time} /></Field>

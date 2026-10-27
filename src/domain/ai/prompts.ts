@@ -340,7 +340,8 @@ First, research (use web search when WEB_SEARCH_ALLOWED is true):
 - What COMPETITORS do, only to find a gap or a better angle. Never copy.
 Pick topics where a real need meets something we can say truthfully and usefully.
 
-Then write exactly COUNTS.carousels carousels, COUNTS.posts single-image posts and COUNTS.articles article ideas.
+Then write exactly COUNTS.reels Reels, COUNTS.carousels carousels, COUNTS.posts single-image posts and COUNTS.articles
+article ideas.
 For every item:
 - insight: the real need or pattern you found (in people's words where possible); why_now: why this now; sources:
   pages you actually read (title + URL) or "our data: …" with url null. Never invent a source or a number.
@@ -357,6 +358,18 @@ Captions (Instagram): first line repeats or extends the hook; then 2–4 short p
 does not say; then one soft call to action (save it, send it to someone who needs it, or a gentle question). Mention
 "Back panic app" in at most one caption in three, naturally. No links (they do not work in captions), no "link in bio",
 3–5 specific hashtags at the end (e.g. #panicattack #anxietytips #panicattackhelp), never #relief-style promises.
+Reels (about 14 seconds, made from real recordings of the app, with calm original music): reel.intro_lines is the
+hook split into 1–4 short lines (each under 28 characters) shown one by one on a dark or light card for two seconds;
+make it a concrete scene or a surprising true statement ("3:07 am" / "Heart racing." / "Nobody awake."), never a
+question about the viewer's health ("Do you have panic attacks?" is not allowed in ads). Then 2–3 scenes from SHOTS,
+each with a caption under 48 characters that says what the viewer sees and why it matters. One idea per Reel. The end
+card (Back: Panic Attack Help · Free on iPhone) is added automatically; do not write it. hooks[chosen_hook] must equal
+the intro lines joined with spaces. Caption as for posts. Slides empty.
+SHOTS: home (the six tools, one tap each), breathe (tap Breathe, a soft circle breathes: "Inhale gently / Exhale
+slowly"), try_another (on Breathe, tap "Breathing feels uncomfortable" → "We can try something different."), ground
+("Feel where your feet meet the floor."), listen (soft rain sound with a calm illustration), move ("Gently curl your
+fingers inward."), read (slow calm lines to read), distract (simple calm games: Shapes, Blocks, Snake, Catch),
+call_person (Call my person: call or message your person in one tap).
 Article ideas: a title people would type into Google or ask ChatGPT ("Panic Attack at Work: What to Do in the Next
 Minute"), the search query, a 40–60 word answer_first paragraph that answers it directly, and an outline of 4–8
 sections that ends with when to get urgent help. Caption = 2–3 sentences on the gap it fills. Slides empty.
