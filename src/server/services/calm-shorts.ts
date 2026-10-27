@@ -1,6 +1,9 @@
 import type { Tx } from "@/server/db/client";
 import type { Actor } from "./content";
 import { nextSlot, type CalmClip, type Scheduler } from "./calm";
+import { defaultTikTokCaption, type TikTokChoice } from "./tiktok";
+
+export type ShortTarget = "youtube" | "instagram" | "tiktok";
 
 /**
  * Shorts and Reels cut from a calm video's script: consecutive lines grouped into 30-60 second pieces, rendered
@@ -42,7 +45,7 @@ export async function planShorts(tx: Tx, productId: string, videoId: string) {
 }
 
 /** The owner's ticks: which shorts to make and where. Unticked ones stay planned. */
-export async function selectShorts(tx: Tx, productId: string, picks: Array<{ id: string; targets: Array<"youtube" | "instagram"> }>) {
+export async function selectShorts(tx: Tx, productId: string, picks: Array<{ id: string; targets: ShortTarget[] }>) {
   let n = 0;
   for (const p of picks) {
     if (!p.targets.length) continue;
@@ -101,8 +104,8 @@ export async function finishShortRender(tx: Tx, productId: string, id: string, r
 }
 
 /** Approved shorts go out one a day at the publishing hour: YouTube schedules it, Instagram from the queue. */
-export async function approveShort(tx: Tx, actor: Actor, productId: string, id: string, yt: Scheduler | null) {
-  const s = await tx.one<{ status: string; youtube_video_id: string | null; targets: string[] }>("select status, youtube_video_id, targets from calm_shorts where id = $1 and product_id = $2", [id, productId]);
+export async function approveShort(tx: Tx, actor: Actor, productId: string, id: string, yt: Scheduler | null, tiktok?: { caption?: string; choice: TikTokChoice }) {
+  const s = await tx.one<{ status: string; youtube_video_id: string | null; targets: string[]; title: string }>("select status, youtube_video_id, targets, title from calm_shorts where id = $1 and product_id = $2", [id, productId]);
   if (s.status !== "review") throw new Error("Only a rendered short waiting for review can be approved.");
   const hour = (await tx.maybeOne<{ h: number }>("select publish_hour_utc h from calm_settings where product_id = $1", [productId]))?.h ?? 16;
   const taken = (await tx.query<{ publish_at: string }>("select publish_at::text from calm_shorts where product_id = $1 and status in ('scheduled', 'published') and publish_at > now()", [productId])).map((r) => new Date(r.publish_at));
@@ -119,6 +122,14 @@ export async function approveShort(tx: Tx, actor: Actor, productId: string, id: 
     "update calm_shorts set status = 'scheduled', publish_at = $2, instagram_status = case when 'instagram' = any(targets) then 'queued' else null end, decided_by = $3, decided_at = now() where id = $1",
     [id, at.toISOString(), actor.userId],
   );
+  if (s.targets.includes("tiktok")) {
+    // The exact caption and choices the owner approved are what gets sent to TikTok.
+    const caption = (tiktok?.caption?.trim() || defaultTikTokCaption(s.title)).slice(0, 2200);
+    await tx.query(
+      "update calm_shorts set tiktok_status = 'queued', tiktok_caption = $2, tiktok_options = $3, tiktok_error = null where id = $1",
+      [id, caption, JSON.stringify(tiktok?.choice ?? { mode: "inbox" })],
+    );
+  }
   return { publishAt: at };
 }
 

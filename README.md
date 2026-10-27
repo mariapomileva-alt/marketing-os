@@ -125,3 +125,12 @@ Other accounts' reels: the API does not allow commenting on other accounts' medi
 3. The workflow "Calm video renderer" runs every two hours (or Run workflow by hand), renders waiting videos and uploads them to YouTube as private. Approve them in Calm Videos.
 
 YouTube keeps videos uploaded through the API private while the Google Cloud project has not passed the YouTube API audit (projects created after July 2020). Request it with the "YouTube API Services Audit and Quota Extension Form"; until then, download the rendered file from the GitHub run and upload it in YouTube Studio.
+
+## TikTok (calm shorts)
+
+1. TikTok for Developers → app **Back Publisher** (Login Kit + Content Posting API; redirect URI `https://marketing-os-kappa-one.vercel.app/api/tiktok/oauth/callback`; terms and privacy at `/legal/terms`, `/legal/privacy`).
+2. Vercel → Settings → Environment Variables: `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` (from the app's Credentials). Redeploy.
+3. Connections → **Connect TikTok**. Tokens (access 24 h, refresh 1 year) are stored encrypted and refreshed automatically.
+4. Calm Videos → tick **TikTok** for a short. When approving, the exact caption is fixed; at its time the posting queue uploads it.
+   - Until TikTok audits the app: the video arrives in the TikTok inbox as a draft; finish the post in the TikTok app.
+   - After the audit: set `TIKTOK_DIRECT_POST=true`; the approval form then shows the account, who can see it (no default), comments/duet/stitch (off unless ticked), the brand toggle, and the video is posted directly.

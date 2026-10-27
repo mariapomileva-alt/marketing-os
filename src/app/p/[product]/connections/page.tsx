@@ -10,9 +10,10 @@ import { formatDateTime } from "@/lib/format";
 import { disconnectYoutubeAction } from "@/app/actions/youtube";
 import { publishingEnabled } from "@/server/services/youtube-publish";
 import { oauthConfigured } from "@/server/youtube/write";
-import { disconnectInstagramAction, disconnectThreadsAction } from "@/app/actions/threads";
+import { disconnectInstagramAction, disconnectThreadsAction, disconnectTiktokAction } from "@/app/actions/threads";
 import { instagramOauthConfigured } from "@/server/instagram/api";
 import { threadsOauthConfigured } from "@/server/threads/api";
+import { tiktokDirectPostEnabled, tiktokOauthConfigured } from "@/server/tiktok/api";
 
 export const metadata = { title: "Connections" };
 
@@ -40,6 +41,14 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
     bad_state: "The sign-in link expired or was opened in another browser. Press Connect Instagram again.",
     not_configured: "Instagram sign-in is not set up yet: INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET are missing in Vercel.",
   };
+  const ttParam = (await searchParams).tt;
+  const TT: Record<string, string> = {
+    connected: "TikTok account connected. Approved calm shorts ticked for TikTok will be sent to it at their time.",
+    denied: "TikTok sign-in was cancelled. Nothing was connected.",
+    bad_state: "The sign-in link expired or was opened in another browser. Press Connect TikTok again.",
+    not_configured: "TikTok sign-in is not set up yet: TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET are missing in Vercel.",
+  };
+  const tt = typeof ttParam === "string" ? (TT[ttParam] ?? (ttParam.startsWith("error:") ? `Could not connect TikTok: ${ttParam.slice(6)}` : null)) : null;
   const ig = typeof igParam === "string" ? (IG[igParam] ?? (igParam.startsWith("error:") ? `Could not connect Instagram: ${igParam.slice(6)}` : null)) : null;
   const th = typeof thParam === "string" ? (TH[thParam] ?? (thParam.startsWith("error:") ? `Could not connect Threads: ${thParam.slice(6)}` : null)) : null;
   const yt = typeof ytParam === "string" ? (YT_MESSAGES[ytParam] ?? (ytParam.startsWith("error:") ? `Could not connect: ${ytParam.slice(6)}` : null)) : null;
@@ -162,6 +171,28 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
         })()}
       </Section>
 
+      <Section title="TikTok account" description="Lets God of Marketing send the calm shorts you approve to the team's TikTok account. Until TikTok has reviewed our app, each video arrives in your TikTok inbox as a draft and you post it from the TikTok app; after the review, it is posted at its time with the choices you made when approving.">
+        {tt ? <p className="mb-3 rounded-[var(--radius-panel)] border border-line bg-surface p-3 text-[13px]">{tt}</p> : null}
+        {(() => {
+          const active = d.channels.find((x) => x.channel === "tiktok" && x.status !== "revoked" && x.adapter_kind === "official_api");
+          if (active) {
+            return (
+              <div className="flex flex-wrap items-center gap-3">
+                <Status tone={tone(active.status)}>{active.status === "connected" ? `Connected: ${active.account_label}` : `Paused: ${active.paused_reason ?? active.status}`}</Status>
+                <span className="text-[13px] text-muted">{tiktokDirectPostEnabled() ? "Direct posting is on." : "Videos go to your TikTok inbox as drafts (direct posting starts after TikTok's review)."}</span>
+                <a href={`/api/tiktok/oauth/start?product=${slug}`} className="text-[13px] underline">Reconnect</a>
+                <form action={disconnectTiktokAction.bind(null, slug)}><Button size="sm" variant="danger">Disconnect TikTok</Button></form>
+              </div>
+            );
+          }
+          return tiktokOauthConfigured() ? (
+            <a href={`/api/tiktok/oauth/start?product=${slug}`} className="inline-flex h-9 items-center rounded-[var(--radius-control)] bg-green px-4 text-[14px] font-medium text-white hover:bg-green-hover">Connect TikTok</a>
+          ) : (
+            <p className="text-[13px] text-muted">TikTok sign-in is not set up yet. In Vercel → Settings → Environment Variables add TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET (from TikTok for Developers → Back Publisher → Credentials), redeploy, then a Connect button appears here.</p>
+          );
+        })()}
+      </Section>
+
       <Section title={`Channels for ${product.name}`}>
         <Table>
           <thead><tr><th>Channel</th><th>What works in this build</th><th>Connection</th><th /></tr></thead>
@@ -173,10 +204,10 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
                 <td className="font-medium">{c.name}</td>
                 <td className="max-w-[360px] text-muted">{c.status === "planned" ? <DataFlag kind="planned" /> : c.capabilities}{c.note ? <div className="text-[12px]">{c.note}</div> : null}</td>
                 <td>
-                  {!active && (c.id === "youtube" || c.id === "threads" || c.id === "instagram") ? <span className="text-muted">Connect above</span> : active ? <><Status tone={tone(active.status)}>{active.account_label || "Connected"}</Status><div className="text-[12px] text-muted">{active.mode === "draft_only" ? "Draft only" : "Requires approval"}, {active.pubs} publications{active.paused_reason ? `, paused: ${active.paused_reason}` : ""}</div></> : <span className="text-muted">{c.status === "planned" ? "Not available yet" : "Not connected"}</span>}
+                  {!active && (c.id === "youtube" || c.id === "threads" || c.id === "instagram" || c.id === "tiktok") ? <span className="text-muted">Connect above</span> : active ? <><Status tone={tone(active.status)}>{active.account_label || "Connected"}</Status><div className="text-[12px] text-muted">{active.mode === "draft_only" ? "Draft only" : "Requires approval"}, {active.pubs} publications{active.paused_reason ? `, paused: ${active.paused_reason}` : ""}</div></> : <span className="text-muted">{c.status === "planned" ? "Not available yet" : "Not connected"}</span>}
                   {conns.filter((x) => x.status === "revoked").map((x) => <div key={x.id} className="text-[12px] text-faint">Disconnected {formatDateTime(x.revoked_at)}, {x.pubs} publications kept</div>)}
                 </td>
-                <td>{active && c.id !== "youtube" && !((c.id === "threads" || c.id === "instagram") && active.adapter_kind === "official_api") ? <form action={revokeChannelAction.bind(null, slug, active.id)}><Button size="sm" variant="danger">Disconnect</Button></form> : null}</td>
+                <td>{active && c.id !== "youtube" && !((c.id === "threads" || c.id === "instagram" || c.id === "tiktok") && active.adapter_kind === "official_api") ? <form action={revokeChannelAction.bind(null, slug, active.id)}><Button size="sm" variant="danger">Disconnect</Button></form> : null}</td>
               </tr>
             );
           })}</tbody>

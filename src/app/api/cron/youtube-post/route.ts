@@ -11,6 +11,8 @@ import { publishDueReels } from "@/server/services/calm-shorts";
 import { channelConnection, threadsToken } from "@/server/services/youtube-publish";
 import { fileStore } from "@/server/storage";
 import { instagramContainerStatus, instagramCreateReel, instagramPublish, instagramRefresh } from "@/server/instagram/api";
+import { publishDueTikToks, tiktokAccess, tiktokConnection } from "@/server/services/tiktok";
+import { tiktokDirectPostEnabled, tiktokRefresh, tiktokStatus, tiktokUpload } from "@/server/tiktok/api";
 
 /**
  * Posting queue, called every few minutes by the database scheduler (Supabase pg_cron + pg_net, set up by the build).
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
     tx.query<{ product_id: string; workspace_id: string; owner_id: string }>(
       `select distinct c.product_id, c.workspace_id,
               (select m.user_id from workspace_members m where m.workspace_id = c.workspace_id and m.role = 'owner' order by m.created_at limit 1) owner_id
-         from channel_connections c where c.channel in ('youtube', 'threads', 'instagram') and c.adapter_kind = 'official_api' and c.status in ('connected', 'paused')`,
+         from channel_connections c where c.channel in ('youtube', 'threads', 'instagram', 'tiktok') and c.adapter_kind = 'official_api' and c.status in ('connected', 'paused')`,
     ),
   );
   const results = [];
@@ -58,11 +60,23 @@ export async function GET(request: NextRequest) {
           create: instagramCreateReel, status: instagramContainerStatus, publish: instagramPublish,
         });
       });
+      // Approved TikTok shorts whose time has come: uploaded as inbox drafts (or posted, after TikTok's audit).
+      const tiktok = await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "scheduled TikTok shorts (approved only)" }, async (tx) => {
+        const conn = await tiktokConnection(tx, p.product_id);
+        if (!conn || conn.status !== "connected") return null;
+        return publishDueTikToks(tx, p.product_id, {
+          access: () => tiktokAccess(tx, conn, tiktokRefresh),
+          file: (path) => fileStore().get(path),
+          upload: (token, bytes, mode, post) => tiktokUpload(token, bytes, mode, post),
+          status: (token, id) => tiktokStatus(token, id),
+          directAllowed: tiktokDirectPostEnabled(),
+        });
+      }).catch((e) => ({ error: (e as Error).message }));
       // About once an hour: reactions on our Threads Studio posts, so the analytics stay fresh.
       const studioStats = new Date().getUTCMinutes() < 5
         ? await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "Threads reactions" }, (tx) => refreshStudioStatsLive(tx, p.product_id, 15)).catch((e) => ({ error: (e as Error).message }))
         : null;
-      results.push({ product: p.product_id, ...r, posts, reels, studioStats });
+      results.push({ product: p.product_id, ...r, posts, reels, tiktok, studioStats });
     } catch (e) {
       results.push({ product: p.product_id, error: (e as Error).message });
     }

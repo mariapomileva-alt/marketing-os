@@ -101,8 +101,8 @@ export async function calendarItems(tx: Tx, productId: string, from: Date, to: D
   const videos = await tx.query<{ id: string; title: string; status: string; publish_at: string; youtube_video_id: string | null }>(
     `select id, title, status, publish_at::text, youtube_video_id from calm_videos
       where product_id = $1 and publish_at between $2 and $3 and status in ('approved', 'scheduled', 'published')`, p);
-  const shorts = await tx.query<{ id: string; title: string; status: string; publish_at: string; targets: string[]; youtube_video_id: string | null; instagram_media_id: string | null; instagram_status: string | null }>(
-    `select id, title, status, publish_at::text, targets, youtube_video_id, instagram_media_id, instagram_status from calm_shorts
+  const shorts = await tx.query<{ id: string; title: string; status: string; publish_at: string; targets: string[]; youtube_video_id: string | null; instagram_media_id: string | null; instagram_status: string | null; tiktok_status: string | null }>(
+    `select id, title, status, publish_at::text, targets, youtube_video_id, instagram_media_id, instagram_status, tiktok_status from calm_shorts
       where product_id = $1 and publish_at between $2 and $3 and status in ('scheduled', 'published')`, p);
   const posts = await tx.query<{ id: string; title: string; status: string; channel: string; at: string; external_id: string | null }>(
     `select i.id, i.title, i.status, i.channel, coalesce(i.published_at, i.scheduled_for)::text at,
@@ -135,6 +135,9 @@ export async function calendarItems(tx: Tx, productId: string, from: Date, to: D
       const it: CalItem = { key: `s:${s.id}:ig`, at: s.publish_at, channel: "instagram", kind: "reel", status: s.instagram_status === "published" ? "published" : s.instagram_status === "failed" ? "failed" : "scheduled", title: s.title, url: null, href: "/calm", thumb: null, origin: "ours" };
       if (s.instagram_media_id) known.set(`instagram:${s.instagram_media_id}`, it);
       items.push(it);
+    }
+    if (s.targets.includes("tiktok")) {
+      items.push({ key: `s:${s.id}:tt`, at: s.publish_at, channel: "tiktok", kind: "video", status: s.tiktok_status === "published" ? "published" : s.tiktok_status === "failed" ? "failed" : s.tiktok_status === "sent_to_inbox" ? "review" : "scheduled", title: s.title, url: null, href: "/calm", thumb: null, origin: "ours" });
     }
   }
   for (const c of posts) {

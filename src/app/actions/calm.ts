@@ -6,7 +6,9 @@ import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { approveCalmVideo, createCalmVideo, createRendererToken, prepareCalmMedia, rejectCalmVideo, updateCalmSettings } from "@/server/services/calm";
 import { liveCalmMedia } from "@/server/calm/live";
-import { approveShort, rejectShort, selectShorts } from "@/server/services/calm-shorts";
+import { approveShort, rejectShort, selectShorts, type ShortTarget } from "@/server/services/calm-shorts";
+import { tiktokAccess, tiktokConnection, validateDirectChoice, type TikTokChoice } from "@/server/services/tiktok";
+import { tiktokCreatorInfo, tiktokDirectPostEnabled, tiktokRefresh } from "@/server/tiktok/api";
 import { refreshTokenFor, youtubeConnection } from "@/server/services/youtube-publish";
 import { accessToken, scheduleVideo } from "@/server/youtube/write";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -24,7 +26,7 @@ const settingsSchema = z.object({
   topics: z.array(z.string().min(3).max(120)).min(1).max(60),
   themes: z.array(z.enum(["river", "forest", "clouds", "rain", "ocean", "snow", "lake", "meadow"])).min(1),
   auto_shorts: z.boolean(),
-  auto_shorts_targets: z.array(z.enum(["youtube", "instagram"])),
+  auto_shorts_targets: z.array(z.enum(["youtube", "instagram", "tiktok"])),
 });
 
 export async function saveCalmSettingsAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
@@ -126,26 +128,45 @@ export async function rejectCalmAction(slug: string, id: string) {
 export async function selectShortsAction(slug: string, videoId: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
     const product = await getProduct(slug);
-    const ids = new Set([...data.keys()].filter((k) => /^(yt|ig)_/.test(k)).map((k) => k.slice(3)));
+    const ids = new Set([...data.keys()].filter((k) => /^(yt|ig|tt)_/.test(k)).map((k) => k.slice(3)));
     const picks = [...ids].map((id) => ({
       id,
-      targets: [data.get(`yt_${id}`) === "on" ? "youtube" : null, data.get(`ig_${id}`) === "on" ? "instagram" : null].filter(Boolean) as Array<"youtube" | "instagram">,
+      targets: [data.get(`yt_${id}`) === "on" ? "youtube" : null, data.get(`ig_${id}`) === "on" ? "instagram" : null, data.get(`tt_${id}`) === "on" ? "tiktok" : null]
+        .filter(Boolean) as ShortTarget[],
     }));
     const n = await db((tx) => selectShorts(tx, product.id, picks), { reason: "Shorts chosen" });
     revalidatePath(path(slug));
-    return n ? ok(`${n} short${n === 1 ? "" : "s"} queued for the renderer. Each comes back here to watch and approve.`) : fail("Tick YouTube or Instagram next to at least one short.");
+    return n ? ok(`${n} short${n === 1 ? "" : "s"} queued for the renderer. Each comes back here to watch and approve.`) : fail("Tick YouTube, Instagram or TikTok next to at least one short.");
   } catch (e) {
     return toFailure(e, msg);
   }
 }
 
-export async function approveShortAction(slug: string, id: string, _: ActionResult | null): Promise<ActionResult> {
+export async function approveShortAction(slug: string, id: string, _: ActionResult | null, data?: FormData): Promise<ActionResult> {
   try {
     const product = await getProduct(slug);
     const r = await db(async (tx, ctx) => {
       const conn = await youtubeConnection(tx, product.id);
       const token = conn?.secret_id ? await accessToken(await refreshTokenFor(conn.secret_id)) : null;
-      return approveShort(tx, actorOf(ctx), product.id, id, token ? { schedule: async (videoId, at) => void (await scheduleVideo(token, videoId, at)) } : null);
+      let tiktok: { caption?: string; choice: TikTokChoice } | undefined;
+      if (data?.has("tt_caption")) {
+        const direct = data.get("tt_mode") === "direct" && tiktokDirectPostEnabled();
+        const choice: TikTokChoice = direct
+          ? {
+              mode: "direct", privacy_level: str(data.get("tt_privacy")),
+              // Interactions are off unless the owner ticked them; nothing is preselected (TikTok's posting rules).
+              disable_comment: data.get("tt_comment") !== "on", disable_duet: data.get("tt_duet") !== "on", disable_stitch: data.get("tt_stitch") !== "on",
+              brand_organic_toggle: data.get("tt_brand") === "on", is_aigc: true,
+            }
+          : { mode: "inbox" };
+        if (direct) {
+          const tc = await tiktokConnection(tx, product.id);
+          const info = tc ? await tiktokCreatorInfo((await tiktokAccess(tx, tc, tiktokRefresh)).token).catch(() => null) : null;
+          validateDirectChoice(choice, info);
+        }
+        tiktok = { caption: str(data.get("tt_caption")), choice };
+      }
+      return approveShort(tx, actorOf(ctx), product.id, id, token ? { schedule: async (videoId, at) => void (await scheduleVideo(token, videoId, at)) } : null, tiktok);
     }, { reason: "Short approved" });
     revalidatePath(path(slug));
     return ok(`Approved. It goes out on ${r.publishAt.toUTCString().replace(/:00 GMT/, " UTC")}.`);

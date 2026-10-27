@@ -196,8 +196,8 @@ export async function finishRender(tx: Tx, token: string, id: string, result: { 
     // Shorts from the finished video, made automatically when switched on (each still waits for approval).
     const auto = await tx.maybeOne<{ auto_shorts: boolean; auto_shorts_targets: string[] }>("select auto_shorts, auto_shorts_targets from calm_settings where product_id = $1", [s.product_id]);
     if (auto?.auto_shorts && auto.auto_shorts_targets.length) {
-      const ig = await tx.maybeOne("select 1 from channel_connections where product_id = $1 and channel = 'instagram' and status = 'connected' and adapter_kind = 'official_api'", [s.product_id]);
-      const targets = auto.auto_shorts_targets.filter((t) => t !== "instagram" || ig) as Array<"youtube" | "instagram">;
+      const connected = new Set((await tx.query<{ channel: string }>("select channel from channel_connections where product_id = $1 and channel in ('instagram', 'tiktok') and status = 'connected' and adapter_kind = 'official_api'", [s.product_id])).map((c) => c.channel));
+      const targets = auto.auto_shorts_targets.filter((t) => t === "youtube" || connected.has(t)) as Array<"youtube" | "instagram" | "tiktok">;
       const planned = await tx.query<{ id: string }>("select id from calm_shorts where video_id = $1 and status = 'planned'", [id]);
       await selectShorts(tx, s.product_id, planned.map((p) => ({ id: p.id, targets })));
     }

@@ -12,6 +12,8 @@ import { formatDateTime } from "@/lib/format";
 import { planShorts } from "@/server/services/calm-shorts";
 import { channelConnection } from "@/server/services/youtube-publish";
 import { ShortsBlock, type ShortRow } from "./shorts-block";
+import { tiktokAccess, tiktokConnection } from "@/server/services/tiktok";
+import { tiktokCreatorInfo, tiktokDirectPostEnabled, tiktokRefresh } from "@/server/tiktok/api";
 
 export const metadata = { title: "Calm Videos" };
 export const maxDuration = 300;
@@ -41,9 +43,11 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
    }
    return {
     shorts: await tx.query<ShortRow>(
-      `select id, video_id, idx, title, line_from, line_to, targets, status, error, youtube_video_id, instagram_status, preview_asset_id, publish_at::text
+      `select id, video_id, idx, title, line_from, line_to, targets, status, error, youtube_video_id, instagram_status, preview_asset_id, publish_at::text,
+              tiktok_status, tiktok_error, tiktok_post_id
          from calm_shorts where product_id = $1 order by video_id, idx`, [product.id]),
     ig: await channelConnection(tx, product.id, "instagram"),
+    tt: await tiktokConnection(tx, product.id),
     s: await getCalmSettings(tx, ctx.workspaceId, product.id),
     yt: await youtubeConnection(tx, product.id),
     openai: Boolean(await openaiKey(ctx.workspaceId)),
@@ -59,6 +63,15 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
     ),
    };
   });
+  // TikTok: whether it is connected, whether direct posting is allowed yet, and (for direct posting) the account's own
+  // options, read live from TikTok so the approval form only offers what TikTok allows.
+  const ttConnected = d.tt?.status === "connected";
+  const ttDirect = ttConnected && tiktokDirectPostEnabled();
+  const ttNeedsInfo = ttDirect && d.shorts.some((x) => x.status === "review" && x.targets.includes("tiktok"));
+  const ttInfo = ttNeedsInfo && d.tt
+    ? await db(async (tx) => tiktokCreatorInfo((await tiktokAccess(tx, d.tt!, tiktokRefresh)).token)).catch(() => null)
+    : null;
+  const tiktok = { connected: ttConnected, account: d.tt?.account_label ?? null, direct: ttDirect, info: ttInfo };
   const s = d.s;
   const rendererSeen = s.renderer_seen_at ? formatDateTime(s.renderer_seen_at) : null;
   const pexels = Boolean(process.env.PIXABAY_API_KEY || process.env.PEXELS_API_KEY);
@@ -136,7 +149,7 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
                     </div>
                   ) : null}
                   {v.status !== "rejected" ? (
-                    <ShortsBlock slug={slug} videoId={v.id} lines={v.lines} shorts={d.shorts.filter((x) => x.video_id === v.id)} instagram={d.ig?.status === "connected"} youtube={d.yt?.status === "connected"} />
+                    <ShortsBlock slug={slug} videoId={v.id} lines={v.lines} shorts={d.shorts.filter((x) => x.video_id === v.id)} instagram={d.ig?.status === "connected"} youtube={d.yt?.status === "connected"} tiktok={tiktok} />
                   ) : null}
                   <details className="mt-3 text-[13px]">
                     <summary className="cursor-pointer text-muted">Script and description</summary>
@@ -174,6 +187,7 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
             <div className="mt-1 flex flex-wrap gap-3 pl-6 text-[13.5px]">
               <label className="flex items-center gap-1.5"><input type="checkbox" name="auto_shorts_targets" value="youtube" defaultChecked={s.auto_shorts_targets.includes("youtube")} /> YouTube Shorts</label>
               <label className="flex items-center gap-1.5"><input type="checkbox" name="auto_shorts_targets" value="instagram" defaultChecked={s.auto_shorts_targets.includes("instagram")} /> Instagram Reels</label>
+              <label className="flex items-center gap-1.5"><input type="checkbox" name="auto_shorts_targets" value="tiktok" defaultChecked={s.auto_shorts_targets.includes("tiktok")} /> TikTok</label>
             </div>
           </fieldset>
           <Field label="Topics, one per line (used in turn)" htmlFor="calm-topics" className="md:col-span-3"><Textarea id="calm-topics" name="topics" rows={8} defaultValue={s.topics.join("\n")} /></Field>

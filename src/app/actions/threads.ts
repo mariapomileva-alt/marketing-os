@@ -1,5 +1,8 @@
 "use server";
 
+import { tiktokAccess, tiktokConnection } from "@/server/services/tiktok";
+import { tiktokRefresh, tiktokRevoke } from "@/server/tiktok/api";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, getProduct } from "@/server/context";
@@ -133,5 +136,18 @@ export async function disconnectInstagramAction(slug: string) {
     await tx.query("update channel_connections set status = 'revoked', secret_id = null, revoked_at = now() where id = $1", [conn.id]);
     if (conn.secret_id) await tx.query("delete from secrets where id = $1", [conn.secret_id]);
   }, { reason: "Instagram account disconnected" });
+  revalidatePath(`/p/${slug}`, "layout");
+}
+
+export async function disconnectTiktokAction(slug: string) {
+  const product = await getProduct(slug);
+  await db(async (tx) => {
+    const conn = await tiktokConnection(tx, product.id);
+    if (!conn) return;
+    // Tell TikTok too, so the access is withdrawn on their side; then forget the tokens here.
+    await tiktokAccess(tx, conn, tiktokRefresh).then((a) => tiktokRevoke(a.token)).catch(() => undefined);
+    await tx.query("update channel_connections set status = 'revoked', secret_id = null, revoked_at = now() where id = $1", [conn.id]);
+    if (conn.secret_id) await tx.query("delete from secrets where id = $1", [conn.secret_id]);
+  }, { reason: "TikTok account disconnected" });
   revalidatePath(`/p/${slug}`, "layout");
 }
