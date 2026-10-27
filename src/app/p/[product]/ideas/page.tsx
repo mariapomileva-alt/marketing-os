@@ -6,13 +6,25 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { EmptyState, PageHeader, Section, Table } from "@/components/ui/layout";
 import { Status } from "@/components/ui/status";
 import { formatDate } from "@/lib/format";
+import { deskItems, getDeskSettings } from "@/server/services/content-desk";
+import { generateDeskAction, saveDeskSettingsAction } from "@/app/actions/content-desk";
+import { channelConnection, publishingEnabled } from "@/server/services/youtube-publish";
+import { DeskCard, type DeskCardData } from "./desk-card";
 
-export const metadata = { title: "Hooks & Ideas" };
+const TZ = "Europe/Riga";
+const when = (iso: string) => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: TZ }).format(new Date(iso));
+const KIND: Record<string, string> = { post: "Post", carousel: "Carousel", article: "Article" };
+
+export const metadata = { title: "Ideas & hooks" };
+export const maxDuration = 300;
 
 export default async function IdeasPage({ params }: PageProps<"/p/[product]/ideas">) {
   const { product: slug } = await params;
   const product = await getProduct(slug);
-  const d = await db(async (tx) => ({
+  const d = await db(async (tx, ctx) => ({
+    desk: await deskItems(tx, product.id),
+    deskSettings: await getDeskSettings(tx, ctx.workspaceId, product.id),
+    ig: await channelConnection(tx, product.id, "instagram"),
     ideas: await tx.query<{ id: string; title: string; status: string; segment: string | null; job: string | null; hooks: number; items: number; created_at: string }>(
       `select i.id, i.title, i.status, s.code segment, j.statement job, i.created_at::text,
               (select count(*)::int from hooks h where h.idea_id = i.id) hooks, (select count(*)::int from content_items c where c.idea_id = i.id) items
@@ -30,9 +42,65 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
     ),
     stages: await tx.query<{ label: string }>("select label from taxonomy_terms where product_id = $1 and vocabulary = 'funnel_stage' and not archived order by label", [product.id]),
   }));
+  const waiting = d.desk.filter((x) => ["needs_human_review", "draft", "ai_review"].includes(x.status));
+  const planned = d.desk.filter((x) => ["scheduled", "approved", "published"].includes(x.status)).sort((a, b) => (a.scheduled_for ?? a.published_at ?? "").localeCompare(b.scheduled_for ?? b.published_at ?? ""));
+  const card = (x: (typeof d.desk)[number]): DeskCardData => ({
+    id: x.id, kind: x.kind, topic: x.topic, insight: x.insight, why_now: x.why_now, sources: x.sources, hooks: x.hooks, chosen_hook: x.chosen_hook,
+    caption: x.body.caption ?? "", slides: (x.body.slides ?? []).map((s) => ({ title: s.title, text: s.text ?? "" })), brief: x.body.body ?? "",
+    images: x.image_asset_ids.map((id) => `/p/${slug}/creatives/${id}`), render_error: x.render_error, blocked: x.status === "draft" ? x.blocked_reason : null,
+  });
+  const s = d.deskSettings;
   return (
     <>
-      <PageHeader title="Hooks & Ideas" description="An idea ties one segment and one Job (or fear) to the evidence behind it. Hooks and content are generated from the idea, so every variant can explain where it came from." />
+      <PageHeader
+        title="Ideas & hooks"
+        description={`Every morning at 7:40 the desk researches what people with panic ask and share right now, what worked for us and what we have not covered yet, then prepares ready pieces: ${s.carousels_per_day} carousel(s) and ${s.posts_per_day} post(s) a day for Instagram, drawn in Back's look, and ${s.articles_per_week} article idea(s) a week. Approve puts a piece on the calendar.`}
+      />
+      <Section
+        title={`Today's desk${waiting.length ? ` · ${waiting.length} waiting` : ""}`}
+        description={d.ig?.status === "connected" ? (publishingEnabled("instagram") ? `Approved posts go out on Instagram by themselves: carousels at ${s.carousel_time}, posts at ${s.post_time} (Riga), one of each a day.` : "Instagram posting is switched off on the server (INSTAGRAM_PUBLISHING_ENABLED), so approved posts wait on the calendar.") : "Instagram is not connected: approved posts wait on the calendar until it is (Connections)."}
+      >
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <ActionForm action={generateDeskAction.bind(null, slug)} submitLabel="Research and prepare now" pendingLabel="Researching and drawing, 1–2 minutes…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Prepare the desk now</span></ActionForm>
+        </div>
+        {waiting.length ? (
+          <div className="grid gap-4 xl:grid-cols-2">{waiting.map((x) => <DeskCard key={x.id} slug={slug} d={card(x)} />)}</div>
+        ) : (
+          <p className="text-[13px] text-muted">Nothing waits for you. The next desk is prepared tomorrow at 7:40{s.enabled ? "" : " when the desk is switched on (settings below)"}.</p>
+        )}
+        {planned.length ? (
+          <>
+            <h3 className="mt-8 text-[15px] font-medium">On the calendar</h3>
+            <ol className="mt-2 flex flex-col divide-y divide-line overflow-hidden rounded-[8px] border border-line bg-surface">
+              {planned.slice(0, 20).map((x) => (
+                <li key={x.id} className="flex items-center gap-4 px-4 py-2.5 text-[13px]">
+                  <span className="num w-[132px] shrink-0 text-green">{x.published_at ? when(x.published_at) : x.scheduled_for ? when(x.scheduled_for) : "—"}</span>
+                  <span className="w-[72px] shrink-0 text-[12px] text-faint">{KIND[x.kind]}</span>
+                  <span className="min-w-0 flex-1 truncate">{x.title}</span>
+                  {x.external_url ? <a href={x.external_url} target="_blank" rel="noreferrer noopener" className="text-[12px] underline">open</a> : <span className="text-[12px] text-muted">{x.status === "published" ? "published" : x.kind === "article" ? "planned" : "scheduled"}</span>}
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : null}
+        <details className="mt-6 rounded-[10px] border border-line bg-surface">
+          <summary className="cursor-pointer px-4 py-3 text-[13.5px] font-medium">Desk settings</summary>
+          <ActionForm action={saveDeskSettingsAction.bind(null, slug)} submitLabel="Save" className="grid gap-4 border-t border-line p-4 md:grid-cols-3">
+            <label className="flex items-center gap-2 text-[13.5px] md:col-span-3"><input type="checkbox" name="enabled" defaultChecked={s.enabled} className="size-4" /> Prepare a desk every morning</label>
+            <Field label="Carousels a day" htmlFor="dk-c"><Select id="dk-c" name="carousels_per_day" defaultValue={String(s.carousels_per_day)}>{[0, 1, 2, 3].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+            <Field label="Posts a day" htmlFor="dk-p"><Select id="dk-p" name="posts_per_day" defaultValue={String(s.posts_per_day)}>{[0, 1, 2, 3].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+            <Field label="Article ideas a week" htmlFor="dk-a"><Select id="dk-a" name="articles_per_week" defaultValue={String(s.articles_per_week)}>{[0, 1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+            <Field label="Carousel time (Riga)" htmlFor="dk-ct"><Input id="dk-ct" name="carousel_time" defaultValue={s.carousel_time} /></Field>
+            <Field label="Post time (Riga)" htmlFor="dk-pt"><Input id="dk-pt" name="post_time" defaultValue={s.post_time} /></Field>
+            <label className="flex items-center gap-2 self-end text-[13.5px]"><input type="checkbox" name="web_research" defaultChecked={s.web_research} className="size-4" /> Research the web</label>
+          </ActionForm>
+        </details>
+      </Section>
+
+      <div className="mt-12">
+        <h2 className="text-[19px]">Your own ideas</h2>
+        <p className="mt-1 max-w-[70ch] text-[13px] text-muted">An idea ties one segment and one Job (or fear) to the evidence behind it. Hooks and content are generated from the idea, so every variant can explain where it came from.</p>
+      </div>
       <Section>
         {d.ideas.length ? (
           <Table>

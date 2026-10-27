@@ -8,8 +8,8 @@ import type { OwnVideo } from "@/server/youtube/write";
  * comments) and what lives on the platforms themselves, read from the official APIs (also posts made outside, e.g.
  * in Meta Business Suite once they are published). Read-only: the calendar never posts anything.
  */
-export type CalChannel = "instagram" | "facebook" | "threads" | "youtube" | "tiktok";
-export const CAL_CHANNELS: CalChannel[] = ["instagram", "facebook", "threads", "youtube", "tiktok"];
+export type CalChannel = "instagram" | "facebook" | "threads" | "youtube" | "tiktok" | "website";
+export const CAL_CHANNELS: CalChannel[] = ["instagram", "facebook", "threads", "youtube", "tiktok", "website"];
 
 export interface CalendarReaders {
   instagram?: () => Promise<IgMedia[]>;
@@ -143,7 +143,7 @@ export async function calendarItems(tx: Tx, productId: string, from: Date, to: D
   for (const c of posts) {
     const ch = (CAL_CHANNELS as string[]).includes(c.channel) ? (c.channel as CalChannel) : null;
     if (!ch) continue;
-    const it: CalItem = { key: `c:${c.id}`, at: c.at, channel: ch, kind: "post", status: st(c.status), title: c.title, url: null, href: `/studio/${c.id}`, thumb: null, origin: "ours" };
+    const it: CalItem = { key: `c:${c.id}`, at: c.at, channel: ch, kind: ch === "website" ? "article" : "post", status: st(c.status), title: c.title, url: null, href: `/studio/${c.id}`, thumb: null, origin: "ours" };
     if (c.external_id) known.set(`${ch}:${c.external_id}`, it);
     items.push(it);
   }

@@ -13,7 +13,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   cacheComponents: false,
   poweredByHeader: false,
-  serverExternalPackages: ["pg"],
+  serverExternalPackages: ["pg", "sharp"],
+  // Card fonts are read from disk when the content desk draws Instagram cards.
+  outputFileTracingIncludes: { "/**": ["./src/server/cards/fonts/**"] },
   // Knowledge uploads (documents, the course archive) go through server actions; files are also checked in code.
   experimental: { serverActions: { bodySizeLimit: "6mb" } },
   turbopack: {

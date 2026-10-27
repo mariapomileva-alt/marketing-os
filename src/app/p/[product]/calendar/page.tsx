@@ -19,9 +19,10 @@ const CH: Record<CalChannel, { label: string; short: string; color: string }> = 
   threads: { label: "Threads", short: "TH", color: "#1e2622" },
   youtube: { label: "YouTube", short: "YT", color: "#e03131" },
   tiktok: { label: "TikTok", short: "TT", color: "#0b7285" },
+  website: { label: "Website", short: "WEB", color: "#bb8a52" },
 };
 const STATUS: Record<CalItem["status"], string> = { published: "Published", scheduled: "Scheduled", review: "In review", private: "Private", failed: "Failed" };
-const KIND: Record<string, string> = { reel: "Reel", short: "Short", video: "Video", story: "Story", carousel: "Carousel", image: "Post", text: "Post", post: "Post" };
+const KIND: Record<string, string> = { reel: "Reel", short: "Short", video: "Video", story: "Story", carousel: "Carousel", image: "Post", text: "Post", post: "Post", article: "Article" };
 
 export default async function CalendarPage({ params, searchParams }: PageProps<"/p/[product]/calendar">) {
   const { product: slug } = await params;

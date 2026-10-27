@@ -156,3 +156,34 @@ export const threadsBatchSchema = z.object({
     .max(4),
 });
 export type ThreadsBatchOutput = z.infer<typeof threadsBatchSchema>;
+
+/** Content desk: a morning's ready-to-approve Instagram posts, carousels and article ideas, each with its research. */
+export const HOOK_MECHANISMS = ["question", "statement", "micro_step", "story", "myth", "number"] as const;
+export const contentDeskSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        kind: z.enum(["post", "carousel", "article"]),
+        topic: z.string().min(2).max(60).describe("2–4 words"),
+        insight: z.string().min(10).max(400).describe("What the research found: the real need, question or pattern behind this piece"),
+        why_now: z.string().max(300).describe("Why this, now: a trend, a question people asked us, a gap, what worked before"),
+        sources: z.array(z.object({ title: z.string().max(200), url: z.string().max(500).nullable() })).max(4).default([]),
+        hooks: z.array(z.object({ text: z.string().min(5).max(110), mechanism: z.enum(HOOK_MECHANISMS) })).min(3).max(3),
+        chosen_hook: z.number().int().min(0).max(2),
+        caption: z.string().max(2000).default("").describe("Instagram caption (posts, carousels) or a 2–3 sentence summary (articles)"),
+        slides: z.array(z.object({ title: z.string().min(2).max(110), text: z.string().max(240).default("") })).max(8).default([]),
+        article: z
+          .object({
+            title: z.string().max(110),
+            search_query: z.string().max(110),
+            answer_first: z.string().max(600).describe("40–60 words that answer the title's question directly"),
+            outline: z.array(z.string().max(160)).min(3).max(8),
+          })
+          .nullable()
+          .default(null),
+      }),
+    )
+    .min(1)
+    .max(8),
+});
+export type ContentDeskOutput = z.infer<typeof contentDeskSchema>;

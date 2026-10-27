@@ -19,6 +19,8 @@ export const STUDIO_CHANNELS: Record<string, string> = {
 /** The text a person would copy into the platform, in reading order. */
 export function renderText(body: ContentBody, format: string): string {
   switch (format) {
+    case "static_concept":
+      return [...(body.slides ?? []).slice(0, 1).map((s) => `Card: ${s.title}${s.text ? `\n${s.text}` : ""}`), body.caption ? `\nCaption:\n${body.caption}` : ""].filter(Boolean).join("\n\n");
     case "carousel":
       return [
         ...(body.slides ?? []).map((s, i) => `Slide ${i + 1}: ${s.title}\n${s.text}`),
@@ -44,6 +46,7 @@ export function publishableText(body: ContentBody, format: string): string {
   switch (format) {
     case "carousel":
     case "reels_script":
+    case "static_concept":
       return body.caption ?? "";
     default:
       return renderText(body, format);

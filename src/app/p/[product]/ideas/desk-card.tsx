@@ -1,0 +1,112 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import { approveDeskAction, rejectDeskAction } from "@/app/actions/content-desk";
+import { Button } from "@/components/ui/button";
+import { FormMessage } from "@/components/ui/form";
+import { cn } from "@/lib/cn";
+import type { ActionResult } from "@/lib/action-result";
+
+const KIND: Record<string, string> = { post: "Instagram post", carousel: "Instagram carousel", article: "Article idea" };
+const MECH: Record<string, string> = { question: "question", statement: "statement", micro_step: "small step", story: "story", myth: "myth", number: "number" };
+
+export type DeskCardData = {
+  id: string; kind: "post" | "carousel" | "article"; topic: string; insight: string; why_now: string;
+  sources: Array<{ title: string; url: string | null }>; hooks: Array<{ text: string; mechanism: string }>; chosen_hook: number;
+  caption: string; slides: Array<{ title: string; text: string }>; brief: string; images: string[]; render_error: string | null; blocked: string | null;
+};
+
+/** One piece on the desk: the research behind it, the hooks to choose from, the exact cards and caption, approve. */
+export function DeskCard({ slug, d }: { slug: string; d: DeskCardData }) {
+  const [approveState, approve, approving] = useActionState<ActionResult | null, FormData>(approveDeskAction.bind(null, slug, d.id), null);
+  const [rejectState, reject, rejecting] = useActionState<ActionResult | null>(rejectDeskAction.bind(null, slug, d.id), null);
+  const [hook, setHook] = useState(d.chosen_hook);
+  const done = approveState?.ok || rejectState?.ok;
+  const article = d.kind === "article";
+  return (
+    <article className={cn("flex flex-col overflow-hidden rounded-[10px] border bg-surface", d.blocked ? "border-red/40" : "border-line", done && "opacity-60")}>
+      <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5 text-[12px]">
+        <span className="rounded-[4px] bg-night px-1.5 py-0.5 font-medium text-mint">{KIND[d.kind]}</span>
+        <span className="text-muted">{d.topic}</span>
+      </header>
+
+      {!article ? (
+        d.images.length ? (
+          <div className="flex snap-x gap-2 overflow-x-auto bg-paper p-3">
+            {d.images.map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element -- private, already-sized JPEG cards
+              <img key={src} src={src} alt={`Card ${i + 1} of ${d.images.length}`} loading="lazy" className="h-[260px] w-auto shrink-0 snap-start rounded-[6px] border border-line" />
+            ))}
+          </div>
+        ) : <p className="bg-paper px-4 py-6 text-[13px] text-red">The cards were not drawn{d.render_error ? `: ${d.render_error}` : ""}. Approve again to retry.</p>
+      ) : null}
+
+      <form action={approve} className="flex flex-1 flex-col gap-3 p-4 text-[13px]">
+        <div className="rounded-[6px] bg-paper/70 px-3 py-2">
+          <p><span className="font-medium">What we found: </span>{d.insight}</p>
+          {d.why_now ? <p className="mt-1 text-muted"><span className="font-medium text-ink">Why now: </span>{d.why_now}</p> : null}
+          {d.sources.length ? (
+            <p className="mt-1 text-[12px] text-faint">
+              {d.sources.map((s, i) => (
+                <span key={i}>{i ? " · " : ""}{s.url ? <a href={s.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2 hover:text-green">{s.title}</a> : s.title}</span>
+              ))}
+            </p>
+          ) : null}
+        </div>
+
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1 text-[12px] text-muted">{article ? "Title" : "Hook (the first card)"}</legend>
+          {d.hooks.map((h, i) => (
+            <label key={i} className={cn("flex cursor-pointer items-start gap-2 rounded-[6px] border px-2.5 py-2", hook === i ? "border-green/50 bg-green/5" : "border-line")}>
+              <input type="radio" name="hook" value={i} checked={hook === i} onChange={() => setHook(i)} className="mt-[3px] accent-[var(--green)]" />
+              <span className="flex-1">{h.text}</span>
+              <span className="shrink-0 text-[11px] text-faint">{MECH[h.mechanism] ?? h.mechanism}</span>
+            </label>
+          ))}
+        </fieldset>
+
+        {article ? (
+          <pre className="whitespace-pre-wrap rounded-[6px] bg-paper/70 px-3 py-2 font-sans text-[13px] leading-[1.5]">{d.brief}</pre>
+        ) : (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] text-muted">Caption (exactly what Instagram gets)</span>
+              <textarea name="caption" defaultValue={d.caption} rows={6} maxLength={2200} className="w-full resize-y rounded-[6px] border border-line bg-paper/60 px-3 py-2 text-[13px] leading-[1.5] outline-none focus:border-line-strong" />
+            </label>
+            <details className="rounded-[6px] border border-line px-3 py-2">
+              <summary className="cursor-pointer text-[12px] text-muted">Edit the text on the cards</summary>
+              <div className="mt-2 flex flex-col gap-2">
+                {d.slides.map((s, i) => (
+                  <div key={i} className="grid gap-1">
+                    <input key={i === 0 ? `h${hook}` : i} name={`slide_title_${i}`} defaultValue={i === 0 ? d.hooks[hook]?.text ?? s.title : s.title} aria-label={`Card ${i + 1} title`} className="rounded border border-line bg-paper px-2 py-1 text-[13px]" />
+                    {i > 0 ? <input name={`slide_text_${i}`} defaultValue={s.text} aria-label={`Card ${i + 1} text`} className="rounded border border-line bg-paper px-2 py-1 text-[12px] text-muted" /> : <input type="hidden" name={`slide_text_${i}`} value={s.text} />}
+                  </div>
+                ))}
+                <p className="text-[11px] text-faint">Changed cards are redrawn and checked again when you approve.</p>
+              </div>
+            </details>
+          </>
+        )}
+
+        {d.blocked ? <p className="rounded-[6px] bg-red-tint px-3 py-2 text-red">Stopped by the safety rules: {d.blocked} Edit and approve again.</p> : null}
+        <FormMessage state={approveState ?? rejectState} />
+        {!done ? (
+          <div className="mt-auto flex items-center gap-2">
+            <Button type="submit" variant="primary" disabled={approving}>{approving ? "Approving…" : article ? "Approve idea" : "Approve"}</Button>
+            <Button type="submit" formAction={reject} variant="ghost" disabled={rejecting}>{rejecting ? "Removing…" : "Remove"}</Button>
+            {article ? <CopyBrief text={`${d.hooks[hook]?.text ?? ""}\n\n${d.brief}`} /> : null}
+          </div>
+        ) : null}
+      </form>
+    </article>
+  );
+}
+
+function CopyBrief({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button type="button" onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))} className="ml-auto text-[12px] underline underline-offset-2 hover:text-green">
+      {copied ? "Copied" : "Copy brief"}
+    </button>
+  );
+}

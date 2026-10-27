@@ -115,3 +115,17 @@ export async function instagramContainerStatus(token: string, containerId: strin
 export async function instagramPublish(token: string, igUserId: string, containerId: string, f: Fetch = fetch) {
   return (await call<{ id: string }>(f, "POST", `${API}/${igUserId}/media_publish`, { creation_id: containerId, access_token: token })).id;
 }
+
+/** Feed images (JPEG) for our own posts: one image container, or carousel items plus the carousel container. */
+export async function instagramCreateImage(token: string, igUserId: string, imageUrl: string, caption: string | null, carouselItem: boolean, f: Fetch = fetch) {
+  const params: Record<string, string> = { image_url: imageUrl, access_token: token };
+  if (carouselItem) params.is_carousel_item = "true";
+  else if (caption) params.caption = caption;
+  return (await call<{ id: string }>(f, "POST", `${API}/${igUserId}/media`, params)).id;
+}
+export async function instagramCreateCarousel(token: string, igUserId: string, children: string[], caption: string, f: Fetch = fetch) {
+  return (await call<{ id: string }>(f, "POST", `${API}/${igUserId}/media`, { media_type: "CAROUSEL", children: children.join(","), caption, access_token: token })).id;
+}
+export async function instagramPermalink(token: string, mediaId: string, f: Fetch = fetch) {
+  return (await call<{ permalink?: string }>(f, "GET", `${API}/${mediaId}`, { fields: "permalink", access_token: token })).permalink ?? null;
+}

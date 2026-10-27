@@ -212,6 +212,40 @@ function mockThreadsPosts(c: Ctx) {
   return { posts: all.slice(0, n) };
 }
 
+function mockContentDesk(c: Ctx) {
+  const k = (c.COUNTS ?? {}) as { posts?: number; carousels?: number; articles?: number };
+  const hooks = (a: string) => [
+    { text: `[MOCK] ${a}`, mechanism: "statement" },
+    { text: "[MOCK] What if the first minute didn't have to be perfect?", mechanism: "question" },
+    { text: "[MOCK] One thing to try before you reach for your phone", mechanism: "micro_step" },
+  ];
+  const items = [];
+  for (let i = 0; i < (k.carousels ?? 1); i++) items.push({
+    kind: "carousel", topic: "night panic", insight: "[MOCK] People ask what to do at 3am when nobody is awake.", why_now: "[MOCK] Two people asked this under our posts this week.",
+    sources: [{ title: "NHS: panic disorder", url: "https://www.nhs.uk/mental-health/conditions/panic-disorder/" }],
+    hooks: hooks("Panic at 3am has its own rules"), chosen_hook: 0,
+    caption: "[MOCK] Panic at night feels bigger because everything else is quiet.\n\nSave this for the next hard night.\n\n#panicattack #anxiety",
+    slides: [
+      { title: "[MOCK] Panic at 3am has its own rules", text: "" },
+      { title: "Your body is loud, not broken", text: "A racing heart is an alarm, not a verdict." },
+      { title: "Give your eyes one job", text: "Find three blue things. Slowly." },
+      { title: "Back panic app", text: "Help for the first minute. One tap, no account, works offline." },
+    ],
+    article: null,
+  });
+  for (let i = 0; i < (k.posts ?? 1); i++) items.push({
+    kind: "post", topic: "first minute", insight: "[MOCK] The first minute is where people feel most alone.", why_now: "[MOCK] Our tip posts get the most saves.",
+    sources: [], hooks: hooks("You don't have to fix the whole night"), chosen_hook: 0,
+    caption: "[MOCK] The next small choice is enough.\n\n#panicattack", slides: [{ title: "[MOCK] You don't have to fix the whole night", text: "" }], article: null,
+  });
+  for (let i = 0; i < (k.articles ?? 0); i++) items.push({
+    kind: "article", topic: "panic at work", insight: "[MOCK] No guide yet for panic during a meeting.", why_now: "[MOCK] Common search, no page of ours answers it.",
+    sources: [], hooks: hooks("Panic attack at work: what to do in the next minute"), chosen_hook: 0, caption: "[MOCK] A quiet guide for panic in a meeting.", slides: [],
+    article: { title: "[MOCK] Panic Attack at Work: What to Do in the Next Minute", search_query: "panic attack at work", answer_first: "[MOCK] If panic rises at work, you can step out, name what is happening and give your attention one small job.", outline: ["What it can feel like", "Three quiet things to do", "After the meeting", "When to get urgent help"] },
+  });
+  return { items };
+}
+
 export class MockProvider implements LLMProvider {
   readonly id = "mock" as const;
   readonly isMock = true;
@@ -229,6 +263,7 @@ export class MockProvider implements LLMProvider {
       : req.task === "morning_brief" ? mockMorningBrief(c)
       : req.task === "morning_brief_translate" ? (c.BRIEF as Record<string, unknown>)
       : req.task === "threads_posts" ? mockThreadsPosts(c)
+      : req.task === "content_desk" ? mockContentDesk(c)
       : mockReview(req.task);
     const output = req.schema.parse(raw);
     const rawText = JSON.stringify(raw);

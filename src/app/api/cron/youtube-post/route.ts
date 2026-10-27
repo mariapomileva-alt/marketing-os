@@ -12,6 +12,9 @@ import { channelConnection, threadsToken } from "@/server/services/youtube-publi
 import { fileStore } from "@/server/storage";
 import { instagramContainerStatus, instagramCreateReel, instagramPublish, instagramRefresh } from "@/server/instagram/api";
 import { publishDueTikToks, tiktokAccess, tiktokConnection } from "@/server/services/tiktok";
+import { publishDueInstagramPosts } from "@/server/services/content-desk";
+import { instagramCreateCarousel, instagramCreateImage, instagramPermalink } from "@/server/instagram/api";
+import { publishingEnabled } from "@/server/services/youtube-publish";
 import { tiktokDirectPostEnabled, tiktokRefresh, tiktokStatus, tiktokUpload } from "@/server/tiktok/api";
 
 /**
@@ -60,6 +63,17 @@ export async function GET(request: NextRequest) {
           create: instagramCreateReel, status: instagramContainerStatus, publish: instagramPublish,
         });
       });
+      // Approved Instagram posts and carousels from the content desk whose time has come.
+      const igPosts = await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "scheduled Instagram posts (approved only)" }, async (tx) => {
+        const conn = await channelConnection(tx, p.product_id, "instagram");
+        if (!conn?.external_account_id || conn.status !== "connected") return null;
+        return publishDueInstagramPosts(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.product_id, {
+          token: async () => ({ token: await threadsToken(tx, conn, { refresh: instagramRefresh }), igUserId: conn.external_account_id! }),
+          fileUrl: async (path) => (await fileStore().signedUrl(path, 3600)) ?? "",
+          image: instagramCreateImage, carousel: instagramCreateCarousel, status: instagramContainerStatus, publish: instagramPublish, permalink: instagramPermalink,
+          enabled: publishingEnabled("instagram"),
+        });
+      }).catch((e) => ({ error: (e as Error).message }));
       // Approved TikTok shorts whose time has come: uploaded as inbox drafts (or posted, after TikTok's audit).
       const tiktok = await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "scheduled TikTok shorts (approved only)" }, async (tx) => {
         const conn = await tiktokConnection(tx, p.product_id);
@@ -76,7 +90,7 @@ export async function GET(request: NextRequest) {
       const studioStats = new Date().getUTCMinutes() < 5
         ? await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "Threads reactions" }, (tx) => refreshStudioStatsLive(tx, p.product_id, 15)).catch((e) => ({ error: (e as Error).message }))
         : null;
-      results.push({ product: p.product_id, ...r, posts, reels, tiktok, studioStats });
+      results.push({ product: p.product_id, ...r, posts, reels, igPosts, tiktok, studioStats });
     } catch (e) {
       results.push({ product: p.product_id, error: (e as Error).message });
     }
