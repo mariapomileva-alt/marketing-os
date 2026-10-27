@@ -33,5 +33,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|legal|auth/callback|api/cron|api/t$|t\\.js$|tiktok[A-Za-z0-9]+\\.txt$|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!login|legal|brand/|auth/callback|api/cron|api/t$|t\\.js$|tiktok[A-Za-z0-9]+\\.txt$|_next/static|_next/image|favicon.ico).*)"],
 };
