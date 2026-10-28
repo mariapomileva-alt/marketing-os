@@ -161,12 +161,33 @@ export type ThreadsBatchOutput = z.infer<typeof threadsBatchSchema>;
 export const HOOK_MECHANISMS = ["question", "statement", "micro_step", "story", "myth", "number"] as const;
 /** Scenes recorded from the real app that a Reel can use (see scripts/reels/shots). */
 export const REEL_SHOTS = ["home", "breathe", "try_another", "ground", "listen", "move", "read", "distract", "call_person"] as const;
-export const reelSpecSchema = z.object({
-  intro_style: z.enum(["dark", "light"]),
-  intro_lines: z.array(z.string().min(1).max(28)).min(1).max(4).describe("The hook as 1–4 short lines shown one by one in the first two seconds"),
-  scenes: z.array(z.object({ shot: z.enum(REEL_SHOTS), caption: z.string().max(48).default("") })).min(2).max(3),
-});
+/** Hook mechanisms on the content desk (the hook-writer craft: each opens a different kind of gap). */
+export const DESK_HOOK_MECHANISMS = [...HOOK_MECHANISMS, "curiosity", "contrarian", "in_scene", "identity", "relatable", "save_tool"] as const;
+/**
+ * Reel formats the renderer can make:
+ *  scenes        hook card, then 2–3 recorded app scenes with captions (shows the product);
+ *  read_slowly   hook card, then 3–8 calm lines shown one at a time (the "read this slowly" format, saved and sent);
+ *  breathe_along hook card, then a breathing circle to follow for three slow breaths (a tool people come back to).
+ */
+export const REEL_FORMATS = ["scenes", "read_slowly", "breathe_along"] as const;
+/** Moods of the original music the renderer composes for each Reel (no licensed or trending tracks). */
+export const REEL_MUSIC = ["warm", "night", "airy", "piano"] as const;
+export const reelSpecSchema = z
+  .object({
+    format: z.enum(REEL_FORMATS).default("scenes"),
+    music: z.enum(REEL_MUSIC).default("warm"),
+    intro_style: z.enum(["dark", "light"]),
+    intro_lines: z.array(z.string().min(1).max(28)).min(1).max(4).describe("The hook as 1–4 short lines shown one by one in the first two seconds"),
+    scenes: z.array(z.object({ shot: z.enum(REEL_SHOTS), caption: z.string().max(48).default("") })).max(3).default([]),
+    text_lines: z.array(z.string().min(1).max(60)).max(8).default([]).describe("read_slowly: the calm lines; breathe_along: up to 3 short lines, one per breath"),
+  })
+  .superRefine((r, ctx) => {
+    if (r.format === "scenes" && r.scenes.length < 2) ctx.addIssue({ code: "custom", path: ["scenes"], message: "A scenes Reel needs 2 or 3 scenes." });
+    if (r.format === "read_slowly" && r.text_lines.length < 3) ctx.addIssue({ code: "custom", path: ["text_lines"], message: "A read-slowly Reel needs 3 to 8 lines." });
+    if (r.format === "breathe_along" && r.text_lines.length > 3) ctx.addIssue({ code: "custom", path: ["text_lines"], message: "A breathe-along Reel has at most 3 lines." });
+  });
 export type ReelSpec = z.infer<typeof reelSpecSchema>;
+export type ReelSpecInput = z.input<typeof reelSpecSchema>;
 export const contentDeskSchema = z.object({
   items: z
     .array(
@@ -176,8 +197,10 @@ export const contentDeskSchema = z.object({
         insight: z.string().min(10).max(400).describe("What the research found: the real need, question or pattern behind this piece"),
         why_now: z.string().max(300).describe("Why this, now: a trend, a question people asked us, a gap, what worked before"),
         sources: z.array(z.object({ title: z.string().max(200), url: z.string().max(500).nullable() })).max(4).default([]),
-        hooks: z.array(z.object({ text: z.string().min(5).max(110), mechanism: z.enum(HOOK_MECHANISMS) })).min(3).max(3),
+        hooks: z.array(z.object({ text: z.string().min(5).max(110), mechanism: z.enum(DESK_HOOK_MECHANISMS) })).min(3).max(3),
         chosen_hook: z.number().int().min(0).max(2),
+        share_reason: z.string().max(200).default("").describe("Who would send this to whom, and why (empty for articles)"),
+        borrowed_mechanism: z.string().max(240).default("").describe("The proven format/hook mechanism this borrows from what spreads now (never the wording), and where it was seen"),
         caption: z.string().max(2000).default("").describe("Instagram caption (posts, carousels) or a 2–3 sentence summary (articles)"),
         slides: z.array(z.object({ title: z.string().min(2).max(110), text: z.string().max(240).default("") })).max(8).default([]),
         reel: reelSpecSchema.nullable().default(null),
@@ -193,6 +216,6 @@ export const contentDeskSchema = z.object({
       }),
     )
     .min(1)
-    .max(8),
+    .max(10),
 });
 export type ContentDeskOutput = z.infer<typeof contentDeskSchema>;

@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
           "select count(*)::int n from content_desk_items d join content_items i on i.id = d.content_item_id where d.product_id = $1 and i.status in ('needs_human_review', 'draft')",
           [p.id],
         )).n;
-        if (waiting >= (s.posts_per_day + s.carousels_per_day) * 3 + 2) return { skipped: `${waiting} pieces already wait for approval` };
+        if (waiting >= (s.posts_per_day + s.carousels_per_day + s.reels_per_day) * 3 + 2) return { skipped: `${waiting} pieces already wait for approval` };
         return generateDesk(tx, actor, p.id, liveDeskMedia());
       });
       if ("created" in r && r.created.some((c) => c.status === "waiting")) {

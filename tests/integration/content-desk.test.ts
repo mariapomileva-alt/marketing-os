@@ -7,8 +7,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closePools, withContext, type Tx } from "@/server/db/client";
 import { createBackApp } from "@/server/services/products";
 import type { Actor } from "@/server/services/content";
-import { approveDeskItem, claimReelJob, deskItems, finishReelRender, generateDesk, hookLines, nextDeskSlot, publishDueInstagramPosts, rejectDeskItem, rerenderReel, type DeskMedia, type IgImagesApi } from "@/server/services/content-desk";
+import { approveDeskItem, claimReelJob, deskItems, finishReelRender, generateDesk, hookLines, nextDeskSlot, parseSlots, publishDueInstagramPosts, rejectDeskItem, rerenderReel, type DeskMedia, type IgImagesApi } from "@/server/services/content-desk";
 import { asUser, createOwner, pool } from "../helpers/db";
+import { reelSpecSchema } from "@/domain/ai/schemas";
 
 let owner: { userId: string; workspaceId: string };
 let actor: Actor;
@@ -46,11 +47,11 @@ describe("content desk", () => {
     expect(drawn.map((d) => d.format).sort()).toEqual(["carousel", "static_concept"]);
   });
 
-  it("approve with a different hook and caption: redrawn, re-checked and put on the calendar at the post time", async () => {
+  it("approve with a different hook and caption: redrawn, re-checked and put on the calendar at a publishing time", async () => {
     const post = (await as((tx) => deskItems(tx, productId))).find((i) => i.kind === "post")!;
     const before = drawn.length;
     const a = await as((tx) => approveDeskItem(tx, actor, productId, post.id, media, { hookIndex: 1, caption: "A calmer caption.\n\n#panicattack" }));
-    expect(riga(a.scheduledFor!)).toMatch(/18:30/);
+    expect(riga(a.scheduledFor!)).toMatch(/ (09:30|14:00|20:00)$/);
     expect(drawn.length).toBe(before + 1);
     expect(drawn.at(-1)!.titles[0]).toBe(post.hooks[1].text);
     const after = (await as((tx) => deskItems(tx, productId))).find((i) => i.id === post.id)!;
@@ -71,10 +72,20 @@ describe("content desk", () => {
     expect(art.body.body).toMatch(/Search: /);
   });
 
-  it("one carousel a day: the next one goes to the following day", async () => {
-    const now = new Date("2030-05-06T06:00:00Z");
-    const first = await as((tx) => nextDeskSlot(tx, productId, "carousel", { post_time: "18:30", carousel_time: "12:30" }, now));
-    expect(riga(first)).toBe("Mon 12:30");
+  it("Instagram pieces share the daily publishing times, one piece per time", async () => {
+    const now = new Date("2030-05-06T06:00:00Z"); // Mon 09:00 Riga
+    const slots = { slots: ["20:00", "9:30", "14:00"] };
+    expect(riga(await as((tx) => nextDeskSlot(tx, productId, "carousel", slots, now)))).toBe("Mon 09:30");
+    expect(riga(await as((tx) => nextDeskSlot(tx, productId, "reel", slots, new Date("2030-05-06T07:10:00Z"))))).toBe("Mon 14:00");
+    expect(() => parseSlots(["25:00"])).toThrow(/18:30/);
+    expect(parseSlots(["9:30", "09:30", "20:00"])).toEqual(["09:30", "20:00"]);
+  });
+
+  it("a Reel can be a read-slowly or breathe-along Reel; each format checks its own lines", async () => {
+    expect(reelSpecSchema.safeParse({ format: "read_slowly", intro_style: "dark", intro_lines: ["Read this slowly."], text_lines: ["One."] }).success).toBe(false);
+    const ok = reelSpecSchema.parse({ format: "breathe_along", music: "airy", intro_style: "light", intro_lines: ["Three slow breaths."], text_lines: ["Shoulders down."] });
+    expect(ok.scenes).toEqual([]);
+    expect(reelSpecSchema.parse({ intro_style: "dark", intro_lines: ["Hi"], scenes: [{ shot: "home" }, { shot: "breathe" }] })).toMatchObject({ format: "scenes", music: "warm" });
   });
 
   it("publishes an approved post at its time only, with the approved caption and cards", async () => {
@@ -135,7 +146,7 @@ describe("content desk", () => {
     const job3 = (await as((tx) => claimReelJob(tx, productId)))!;
     await as((tx) => finishReelRender(tx, productId, id, { storageKey: job3.storageKey }));
     const a = await as((tx) => approveDeskItem(tx, actor, productId, id, media));
-    expect(riga(a.scheduledFor!)).toMatch(/20:00/);
+    expect(riga(a.scheduledFor!)).toMatch(/ (09:30|14:00|20:00)$/);
 
     let status = "IN_PROGRESS";
     const calls: string[] = [];

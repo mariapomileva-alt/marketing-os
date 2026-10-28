@@ -1,5 +1,5 @@
 import type { Tx } from "@/server/db/client";
-import { contentDeskSchema, reelSpecSchema, type ContentBody, type ContentDeskOutput, type ReelSpec } from "@/domain/ai/schemas";
+import { contentDeskSchema, reelSpecSchema, type ContentBody, type ContentDeskOutput, type ReelSpec, type ReelSpecInput } from "@/domain/ai/schemas";
 import type { Actor } from "./content";
 import { decideApproval, editContent, runAgent, runReviews, scheduleItem, submitForApproval } from "./content";
 import { draftingKnowledge } from "./knowledge-context";
@@ -23,6 +23,9 @@ export interface DeskSettings {
   carousel_time: string;
   reels_per_week: number;
   reel_time: string;
+  reels_per_day: number;
+  /** Daily Instagram publishing times (Riga): every approved post, carousel or Reel takes the next free one. */
+  slots: string[];
   web_research: boolean;
   last_generated_at: string | null;
 }
@@ -30,17 +33,36 @@ export interface DeskSettings {
 export async function getDeskSettings(tx: Tx, workspaceId: string, productId: string): Promise<DeskSettings> {
   await tx.query("insert into content_desk_settings (product_id, workspace_id) values ($1,$2) on conflict (product_id) do nothing", [productId, workspaceId]);
   return tx.one<DeskSettings>(
-    "select enabled, posts_per_day, carousels_per_day, articles_per_week, post_time, carousel_time, reels_per_week, reel_time, web_research, last_generated_at::text from content_desk_settings where product_id = $1",
+    "select enabled, posts_per_day, carousels_per_day, articles_per_week, post_time, carousel_time, reels_per_week, reel_time, reels_per_day, slots, web_research, last_generated_at::text from content_desk_settings where product_id = $1",
     [productId],
   );
 }
 
-export async function updateDeskSettings(tx: Tx, workspaceId: string, productId: string, s: Omit<DeskSettings, "last_generated_at">) {
-  for (const t of [s.post_time, s.carousel_time, s.reel_time]) if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) throw new Error(`Times look like 18:30; "${t}" does not.`);
+export type DeskSettingsInput = Pick<DeskSettings, "enabled" | "posts_per_day" | "carousels_per_day" | "reels_per_day" | "articles_per_week" | "slots" | "web_research">;
+
+/** Times like "9:30, 14:00, 20:00" → sorted, unique "HH:MM" (1–5 a day). */
+export function parseSlots(slots: string[]) {
+  const out = new Set<string>();
+  for (const raw of slots) {
+    const t = raw.trim();
+    if (!t) continue;
+    const m = /^(\d{1,2}):([0-5]\d)$/.exec(t);
+    if (!m || Number(m[1]) > 23) throw new Error(`Times look like 18:30; "${t}" does not.`);
+    out.add(`${m[1].padStart(2, "0")}:${m[2]}`);
+  }
+  if (out.size < 1 || out.size > 5) throw new Error("Give 1 to 5 publishing times a day.");
+  return [...out].sort();
+}
+
+export async function updateDeskSettings(tx: Tx, workspaceId: string, productId: string, s: DeskSettingsInput) {
+  const slots = parseSlots(s.slots);
+  if (s.posts_per_day + s.carousels_per_day + s.reels_per_day > slots.length) {
+    throw new Error(`That is ${s.posts_per_day + s.carousels_per_day + s.reels_per_day} pieces a day for ${slots.length} publishing time(s). Add times or make fewer pieces.`);
+  }
   await getDeskSettings(tx, workspaceId, productId);
   await tx.query(
-    "update content_desk_settings set enabled = $2, posts_per_day = $3, carousels_per_day = $4, articles_per_week = $5, post_time = $6, carousel_time = $7, web_research = $8, reels_per_week = $9, reel_time = $10 where product_id = $1",
-    [productId, s.enabled, s.posts_per_day, s.carousels_per_day, s.articles_per_week, s.post_time, s.carousel_time, s.web_research, s.reels_per_week, s.reel_time],
+    "update content_desk_settings set enabled = $2, posts_per_day = $3, carousels_per_day = $4, reels_per_day = $5, articles_per_week = $6, slots = $7, web_research = $8 where product_id = $1",
+    [productId, s.enabled, s.posts_per_day, s.carousels_per_day, s.reels_per_day, s.articles_per_week, slots, s.web_research],
   );
 }
 
@@ -85,12 +107,11 @@ async function drawCards(tx: Tx, productId: string, itemId: string, media: DeskM
 
 /** How many of each kind to make today (articles spread over the week). */
 export async function deskCounts(tx: Tx, productId: string, s: DeskSettings) {
-  const week = await tx.one<{ articles: number; reels: number }>(
-    `select count(*) filter (where kind = 'article')::int articles, count(*) filter (where kind = 'reel')::int reels
-       from content_desk_items where product_id = $1 and created_at > now() - interval '7 days'`,
+  const week = await tx.one<{ articles: number }>(
+    "select count(*) filter (where kind = 'article')::int articles from content_desk_items where product_id = $1 and created_at > now() - interval '7 days'",
     [productId],
   );
-  return { posts: s.posts_per_day, carousels: s.carousels_per_day, articles: week.articles < s.articles_per_week ? 1 : 0, reels: week.reels < s.reels_per_week ? 1 : 0 };
+  return { posts: s.posts_per_day, carousels: s.carousels_per_day, articles: week.articles < s.articles_per_week ? 1 : 0, reels: s.reels_per_day };
 }
 
 export async function generateDesk(tx: Tx, actor: Actor, productId: string, media: DeskMedia, counts?: { posts: number; carousels: number; articles: number; reels?: number }) {
@@ -112,6 +133,11 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
             (select max(value)::int from metric_events e join publications p on p.id = e.publication_id where p.content_item_id = i.id and e.metric = 'reach') reach
        from content_items i where i.product_id = $1 and i.channel = 'instagram' and i.status = 'published' order by i.published_at desc limit 15`, [productId]);
   const competitors = await tx.query<{ name: string }>("select name from competitors where product_id = $1 limit 10", [productId]);
+  // Observations collected in Signals (by hand or from a trend scan): structure only, never wording to copy.
+  const signals = await tx.query<{ platform: string; format: string; hook: string; mechanism: string; emotional_trigger: string; observed: unknown; url: string | null }>(
+    `select platform, format, left(hook, 160) hook, left(mechanism, 200) mechanism, left(emotional_trigger, 120) emotional_trigger, observed_performance observed, url
+       from signals where product_id = $1 and not is_demo and validation_status <> 'rejected' and created_at > now() - interval '30 days'
+      order by created_at desc limit 20`, [productId]);
   const wf = await tx.one<{ id: string }>(
     "insert into workflow_runs (workspace_id, product_id, workflow, input, status, current_step) values ($1,$2,'content_desk',$3,'running','research') returning id",
     [actor.workspaceId, productId, JSON.stringify(k)],
@@ -124,11 +150,12 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
     QUESTIONS: questions.map((q) => q.text),
     PERFORMANCE: { threads: await performanceSummary(tx, productId), instagram_posts: published },
     COMPETITORS: competitors.map((c) => c.name),
+    TREND_SIGNALS: signals,
     KNOWLEDGE: await draftingKnowledge(tx, actor.workspaceId, productId, "panic attack first minute what helps", 6),
   };
   const run = (inp: typeof input, web: boolean) => runAgent(tx, {
     actor, productId, workflowRunId: wf.id, step: "content_desk", task: "content_desk", promptKey: "content_desk.v1",
-    schema: contentDeskSchema, sourceIds: [], input: inp, webSearch: web, maxTokens: 9000,
+    schema: contentDeskSchema, sourceIds: [], input: inp, webSearch: web, maxTokens: 14000,
   });
   let r: { output: ContentDeskOutput; agentRunId: string; isMock: boolean };
   try {
@@ -142,7 +169,7 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
     const hook = it.hooks[it.chosen_hook]?.text ?? it.hooks[0].text;
     const f = FORMAT[it.kind];
     const slides: Slide[] = it.kind === "post" ? [{ title: hook, text: "" }] : it.kind === "carousel" ? [{ title: hook, text: "" }, ...it.slides.slice(1).map((x) => ({ title: x.title, text: x.text ?? "" }))] : [];
-    const reel: ReelSpec | null = it.kind === "reel" ? reelSpecSchema.parse(it.reel ?? { intro_style: "dark", intro_lines: [hook.slice(0, 28)], scenes: [{ shot: "home", caption: "" }, { shot: "breathe", caption: "" }] }) : null;
+    const reel: ReelSpec | null = it.kind === "reel" ? reelSpecSchema.parse(it.reel ?? { intro_style: "dark", intro_lines: hookLines(hook), scenes: [{ shot: "home", caption: "" }, { shot: "breathe", caption: "" }] }) : null;
     const body: ContentBody = it.kind === "reel"
       ? { hook, caption: it.caption, script: reel!.scenes.map((sc, i) => ({ timecode: `scene ${i + 1}`, line: sc.caption, visual: sc.shot })) }
       : it.kind === "article"
@@ -161,15 +188,15 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
     const ver = await tx.one<{ id: string }>(
       `insert into content_versions (workspace_id, product_id, content_item_id, version, body, visual_concept, rationale, evidence, author_type, agent_run_id)
        values ($1,$2,$3,1,$4,$5,$6,$7,'ai',$8) returning id`,
-      [actor.workspaceId, productId, item.id, JSON.stringify(body), it.kind === "article" ? "" : it.kind === "reel" ? "Reel from recorded app scenes, Back intro and end cards, original calm music" : "Back brand cards (ivory/forest, Fraunces + Outfit)",
+      [actor.workspaceId, productId, item.id, JSON.stringify(body), it.kind === "article" ? "" : it.kind === "reel" ? `Reel (${reel!.format.replace("_", " ")}), Back intro and end cards, original ${reel!.music} music composed for it` : "Back brand cards (ivory/forest, Fraunces + Outfit)",
        JSON.stringify({ insight: it.insight, why_now: it.why_now }), JSON.stringify(it.sources), r.agentRunId],
     );
     await tx.query("update content_items set current_version_id = $1 where id = $2", [ver.id, item.id]);
     await tx.query(
-      `insert into content_desk_items (content_item_id, workspace_id, product_id, kind, topic, insight, why_now, sources, hooks, chosen_hook, reel, render_status)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      `insert into content_desk_items (content_item_id, workspace_id, product_id, kind, topic, insight, why_now, sources, hooks, chosen_hook, reel, render_status, craft)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [item.id, actor.workspaceId, productId, it.kind, it.topic, it.insight, it.why_now, JSON.stringify(it.sources), JSON.stringify(it.hooks), it.chosen_hook,
-       reel ? JSON.stringify(reel) : null, reel ? "waiting" : null],
+       reel ? JSON.stringify(reel) : null, reel ? "waiting" : null, JSON.stringify({ share_reason: it.share_reason, borrowed_mechanism: it.borrowed_mechanism })],
     );
     await drawCards(tx, productId, item.id, media);
     const review = await runReviews(tx, actor, productId, item.id, wf.id);
@@ -181,28 +208,34 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
   return { created, isMock: r.isMock };
 }
 
-/** Next free time for this kind (Riga), at least 30 minutes ahead, one per kind per day. Articles: Mon/Wed/Fri 15:00. */
-export async function nextDeskSlot(tx: Tx, productId: string, kind: DeskKind, s: Pick<DeskSettings, "post_time" | "carousel_time"> & Partial<Pick<DeskSettings, "reel_time">>, now = new Date()) {
-  const f = FORMAT[kind];
-  const time = kind === "post" ? s.post_time : kind === "carousel" ? s.carousel_time : kind === "reel" ? s.reel_time ?? "20:00" : "15:00";
-  const taken = new Set((await tx.query<{ d: string }>(
-    `select to_char(scheduled_for at time zone 'Europe/Riga', 'YYYY-MM-DD') d from content_items
-      where product_id = $1 and channel = $2 and format = $3 and status in ('scheduled', 'published') and scheduled_for > $4`,
-    [productId, f.channel, f.format, new Date(now.getTime() - 86_400_000).toISOString()],
-  )).map((r) => r.d));
+/**
+ * Next free publishing time (Riga), at least 30 minutes ahead. Instagram pieces (posts, carousels, Reels) share the
+ * daily slots: each slot holds one piece, so the feed gets a steady rhythm. Articles: Mon/Wed/Fri 15:00, one a day.
+ */
+export async function nextDeskSlot(tx: Tx, productId: string, kind: DeskKind, s: Pick<DeskSettings, "slots">, now = new Date()) {
+  const ig = kind !== "article";
+  const times = ig ? parseSlots(s.slots) : ["15:00"];
+  const taken = new Set((await tx.query<{ k: string }>(
+    `select to_char(scheduled_for at time zone 'Europe/Riga', ${ig ? "'YYYY-MM-DD HH24:MI'" : "'YYYY-MM-DD'"}) k from content_items
+      where product_id = $1 and status in ('scheduled', 'published') and scheduled_for > $2
+        and ${ig ? "channel = 'instagram'" : "channel = 'website' and format = 'article'"}`,
+    [productId, new Date(now.getTime() - 86_400_000).toISOString()],
+  )).map((r) => r.k));
   for (let day = 0; day < 60; day++) {
-    const c = await tx.one<{ at: string; d: string; dow: number }>(
-      `select ((date_trunc('day', $1::timestamptz at time zone 'Europe/Riga') + $2::interval + $3::time) at time zone 'Europe/Riga')::text at,
-              to_char(date_trunc('day', $1::timestamptz at time zone 'Europe/Riga') + $2::interval, 'YYYY-MM-DD') d,
-              extract(isodow from date_trunc('day', $1::timestamptz at time zone 'Europe/Riga') + $2::interval)::int dow`,
-      [now.toISOString(), `${day} days`, time],
-    );
-    if (kind === "article" && ![1, 3, 5].includes(c.dow)) continue;
-    const t = new Date(c.at);
-    if (t.getTime() < now.getTime() + 30 * 60_000 || taken.has(c.d)) continue;
-    return t;
+    for (const time of times) {
+      const c = await tx.one<{ at: string; d: string; dow: number }>(
+        `select ((date_trunc('day', $1::timestamptz at time zone 'Europe/Riga') + $2::interval + $3::time) at time zone 'Europe/Riga')::text at,
+                to_char(date_trunc('day', $1::timestamptz at time zone 'Europe/Riga') + $2::interval, 'YYYY-MM-DD') d,
+                extract(isodow from date_trunc('day', $1::timestamptz at time zone 'Europe/Riga') + $2::interval)::int dow`,
+        [now.toISOString(), `${day} days`, time],
+      );
+      if (!ig && ![1, 3, 5].includes(c.dow)) continue;
+      const t = new Date(c.at);
+      if (t.getTime() < now.getTime() + 30 * 60_000 || taken.has(ig ? `${c.d} ${time}` : c.d)) continue;
+      return t;
+    }
   }
-  throw new Error("No free day in the next 60 days.");
+  throw new Error("No free publishing time in the next 60 days.");
 }
 
 export interface DeskEdits {
@@ -296,8 +329,10 @@ export function hookLines(hook: string) {
 }
 
 /** Owner's edit of the on-screen text of a Reel: saved, then made again. */
-export async function rerenderReel(tx: Tx, productId: string, itemId: string, reel: ReelSpec) {
-  const spec = reelSpecSchema.parse(reel);
+export async function rerenderReel(tx: Tx, productId: string, itemId: string, reel: ReelSpecInput) {
+  const parsed = reelSpecSchema.safeParse(reel);
+  if (!parsed.success) throw new Error(parsed.error.issues.map((i) => i.message).join(" "));
+  const spec = parsed.data;
   const r = await tx.query(
     `update content_desk_items d set reel = $3, render_status = 'waiting', video_asset_id = null, render_error = null
        from content_items i where i.id = d.content_item_id and d.content_item_id = $1 and d.product_id = $2 and d.kind = 'reel' and i.status not in ('scheduled', 'published') returning d.content_item_id`,
@@ -371,12 +406,13 @@ export interface DeskItem {
   reel: ReelSpec | null;
   video_asset_id: string | null;
   render_status: string | null;
+  craft: { share_reason?: string; borrowed_mechanism?: string };
 }
 
 export async function deskItems(tx: Tx, productId: string): Promise<DeskItem[]> {
   return tx.query<DeskItem>(
     `select i.id, d.kind, i.status, i.title, d.topic, d.insight, d.why_now, d.sources, d.hooks, d.chosen_hook, v.body, d.image_asset_ids, d.render_error,
-            i.scheduled_for::text, i.published_at::text, i.created_at::text, d.reel, d.video_asset_id, d.render_status,
+            i.scheduled_for::text, i.published_at::text, i.created_at::text, d.reel, d.video_asset_id, d.render_status, d.craft,
             (select string_agg(f->>'message', ' ') from content_reviews r, jsonb_array_elements(r.findings) f
               where r.content_version_id = i.current_version_id and r.outcome = 'block' and f->>'severity' = 'block') blocked_reason,
             (select p.external_url from publications p where p.content_item_id = i.id order by p.created_at desc limit 1) external_url

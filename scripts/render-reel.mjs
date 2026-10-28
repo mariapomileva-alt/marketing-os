@@ -2,8 +2,10 @@
 /**
  * Reel renderer for God of Marketing (runs on GitHub Actions next to the calm video renderer).
  *   1. Asks God of Marketing for the next Reel (POST {MOS_URL}/api/cron/reel-next, Bearer MOS_RENDER_TOKEN).
- *   2. Composes it in a headless browser: opening card with the hook, 2–3 scenes recorded from the real Back app
- *      (scripts/reels/shots) with captions and gentle zooms, the end card. Original synthesized music.
+ *   2. Composes it in a headless browser: opening card with the hook, then by format: 2–3 scenes recorded from the
+ *      real Back app (scripts/reels/shots) with captions and gentle zooms ("scenes"), calm lines shown one at a time
+ *      ("read_slowly"), or a breathing circle to follow ("breathe_along"); the end card. Original synthesized music
+ *      in the Reel's mood (scripts/reels/music.py).
  *   3. Uploads the MP4 to the one-time link and reports back (POST /api/cron/reel-done). Nothing is published here:
  *      the owner watches and approves each Reel in Ideas & hooks.
  * Local test: node scripts/render-reel.mjs --spec spec.json --out reel.mp4
@@ -35,7 +37,9 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 function page(spec) {
   const lines = spec.intro_lines.map((l) => `<span class="l">${esc(l)}</span>`).join("");
-  const vids = spec.scenes.map((s, i) => `<video id="v${i}" src="/shots/${s.shot}.webm" muted playsinline preload="auto"></video>`).join("");
+  const tone = spec.intro_style === "light" ? "light" : "dark";
+  const calm = (spec.text_lines ?? []).map((l, i) => `<p class="rl" id="rl${i}">${esc(l)}</p>`).join("");
+  const vids = (spec.scenes ?? []).map((s, i) => `<video id="v${i}" src="/shots/${s.shot}.webm" muted playsinline preload="auto"></video>`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   @font-face { font-family: Fraunces; src: url(/fraunces.woff) format("woff"); font-weight: 600; }
   @font-face { font-family: Outfit; src: url(/outfit.woff) format("woff"); font-weight: 400; }
@@ -58,9 +62,27 @@ function page(spec) {
   .dot { width: 22px; height: 22px; border-radius: 50%; background: #d7e0d5; } .light .dot { background: #0c3b2e; }
   .badge { margin-top: 34px; align-self: flex-start; border: 2px solid #d7e0d5; border-radius: 14px; padding: 12px 22px; font-size: 22px; color: #f3ede1; }
   .fine { font-size: 15px !important; color: #9eb6b0; margin-top: 30px !important; }
+  .panel { position: absolute; inset: 0; z-index: 4; display: none; overflow: hidden; }
+  .panel.dark { background: #0c3b2e; } .panel.light { background: #f3ede1; }
+  .glow { position: absolute; left: 50%; top: 50%; width: 520px; height: 520px; margin: -260px 0 0 -260px; border-radius: 50%; filter: blur(60px); opacity: .55;
+          background: radial-gradient(circle, #6d9773 0%, rgba(109,151,115,0) 70%); animation: glow 10s ease-in-out infinite; }
+  .light .glow { background: radial-gradient(circle, #d7e0d5 0%, rgba(215,224,213,0) 70%); opacity: .9; }
+  @keyframes glow { 0%, 100% { transform: scale(.75); } 40% { transform: scale(1.1); } }
+  .rl { position: absolute; left: 50px; right: 50px; top: 50%; transform: translateY(-40%); margin: 0; text-align: center; font-family: Fraunces, serif; font-weight: 600;
+        font-size: 46px; line-height: 1.15; letter-spacing: -0.6px; opacity: 0; transition: opacity .9s, transform 1.4s cubic-bezier(.22,.8,.2,1); }
+  .rl.in { opacity: 1; transform: translateY(-50%); }
+  .dark .rl, .dark .bl, .dark .bn { color: #f3ede1; } .light .rl, .light .bl, .light .bn { color: #0c3b2e; }
+  #circle { position: absolute; left: 50%; top: 42%; width: 380px; height: 380px; margin: -190px 0 0 -190px; border-radius: 50%; transform: scale(.45);
+            background: radial-gradient(circle at 50% 40%, #a9c3ad, #6d9773); box-shadow: 0 0 0 14px rgba(215,224,213,.18), 0 0 80px rgba(169,195,173,.5); }
+  .bl { position: absolute; left: 0; right: 0; top: 70%; text-align: center; font-family: Fraunces, serif; font-weight: 600; font-size: 44px; transition: opacity .5s; }
+  .bn { position: absolute; left: 50px; right: 50px; top: 78%; text-align: center; font-size: 26px; line-height: 1.35; opacity: .8; transition: opacity .6s; }
+  .bc { position: absolute; left: 0; right: 0; top: 12%; text-align: center; font-size: 20px; letter-spacing: 2px; opacity: .6; }
+  .dark .bc { color: #d7e0d5; } .light .bc { color: #65736c; }
 </style></head><body>
   <div id="cap" class="out"></div>
   <div id="stage"><div id="phone">${vids}</div></div>
+  <div id="read" class="panel ${tone}"><div class="glow"></div>${calm}</div>
+  <div id="breath" class="panel ${tone}"><div class="bc" id="bcount"></div><div id="circle"></div><div class="bl" id="blabel"></div><div class="bn" id="bnote"></div></div>
   <div id="intro" class="card ${spec.intro_style === "light" ? "light" : "dark"}"><div class="brand"><div class="dot"></div>Back</div><h1>${lines}</h1></div>
   <div id="end" class="card dark hidden"><div class="brand"><div class="dot"></div>Back</div><h1>Back: Panic Attack Help</h1><p style="color:#d7e0d5">Free on iPhone. Opens in one tap.</p><div class="badge">Get it free on the App Store</div><p class="fine">A self-help tool, not therapy or an emergency service.</p></div>
 <script>
@@ -71,6 +93,16 @@ function page(spec) {
   window.zoom = (s, y = 0, instant = false) => { ph.style.transition = instant ? 'none' : ''; ph.style.transform = 'translate(0px, ' + (-y * s) + 'px) scale(' + s + ')'; if (instant) void ph.offsetWidth; };
   window.scene = async (i, from) => { document.querySelectorAll('#phone video').forEach((v) => v.classList.remove('on')); const v = document.getElementById('v' + i); v.currentTime = from || 0; await v.play(); v.classList.add('on'); };
   window.endCard = () => document.getElementById('end').classList.remove('hidden');
+  window.panel = (id) => { document.getElementById(id).style.display = 'block'; };
+  window.readLine = (i) => { document.querySelectorAll('.rl').forEach((e) => e.classList.remove('in')); const e = document.getElementById('rl' + i); if (e) e.classList.add('in'); };
+  window.breath = (inhale, secs, n, total, note) => {
+    const c = document.getElementById('circle');
+    c.style.transition = 'transform ' + secs + 's cubic-bezier(.45,.05,.55,.95)';
+    c.style.transform = inhale ? 'scale(1)' : 'scale(.45)';
+    document.getElementById('blabel').textContent = inhale ? 'Breathe in' : 'Breathe out';
+    document.getElementById('bcount').textContent = n + ' / ' + total;
+    if (inhale) { const b = document.getElementById('bnote'); b.style.opacity = 0; setTimeout(() => { b.textContent = note || ''; b.style.opacity = .8; }, 500); }
+  };
   window.ready = () => Promise.all([...document.querySelectorAll('video')].map((v) => v.readyState >= 3 ? 1 : new Promise((r) => v.addEventListener('canplaythrough', r, { once: true }))));
 </script></body></html>`;
 }
@@ -90,6 +122,7 @@ function serve(spec) {
 }
 
 export async function renderReel(spec, outFile, seed = 1) {
+  spec = { format: "scenes", music: "warm", scenes: [], text_lines: [], ...spec };
   const { chromium } = await import("playwright");
   const server = await serve(spec);
   const port = server.address().port;
@@ -110,9 +143,29 @@ export async function renderReel(spec, outFile, seed = 1) {
     const t0 = Date.now();
     const at = async (s) => { const w = t0 + s * 1000 - Date.now(); if (w > 0) await p.waitForTimeout(w); };
     const introSecs = Math.max(2.4, 0.7 + spec.intro_lines.length * 0.48);
+    const format = spec.format ?? "scenes";
     await p.evaluate(() => window.lines());
     let t = introSecs;
-    for (const [i, sc] of spec.scenes.entries()) {
+    if (format === "read_slowly") {
+      await p.evaluate(() => window.panel("read"));
+      await at(t - 0.5); await p.evaluate(() => window.lift());
+      for (const [i, line] of spec.text_lines.entries()) {
+        await at(t); await p.evaluate((i) => window.readLine(i), i);
+        t += Math.min(4.4, Math.max(2.6, 1.6 + line.length * 0.055));
+      }
+      t += 0.6;
+    } else if (format === "breathe_along") {
+      await p.evaluate(() => window.panel("breath"));
+      await at(t - 0.5); await p.evaluate(() => window.lift());
+      t += 0.4;
+      for (let n = 0; n < 3; n++) {
+        await at(t); await p.evaluate(([n, note]) => window.breath(true, 4, n + 1, 3, note), [n, spec.text_lines?.[n] ?? ""]);
+        t += 4;
+        await at(t); await p.evaluate((n) => window.breath(false, 6, n + 1, 3), n);
+        t += 6;
+      }
+    }
+    for (const [i, sc] of (format === "scenes" ? spec.scenes : []).entries()) {
       const def = SCENES[sc.shot];
       await at(t - 0.6);
       await p.evaluate(([i, from]) => { window.zoom(0.8, 0, true); return window.scene(i, from); }, [i, def.from ?? 0]);
@@ -137,7 +190,7 @@ export async function renderReel(spec, outFile, seed = 1) {
     list.push(`file '${String(frames.length - 1).padStart(5, "0")}.png'`);
     writeFileSync(path.join(dir, "list.txt"), list.join("\n"));
     const music = path.join(dir, "music.wav");
-    execFileSync("python3", [path.join(ASSETS, "music.py"), music, String(total), String(endAt), String(seed)]);
+    execFileSync("python3", [path.join(ASSETS, "music.py"), music, String(total), String(endAt), String(seed), spec.music]);
     execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", music, "-af", "loudnorm=I=-16:TP=-1.5:LRA=7", "-ar", "48000", path.join(dir, "music-n.wav")]);
     execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", path.join(dir, "list.txt"), "-i", path.join(dir, "music-n.wav"),
       "-vf", "fps=30,scale=1080:1920:flags=lanczos,format=yuv420p", "-c:v", "libx264", "-profile:v", "high", "-crf", "18", "-preset", "medium",

@@ -224,7 +224,10 @@ function mockContentDesk(c: Ctx) {
     kind: "reel", topic: "night panic", insight: "[MOCK] Night panic is the most common question we get.", why_now: "[MOCK] Calm night content gets saved.",
     sources: [], hooks: [{ text: "3:07 am Heart racing. Nobody awake.", mechanism: "story" }, ...hooks("Breathing at your own pace").slice(1)], chosen_hook: 0,
     caption: "[MOCK] For the nights that feel too long.\n\n#panicattack", slides: [], article: null,
-    reel: { intro_style: "dark", intro_lines: ["3:07 am", "Heart racing.", "Nobody awake."], scenes: [{ shot: "breathe", caption: "One tap. Breathe at your own pace." }, { shot: "listen", caption: "Works offline, even at night" }] },
+    share_reason: "[MOCK] Sent to a friend who wakes up anxious at night.", borrowed_mechanism: "[MOCK] In-scene time stamp opening, seen on calm night Reels.",
+    reel: i % 2
+      ? { format: "read_slowly", music: "night", intro_style: "dark", intro_lines: ["Read this slowly."], scenes: [], text_lines: ["Your heart is fast.", "It will slow down.", "Feel your feet on the floor.", "You are here. This passes."] }
+      : { format: "scenes", music: "warm", intro_style: "dark", intro_lines: ["3:07 am", "Heart racing.", "Nobody awake."], scenes: [{ shot: "breathe", caption: "One tap. Breathe at your own pace." }, { shot: "listen", caption: "Works offline, even at night" }], text_lines: [] },
   });
   for (let i = 0; i < (k.carousels ?? 1); i++) items.push({
     kind: "carousel", topic: "night panic", insight: "[MOCK] People ask what to do at 3am when nobody is awake.", why_now: "[MOCK] Two people asked this under our posts this week.",

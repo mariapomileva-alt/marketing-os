@@ -18,11 +18,9 @@ const settingsSchema = z.object({
   enabled: z.boolean(),
   posts_per_day: z.coerce.number().int().min(0).max(3),
   carousels_per_day: z.coerce.number().int().min(0).max(3),
+  reels_per_day: z.coerce.number().int().min(0).max(3),
   articles_per_week: z.coerce.number().int().min(0).max(7),
-  post_time: z.string(),
-  carousel_time: z.string(),
-  reels_per_week: z.coerce.number().int().min(0).max(7),
-  reel_time: z.string(),
+  slots: z.array(z.string()),
   web_research: z.boolean(),
 });
 
@@ -31,8 +29,7 @@ export async function saveDeskSettingsAction(slug: string, _: ActionResult | nul
     const product = await getProduct(slug);
     const parsed = settingsSchema.safeParse({
       enabled: data.get("enabled") === "on", posts_per_day: data.get("posts_per_day"), carousels_per_day: data.get("carousels_per_day"),
-      articles_per_week: data.get("articles_per_week"), post_time: str(data.get("post_time")), carousel_time: str(data.get("carousel_time")),
-      reels_per_week: data.get("reels_per_week"), reel_time: str(data.get("reel_time")),
+      reels_per_day: data.get("reels_per_day"), articles_per_week: data.get("articles_per_week"), slots: str(data.get("slots")).split(/[,\s]+/),
       web_research: data.get("web_research") === "on",
     });
     if (!parsed.success) return fail(parsed.error.issues.map((i) => i.message).join(" "));
@@ -105,10 +102,14 @@ export async function rerenderReelAction(slug: string, itemId: string, _: Action
       if (typeof shot !== "string" || !shot) continue;
       scenes.push({ shot: shot as ReelSpec["scenes"][number]["shot"], caption: str(data.get(`scene_caption_${i}`)) });
     }
+    const lines = (k: string) => str(data.get(k)).split("\n").map((l) => l.trim()).filter(Boolean);
     const spec = {
+      format: str(data.get("format")) || "scenes",
+      music: str(data.get("music")) || "warm",
       intro_style: str(data.get("intro_style")) === "light" ? "light" : "dark",
-      intro_lines: str(data.get("intro_lines")).split("\n").map((l) => l.trim()).filter(Boolean),
-      scenes,
+      intro_lines: lines("intro_lines"),
+      scenes: str(data.get("format")) === "scenes" || !data.get("format") ? scenes : [],
+      text_lines: lines("text_lines"),
     } as ReelSpec;
     await db((tx) => rerenderReel(tx, product.id, itemId, spec), { reason: "Reel text changed, made again" });
     revalidatePath(path(slug));

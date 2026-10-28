@@ -12,14 +12,20 @@ const SHOTS: Record<string, string> = {
   home: "Home: the six tools", breathe: "Breathe: the circle", try_another: "“Breathing feels uncomfortable” → try another", ground: "Ground: feet on the floor",
   listen: "Listen: soft rain", move: "Move: curl your fingers", read: "Read: calm lines", distract: "Distract: simple games", call_person: "Call my person",
 };
-export type ReelData = { intro_style: "dark" | "light"; intro_lines: string[]; scenes: Array<{ shot: string; caption: string }> };
-const MECH: Record<string, string> = { question: "question", statement: "statement", micro_step: "small step", story: "story", myth: "myth", number: "number" };
+export type ReelData = { format?: string; music?: string; intro_style: "dark" | "light"; intro_lines: string[]; scenes: Array<{ shot: string; caption: string }>; text_lines?: string[] };
+const MECH: Record<string, string> = {
+  question: "question", statement: "statement", micro_step: "small step", story: "story", myth: "myth", number: "number",
+  curiosity: "curiosity gap", contrarian: "contrarian", in_scene: "in the moment", identity: "callout", relatable: "relatable", save_tool: "save-worthy tool",
+};
+const FORMATS: Record<string, string> = { scenes: "App scenes", read_slowly: "Read this slowly (calm lines)", breathe_along: "Breathe along (circle)" };
+const MUSIC: Record<string, string> = { warm: "Warm", night: "Night", airy: "Airy", piano: "Soft piano" };
 
 export type DeskCardData = {
   id: string; kind: "post" | "carousel" | "article" | "reel"; topic: string; insight: string; why_now: string;
   sources: Array<{ title: string; url: string | null }>; hooks: Array<{ text: string; mechanism: string }>; chosen_hook: number;
   caption: string; slides: Array<{ title: string; text: string }>; brief: string; images: string[]; render_error: string | null; blocked: string | null;
   reel: ReelData | null; video: string | null; render_status: string | null;
+  share_reason?: string; borrowed_mechanism?: string;
 };
 
 /** One piece on the desk: the research behind it, the hooks to choose from, the exact cards and caption, approve. */
@@ -36,6 +42,7 @@ export function DeskCard({ slug, d }: { slug: string; d: DeskCardData }) {
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5 text-[12px]">
         <span className="rounded-[4px] bg-night px-1.5 py-0.5 font-medium text-mint">{KIND[d.kind]}</span>
         <span className="text-muted">{d.topic}</span>
+        {reel && d.reel ? <span className="ml-auto text-faint">{FORMATS[d.reel.format ?? "scenes"]} · {MUSIC[d.reel.music ?? "warm"]} music</span> : null}
       </header>
 
       {reel ? (
@@ -70,6 +77,8 @@ export function DeskCard({ slug, d }: { slug: string; d: DeskCardData }) {
               ))}
             </p>
           ) : null}
+          {d.borrowed_mechanism ? <p className="mt-1 text-muted"><span className="font-medium text-ink">What it borrows: </span>{d.borrowed_mechanism}</p> : null}
+          {d.share_reason ? <p className="mt-1 text-muted"><span className="font-medium text-ink">Who sends it: </span>{d.share_reason}</p> : null}
         </div>
 
         <fieldset className="flex flex-col gap-1.5">
@@ -113,9 +122,21 @@ export function DeskCard({ slug, d }: { slug: string; d: DeskCardData }) {
               <label className="grid gap-1">Opening lines (one per line, short)
                 <textarea form={`rr-${d.id}`} name="intro_lines" defaultValue={d.reel.intro_lines.join("\n")} rows={3} className="rounded border border-line bg-paper px-2 py-1" />
               </label>
-              <label className="flex items-center gap-2">Opening card
-                <select form={`rr-${d.id}`} name="intro_style" defaultValue={d.reel.intro_style} className="rounded border border-line bg-paper px-2 py-1"><option value="dark">Dark green</option><option value="light">Light</option></select>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2">Format
+                  <select form={`rr-${d.id}`} name="format" defaultValue={d.reel.format ?? "scenes"} className="rounded border border-line bg-paper px-2 py-1">{Object.entries(FORMATS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+                </label>
+                <label className="flex items-center gap-2">Music
+                  <select form={`rr-${d.id}`} name="music" defaultValue={d.reel.music ?? "warm"} className="rounded border border-line bg-paper px-2 py-1">{Object.entries(MUSIC).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+                </label>
+                <label className="flex items-center gap-2">Opening card
+                  <select form={`rr-${d.id}`} name="intro_style" defaultValue={d.reel.intro_style} className="rounded border border-line bg-paper px-2 py-1"><option value="dark">Dark green</option><option value="light">Light</option></select>
+                </label>
+              </div>
+              <label className="grid gap-1">Calm lines (read slowly: 3–8; breathe along: up to 3, one per breath)
+                <textarea form={`rr-${d.id}`} name="text_lines" defaultValue={(d.reel.text_lines ?? []).join("\n")} rows={3} className="rounded border border-line bg-paper px-2 py-1" />
               </label>
+              <p className="text-faint">App scenes (used by the App scenes format):</p>
               {[0, 1, 2].map((i) => (
                 <div key={i} className="grid gap-1 sm:grid-cols-[200px_1fr]">
                   <select form={`rr-${d.id}`} name={`shot_${i}`} defaultValue={d.reel!.scenes[i]?.shot ?? ""} className="rounded border border-line bg-paper px-2 py-1">

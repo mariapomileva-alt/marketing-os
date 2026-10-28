@@ -49,17 +49,18 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
     caption: x.body.caption ?? "", slides: (x.body.slides ?? []).map((s) => ({ title: s.title, text: s.text ?? "" })), brief: x.body.body ?? "",
     images: x.image_asset_ids.map((id) => `/p/${slug}/creatives/${id}`), render_error: x.render_error, blocked: x.status === "draft" ? x.blocked_reason : null,
     reel: x.reel, video: x.video_asset_id ? `/p/${slug}/creatives/${x.video_asset_id}` : null, render_status: x.render_status,
+    share_reason: x.craft?.share_reason ?? "", borrowed_mechanism: x.craft?.borrowed_mechanism ?? "",
   });
   const s = d.deskSettings;
   return (
     <>
       <PageHeader
         title="Ideas & hooks"
-        description={`Every morning at 7:40 the desk researches what people with panic ask and share right now, what worked for us and what we have not covered yet, then prepares ready pieces: ${s.reels_per_week} Reel(s) a week made from the real app, ${s.carousels_per_day} carousel(s) and ${s.posts_per_day} post(s) a day for Instagram, drawn in Back's look, and ${s.articles_per_week} article idea(s) a week. Approve puts a piece on the calendar.`}
+        description={`Every morning at 7:40 the desk researches what people with panic ask and share right now, what worked for us and what we have not covered yet, then prepares ready pieces for Instagram: ${s.reels_per_day} Reel(s), ${s.carousels_per_day} carousel(s) and ${s.posts_per_day} post(s) a day, in Back's look with our own music, and ${s.articles_per_week} article idea(s) a week. Approve puts a piece on the calendar.`}
       />
       <Section
         title={`Today's desk${waiting.length ? ` · ${waiting.length} waiting` : ""}`}
-        description={d.ig?.status === "connected" ? (publishingEnabled("instagram") ? `Approved pieces go out on Instagram by themselves: carousels at ${s.carousel_time}, posts at ${s.post_time}, Reels at ${s.reel_time} (Riga), one of each a day.` : "Instagram posting is switched off on the server (INSTAGRAM_PUBLISHING_ENABLED), so approved posts wait on the calendar.") : "Instagram is not connected: approved posts wait on the calendar until it is (Connections)."}
+        description={d.ig?.status === "connected" ? (publishingEnabled("instagram") ? `Approved pieces go out on Instagram by themselves, each at the next free time: ${s.slots.join(", ")} (Riga), one piece per time.` : "Instagram posting is switched off on the server (INSTAGRAM_PUBLISHING_ENABLED), so approved posts wait on the calendar.") : "Instagram is not connected: approved posts wait on the calendar until it is (Connections)."}
       >
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <ActionForm action={generateDeskAction.bind(null, slug)} submitLabel="Research and prepare now" pendingLabel="Researching and drawing, 1–2 minutes…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Prepare the desk now</span></ActionForm>
@@ -88,13 +89,11 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
           <summary className="cursor-pointer px-4 py-3 text-[13.5px] font-medium">Desk settings</summary>
           <ActionForm action={saveDeskSettingsAction.bind(null, slug)} submitLabel="Save" className="grid gap-4 border-t border-line p-4 md:grid-cols-3">
             <label className="flex items-center gap-2 text-[13.5px] md:col-span-3"><input type="checkbox" name="enabled" defaultChecked={s.enabled} className="size-4" /> Prepare a desk every morning</label>
+            <Field label="Reels a day" htmlFor="dk-r"><Select id="dk-r" name="reels_per_day" defaultValue={String(s.reels_per_day)}>{[0, 1, 2, 3].map((n) => <option key={n}>{n}</option>)}</Select></Field>
             <Field label="Carousels a day" htmlFor="dk-c"><Select id="dk-c" name="carousels_per_day" defaultValue={String(s.carousels_per_day)}>{[0, 1, 2, 3].map((n) => <option key={n}>{n}</option>)}</Select></Field>
             <Field label="Posts a day" htmlFor="dk-p"><Select id="dk-p" name="posts_per_day" defaultValue={String(s.posts_per_day)}>{[0, 1, 2, 3].map((n) => <option key={n}>{n}</option>)}</Select></Field>
-            <Field label="Reels a week" htmlFor="dk-r"><Select id="dk-r" name="reels_per_week" defaultValue={String(s.reels_per_week)}>{[0, 1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}</Select></Field>
-            <Field label="Reel time (Riga)" htmlFor="dk-rt"><Input id="dk-rt" name="reel_time" defaultValue={s.reel_time} /></Field>
+            <Field label="Publishing times (Riga), one piece each" htmlFor="dk-sl"><Input id="dk-sl" name="slots" defaultValue={s.slots.join(", ")} /></Field>
             <Field label="Article ideas a week" htmlFor="dk-a"><Select id="dk-a" name="articles_per_week" defaultValue={String(s.articles_per_week)}>{[0, 1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}</Select></Field>
-            <Field label="Carousel time (Riga)" htmlFor="dk-ct"><Input id="dk-ct" name="carousel_time" defaultValue={s.carousel_time} /></Field>
-            <Field label="Post time (Riga)" htmlFor="dk-pt"><Input id="dk-pt" name="post_time" defaultValue={s.post_time} /></Field>
             <label className="flex items-center gap-2 self-end text-[13.5px]"><input type="checkbox" name="web_research" defaultChecked={s.web_research} className="size-4" /> Research the web</label>
           </ActionForm>
         </details>
