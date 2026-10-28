@@ -227,7 +227,7 @@ async function main() {
     if (!job) { console.log("No Reels waiting."); return; }
     const out = path.join(WORK, `${job.id}.mp4`);
     try {
-      const r = await renderReel(job.spec, out, (Date.now() % 97) + 1);
+      const r = await renderReel(job.spec, out, Number(job.spec.seed) || (Date.now() % 97) + 1);
       const size = statSync(out).size;
       const up = await fetch(job.upload_url, { method: "PUT", headers: { "content-type": "video/mp4", "content-length": String(size) }, body: createReadStream(out), duplex: "half" });
       if (!up.ok) throw new Error(`Upload failed ${up.status}`);

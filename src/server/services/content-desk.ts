@@ -208,6 +208,55 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
   return { created, isMock: r.isMock };
 }
 
+export interface OwnReelInput {
+  topic: string;
+  caption: string;
+  reel: ReelSpecInput;
+  /** Fixes the melody (1–97), so the Reel sounds like a version already heard; empty picks one at render time. */
+  melody?: number | null;
+}
+
+/**
+ * A Reel the owner wrote (not the morning desk): it goes through the same reviews, waits for the renderer and then
+ * for the owner's approve in Today's desk, like any desk Reel.
+ */
+export async function addOwnReel(tx: Tx, actor: Actor, productId: string, input: OwnReelInput) {
+  const parsed = reelSpecSchema.safeParse(input.reel);
+  if (!parsed.success) throw new Error(parsed.error.issues.map((i) => i.message).join(" "));
+  const reel = parsed.data;
+  const topic = input.topic.trim().slice(0, 60);
+  if (topic.length < 2) throw new Error("Give the Reel a short topic (2–4 words).");
+  const hook = reel.intro_lines.join(" ").replace(/\s+/g, " ").trim().slice(0, 110);
+  const stored = input.melody ? { ...reel, seed: Math.min(97, Math.max(1, Math.round(input.melody))) } : reel;
+  const wf = await tx.one<{ id: string }>(
+    "insert into workflow_runs (workspace_id, product_id, workflow, input, status, current_step) values ($1,$2,'content_desk',$3,'running','review') returning id",
+    [actor.workspaceId, productId, JSON.stringify({ own_reel: true })],
+  );
+  const item = await tx.one<{ id: string }>(
+    `insert into content_items (workspace_id, product_id, channel, format, goal, funnel_stage, language, topic, title)
+     values ($1,$2,'instagram','reels_script','awareness','awareness','en',$3,$4) returning id`,
+    [actor.workspaceId, productId, topic, hook.slice(0, 200)],
+  );
+  const body: ContentBody = { hook, caption: input.caption.trim(), script: reel.scenes.map((sc, i) => ({ timecode: `scene ${i + 1}`, line: sc.caption, visual: sc.shot })) };
+  const ver = await tx.one<{ id: string }>(
+    `insert into content_versions (workspace_id, product_id, content_item_id, version, body, visual_concept, rationale, evidence, author_type)
+     values ($1,$2,$3,1,$4,$5,$6,'[]','human') returning id`,
+    [actor.workspaceId, productId, item.id, JSON.stringify(body), `Reel (${reel.format.replace("_", " ")}), Back intro and end cards, original ${reel.music} music composed for it`,
+     JSON.stringify({ insight: "Written by the owner", why_now: "" })],
+  );
+  await tx.query("update content_items set current_version_id = $1 where id = $2", [ver.id, item.id]);
+  await tx.query(
+    `insert into content_desk_items (content_item_id, workspace_id, product_id, kind, topic, insight, why_now, sources, hooks, chosen_hook, reel, render_status, craft)
+     values ($1,$2,$3,'reel',$4,'Written by the owner','','[]',$5,0,$6,'waiting',$7)`,
+    [item.id, actor.workspaceId, productId, topic, JSON.stringify([{ text: hook, mechanism: "save_tool" }]), JSON.stringify(stored),
+     JSON.stringify({ share_reason: "", borrowed_mechanism: "" })],
+  );
+  const review = await runReviews(tx, actor, productId, item.id, wf.id);
+  if (review.outcome !== "block") await submitForApproval(tx, actor, productId, item.id);
+  await tx.query("update workflow_runs set status = 'waiting_for_human', current_step = 'approval' where id = $1", [wf.id]);
+  return { id: item.id, status: review.outcome === "block" ? "blocked" : "waiting" };
+}
+
 /**
  * Next free publishing time (Riga), at least 30 minutes ahead. Instagram pieces (posts, carousels, Reels) share the
  * daily slots: each slot holds one piece, so the feed gets a steady rhythm. Articles: Mon/Wed/Fri 15:00, one a day.

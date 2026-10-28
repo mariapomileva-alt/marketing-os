@@ -7,9 +7,10 @@ import { EmptyState, PageHeader, Section, Table } from "@/components/ui/layout";
 import { Status } from "@/components/ui/status";
 import { formatDate } from "@/lib/format";
 import { deskItems, getDeskSettings } from "@/server/services/content-desk";
-import { generateDeskAction, saveDeskSettingsAction } from "@/app/actions/content-desk";
+import { addOwnReelAction, generateDeskAction, saveDeskSettingsAction } from "@/app/actions/content-desk";
 import { channelConnection, publishingEnabled } from "@/server/services/youtube-publish";
 import { DeskCard, type DeskCardData } from "./desk-card";
+import { FORMATS, MUSIC, SHOTS } from "./reel-options";
 
 const TZ = "Europe/Riga";
 const when = (iso: string) => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: TZ }).format(new Date(iso));
@@ -95,6 +96,26 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
             <Field label="Publishing times (Riga), one piece each" htmlFor="dk-sl"><Input id="dk-sl" name="slots" defaultValue={s.slots.join(", ")} /></Field>
             <Field label="Article ideas a week" htmlFor="dk-a"><Select id="dk-a" name="articles_per_week" defaultValue={String(s.articles_per_week)}>{[0, 1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n}>{n}</option>)}</Select></Field>
             <label className="flex items-center gap-2 self-end text-[13.5px]"><input type="checkbox" name="web_research" defaultChecked={s.web_research} className="size-4" /> Research the web</label>
+          </ActionForm>
+        </details>
+        <details className="mt-3 rounded-[10px] border border-line bg-surface">
+          <summary className="cursor-pointer px-4 py-3 text-[13.5px] font-medium">Add a Reel of your own</summary>
+          <ActionForm action={addOwnReelAction.bind(null, slug)} submitLabel="Add to the desk" pendingLabel="Checking and adding…" resetOnSuccess className="grid gap-4 border-t border-line p-4 md:grid-cols-3">
+            <p className="text-[13px] text-muted md:col-span-3">Your own text goes through the same checks, is made by the renderer within two hours and then waits here for your approve, like the desk&apos;s Reels.</p>
+            <Field label="Topic (2–4 words)" htmlFor="or-topic"><Input id="or-topic" name="topic" required maxLength={60} /></Field>
+            <Field label="Format" htmlFor="or-format"><Select id="or-format" name="format" defaultValue="scenes">{Object.entries(FORMATS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
+            <Field label="Music" htmlFor="or-music"><Select id="or-music" name="music" defaultValue="warm">{Object.entries(MUSIC).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
+            <Field label="Hook: 1–4 short lines, up to 28 characters each" htmlFor="or-intro"><Textarea id="or-intro" name="intro_lines" rows={4} required /></Field>
+            <Field label="Opening card" htmlFor="or-style"><Select id="or-style" name="intro_style" defaultValue="dark"><option value="dark">Dark green</option><option value="light">Light</option></Select></Field>
+            <Field label="Melody no. (optional, 1–97)" htmlFor="or-melody" hint="Keeps the melody of a version you already heard."><Input id="or-melody" name="melody" type="number" min={1} max={97} /></Field>
+            <Field label="Calm lines (read slowly: 3–8; breathe along: up to 3), one per line" htmlFor="or-text" className="md:col-span-3"><Textarea id="or-text" name="text_lines" rows={4} /></Field>
+            {[0, 1, 2].map((i) => (
+              <Field key={i} label={`Scene ${i + 1} (app scenes)`} htmlFor={`or-shot-${i}`}>
+                <Select id={`or-shot-${i}`} name={`shot_${i}`} defaultValue=""><option value="">None</option>{Object.entries(SHOTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
+                <Input name={`scene_caption_${i}`} maxLength={48} placeholder="Caption for this scene" className="mt-1" aria-label={`Scene ${i + 1} caption`} />
+              </Field>
+            ))}
+            <Field label="Instagram caption" htmlFor="or-caption" className="md:col-span-3"><Textarea id="or-caption" name="caption" rows={4} maxLength={2000} /></Field>
           </ActionForm>
         </details>
       </Section>

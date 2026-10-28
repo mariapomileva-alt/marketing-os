@@ -6,19 +6,15 @@ import { Button } from "@/components/ui/button";
 import { FormMessage } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import type { ActionResult } from "@/lib/action-result";
+import { FORMATS, MUSIC, SHOTS } from "./reel-options";
 
 const KIND: Record<string, string> = { post: "Instagram post", carousel: "Instagram carousel", article: "Article idea", reel: "Instagram Reel" };
-const SHOTS: Record<string, string> = {
-  home: "Home: the six tools", breathe: "Breathe: the circle", try_another: "“Breathing feels uncomfortable” → try another", ground: "Ground: feet on the floor",
-  listen: "Listen: soft rain", move: "Move: curl your fingers", read: "Read: calm lines", distract: "Distract: simple games", call_person: "Call my person",
-};
+
 export type ReelData = { format?: string; music?: string; intro_style: "dark" | "light"; intro_lines: string[]; scenes: Array<{ shot: string; caption: string }>; text_lines?: string[] };
 const MECH: Record<string, string> = {
   question: "question", statement: "statement", micro_step: "small step", story: "story", myth: "myth", number: "number",
   curiosity: "curiosity gap", contrarian: "contrarian", in_scene: "in the moment", identity: "callout", relatable: "relatable", save_tool: "save-worthy tool",
 };
-const FORMATS: Record<string, string> = { scenes: "App scenes", read_slowly: "Read this slowly (calm lines)", breathe_along: "Breathe along (circle)" };
-const MUSIC: Record<string, string> = { warm: "Warm", night: "Night", airy: "Airy", piano: "Soft piano" };
 
 export type DeskCardData = {
   id: string; kind: "post" | "carousel" | "article" | "reel"; topic: string; insight: string; why_now: string;

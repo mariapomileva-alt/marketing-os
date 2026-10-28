@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closePools, withContext, type Tx } from "@/server/db/client";
 import { createBackApp } from "@/server/services/products";
 import type { Actor } from "@/server/services/content";
-import { approveDeskItem, claimReelJob, deskItems, finishReelRender, generateDesk, hookLines, nextDeskSlot, parseSlots, publishDueInstagramPosts, rejectDeskItem, rerenderReel, type DeskMedia, type IgImagesApi } from "@/server/services/content-desk";
+import { addOwnReel, approveDeskItem, claimReelJob, deskItems, finishReelRender, generateDesk, hookLines, nextDeskSlot, parseSlots, publishDueInstagramPosts, rejectDeskItem, rerenderReel, type DeskMedia, type IgImagesApi } from "@/server/services/content-desk";
 import { asUser, createOwner, pool } from "../helpers/db";
 import { reelSpecSchema } from "@/domain/ai/schemas";
 
@@ -161,6 +161,24 @@ describe("content desk", () => {
     status = "FINISHED";
     expect((await as((tx) => publishDueInstagramPosts(tx, actor, productId, api, later)))[0].result).toBe("published");
     expect(calls).toEqual(["reel true true", "publish"]);
+  });
+
+  it("adds the owner's own Reel to the desk: checked, made with the chosen melody, then approved into a slot", async () => {
+    const r = await as((tx) => addOwnReel(tx, actor, productId, {
+      topic: "Breathe along", caption: "Save this for the next time your heart starts racing.", melody: 11,
+      reel: { format: "breathe_along", music: "warm", intro_style: "dark", intro_lines: ["Save this", "for the next time"], text_lines: ["Follow the circle."] },
+    }));
+    expect(r.status).toBe("waiting");
+    const own = (await as((tx) => deskItems(tx, productId))).find((i) => i.id === r.id)!;
+    expect(own).toMatchObject({ kind: "reel", render_status: "waiting", status: "needs_human_review", topic: "Breathe along" });
+    const job = (await as((tx) => claimReelJob(tx, productId)))!;
+    expect(job.id).toBe(r.id);
+    expect(job.spec).toMatchObject({ format: "breathe_along", seed: 11, intro_lines: ["Save this", "for the next time"] });
+    await as((tx) => finishReelRender(tx, productId, r.id, { storageKey: job.storageKey }));
+    const a = await as((tx) => approveDeskItem(tx, actor, productId, r.id, media));
+    expect(riga(a.scheduledFor!)).toMatch(/ (09:30|14:00|20:00)$/);
+    await expect(as((tx) => addOwnReel(tx, actor, productId, { topic: "Too short", caption: "", reel: { intro_style: "dark", intro_lines: ["Hi"], scenes: [{ shot: "home", caption: "" }] } })))
+      .rejects.toThrow(/2 or 3 scenes/);
   });
 
   it("splits a hook into short opening lines", () => {

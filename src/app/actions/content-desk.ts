@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
-import { approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
+import { addOwnReel, approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
 import type { ReelSpec } from "@/domain/ai/schemas";
 import { liveDeskMedia } from "@/server/desk/live";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -93,24 +93,45 @@ export async function rejectDeskAction(slug: string, itemId: string, _: ActionRe
   }
 }
 
+/** The Reel fields of a form (the same fields on a desk Reel card and in "Add a Reel of your own"). */
+function reelFromForm(data: FormData): ReelSpec {
+  const scenes: ReelSpec["scenes"] = [];
+  for (let i = 0; i < 3; i++) {
+    const shot = data.get(`shot_${i}`);
+    if (typeof shot !== "string" || !shot) continue;
+    scenes.push({ shot: shot as ReelSpec["scenes"][number]["shot"], caption: str(data.get(`scene_caption_${i}`)) });
+  }
+  const lines = (k: string) => str(data.get(k)).split("\n").map((l) => l.trim()).filter(Boolean);
+  return {
+    format: str(data.get("format")) || "scenes",
+    music: str(data.get("music")) || "warm",
+    intro_style: str(data.get("intro_style")) === "light" ? "light" : "dark",
+    intro_lines: lines("intro_lines"),
+    scenes: str(data.get("format")) === "scenes" || !data.get("format") ? scenes : [],
+    text_lines: lines("text_lines"),
+  } as ReelSpec;
+}
+
+export async function addOwnReelAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const melody = Number(str(data.get("melody")));
+    const r = await db((tx, ctx) => addOwnReel(tx, actorOf(ctx), product.id, {
+      topic: str(data.get("topic")), caption: str(data.get("caption")), reel: reelFromForm(data), melody: Number.isFinite(melody) && melody > 0 ? melody : null,
+    }), { reason: "Own Reel added to the desk" });
+    revalidatePath(path(slug));
+    return r.status === "blocked"
+      ? fail("Added, but the review stopped it (see the content item's checks). Change the text and add it again.")
+      : ok("Added to Today's desk. The renderer makes it within two hours; then watch it and approve.");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
 export async function rerenderReelAction(slug: string, itemId: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
     const product = await getProduct(slug);
-    const scenes: ReelSpec["scenes"] = [];
-    for (let i = 0; i < 3; i++) {
-      const shot = data.get(`shot_${i}`);
-      if (typeof shot !== "string" || !shot) continue;
-      scenes.push({ shot: shot as ReelSpec["scenes"][number]["shot"], caption: str(data.get(`scene_caption_${i}`)) });
-    }
-    const lines = (k: string) => str(data.get(k)).split("\n").map((l) => l.trim()).filter(Boolean);
-    const spec = {
-      format: str(data.get("format")) || "scenes",
-      music: str(data.get("music")) || "warm",
-      intro_style: str(data.get("intro_style")) === "light" ? "light" : "dark",
-      intro_lines: lines("intro_lines"),
-      scenes: str(data.get("format")) === "scenes" || !data.get("format") ? scenes : [],
-      text_lines: lines("text_lines"),
-    } as ReelSpec;
+    const spec = reelFromForm(data);
     await db((tx) => rerenderReel(tx, product.id, itemId, spec), { reason: "Reel text changed, made again" });
     revalidatePath(path(slug));
     return ok("Saved. The Reel is being made again (usually within two hours).");
