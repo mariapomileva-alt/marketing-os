@@ -181,6 +181,21 @@ describe("content desk", () => {
       .rejects.toThrow(/2 or 3 scenes/);
   });
 
+  it("removes a piece the safety rules stopped (still a draft): it leaves the desk and is not rendered", async () => {
+    const r = await as((tx) => addOwnReel(tx, actor, productId, {
+      topic: "Stopped one", caption: "",
+      reel: { format: "read_slowly", music: "piano", intro_style: "dark", intro_lines: ["Calm lines"], text_lines: ["One", "Two", "Three"] },
+    }));
+    // What a stop by the safety rules leaves (the mock reviewer never blocks): a draft with no pending approval.
+    await pool().query("update approval_items a set state = 'invalidated' from content_items i where i.id = $1 and a.content_version_id = i.current_version_id", [r.id]);
+    await pool().query("update content_items set status = 'draft' where id = $1", [r.id]);
+    await as((tx) => rejectDeskItem(tx, actor, productId, r.id));
+    const it = (await as((tx) => deskItems(tx, productId))).find((i) => i.id === r.id);
+    expect(it?.status ?? "archived").toBe("archived");
+    const job = await as((tx) => claimReelJob(tx, productId));
+    expect(job?.id).not.toBe(r.id);
+  });
+
   it("splits a hook into short opening lines", () => {
     expect(hookLines("3:07 am. Heart racing. Nobody awake.")).toEqual(["3:07 am.", "Heart racing.", "Nobody awake."]);
     expect(hookLines("An anxiety app that won't make you breathe right").every((l) => l.length <= 28)).toBe(true);

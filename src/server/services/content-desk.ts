@@ -394,7 +394,7 @@ export async function rerenderReel(tx: Tx, productId: string, itemId: string, re
 export async function claimReelJob(tx: Tx, productId: string) {
   const r = await tx.maybeOne<{ id: string; workspace_id: string; reel: ReelSpec; title: string }>(
     `select d.content_item_id id, d.workspace_id, d.reel, i.title from content_desk_items d join content_items i on i.id = d.content_item_id
-      where d.product_id = $1 and d.kind = 'reel' and i.status not in ('rejected', 'published')
+      where d.product_id = $1 and d.kind = 'reel' and i.status not in ('rejected', 'published', 'archived')
         and (d.render_status = 'waiting' or (d.render_status = 'rendering' and d.render_started_at < now() - interval '1 hour'))
       order by d.created_at limit 1 for update of d skip locked`,
     [productId],
@@ -430,7 +430,12 @@ export async function rejectDeskItem(tx: Tx, actor: Actor, productId: string, it
   );
   if (a) await decideApproval(tx, actor, productId, a.id, "rejected", "Removed on the content desk").catch(() => undefined);
   await tx.query("update approval_items set state = 'invalidated' where id = $1 and state = 'pending'", [a?.id ?? null]);
-  await tx.query("update content_items set status = 'rejected', scheduled_for = null where id = $1 and product_id = $2 and status <> 'published'", [itemId, productId]);
+  // A piece the safety rules stopped is still a draft, and a draft can only be archived (not rejected).
+  await tx.query(
+    `update content_items set status = case when status in ('draft', 'ai_review') then 'archived' else 'rejected' end, scheduled_for = null
+      where id = $1 and product_id = $2 and status not in ('published', 'rejected', 'archived')`,
+    [itemId, productId],
+  );
 }
 
 export interface DeskItem {
@@ -466,7 +471,7 @@ export async function deskItems(tx: Tx, productId: string): Promise<DeskItem[]> 
               where r.content_version_id = i.current_version_id and r.outcome = 'block' and f->>'severity' = 'block') blocked_reason,
             (select p.external_url from publications p where p.content_item_id = i.id order by p.created_at desc limit 1) external_url
        from content_desk_items d join content_items i on i.id = d.content_item_id join content_versions v on v.id = i.current_version_id
-      where d.product_id = $1 and i.status <> 'rejected' and i.created_at > now() - interval '45 days'
+      where d.product_id = $1 and i.status not in ('rejected', 'archived') and i.created_at > now() - interval '45 days'
       order by i.created_at desc`,
     [productId],
   );
