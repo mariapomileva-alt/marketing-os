@@ -2,7 +2,7 @@ import { db, getProduct } from "@/server/context";
 import { getCalmSettings } from "@/server/services/calm";
 import { openaiKey } from "@/server/ai";
 import { youtubeConnection } from "@/server/services/youtube-publish";
-import { approveCalmAction, createCalmVideoAction, createRendererTokenAction, rejectCalmAction, retryCalmMediaAction, saveCalmSettingsAction } from "@/app/actions/calm";
+import { addReelsToShortsAction, approveCalmAction, createCalmVideoAction, createRendererTokenAction, rejectCalmAction, retryCalmMediaAction, saveCalmSettingsAction } from "@/app/actions/calm";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -47,6 +47,8 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
               tiktok_status, tiktok_error, tiktok_post_id
          from calm_shorts where product_id = $1 order by video_id, idx`, [product.id]),
     ig: await channelConnection(tx, product.id, "instagram"),
+    igInfo: await tx.maybeOne<{ last_error: string | null; scopes: string[] }>("select last_error, scopes from channel_connections where product_id = $1 and channel = 'instagram' and status <> 'revoked' and adapter_kind = 'official_api' order by created_at desc limit 1", [product.id]),
+    reelsToAdd: (await tx.one<{ n: number }>("select count(*)::int n from calm_shorts where product_id = $1 and status = 'scheduled' and publish_at > now() + interval '30 minutes' and not ('instagram' = any(targets)) and preview_asset_id is not null", [product.id])).n,
     tt: await tiktokConnection(tx, product.id),
     s: await getCalmSettings(tx, ctx.workspaceId, product.id),
     yt: await youtubeConnection(tx, product.id),
@@ -109,6 +111,15 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
           <Field label="Nature" htmlFor="calm-theme"><Select id="calm-theme" name="theme" defaultValue=""><option value="">Next in turn</option>{THEMES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></Field>
         </ActionForm>
       </Section>
+
+      {d.ig?.status === "connected" ? (
+        <Section title="Instagram Reels" description="Every approved short can also go out on Instagram as a Reel, at the same time as on YouTube. Nothing new is approved here: these are the videos you already watched and approved.">
+          {d.igInfo?.last_error ? <p className="mb-3 rounded-[var(--radius-panel)] border border-red/30 bg-red-tint p-3 text-[13px] text-red">{d.igInfo.last_error}</p> : null}
+          {d.reelsToAdd ? (
+            <ActionForm action={addReelsToShortsAction.bind(null, slug)} submitLabel={`Also post the ${d.reelsToAdd} scheduled short(s) as Reels`} pendingLabel="Adding…" submitVariant="secondary" className="flex flex-wrap items-center gap-3 [&_p]:text-[12.5px]"><span className="sr-only">Add Instagram Reels to scheduled shorts</span></ActionForm>
+          ) : <p className="text-[13px] text-muted">Every upcoming scheduled short also goes to Instagram.</p>}
+        </Section>
+      ) : null}
 
       <Section title="Videos">
         {d.videos.length ? (

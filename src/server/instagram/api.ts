@@ -8,6 +8,7 @@ import "server-only";
 const GRAPH = "https://graph.instagram.com";
 const API = `${GRAPH}/v23.0`;
 export const INSTAGRAM_SCOPES = ["instagram_business_basic", "instagram_business_manage_comments", "instagram_business_content_publish"];
+export { IG_PUBLISH_SCOPE, isIgPermissionError } from "./errors";
 
 export function instagramOauthConfigured() {
   return Boolean(process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_SECRET);
@@ -36,14 +37,16 @@ export function instagramAuthUrl(state: string, redirectUri: string) {
 
 /** Code → short-lived token → long-lived token (60 days). */
 export async function instagramExchangeCode(code: string, redirectUri: string, f: Fetch = fetch) {
-  const short = await call<{ data?: Array<{ access_token: string; user_id: string | number }>; access_token?: string; user_id?: string | number }>(f, "POST", "https://api.instagram.com/oauth/access_token", {
+  const short = await call<{ data?: Array<{ access_token: string; user_id: string | number; permissions?: string | string[] }>; access_token?: string; user_id?: string | number; permissions?: string | string[] }>(f, "POST", "https://api.instagram.com/oauth/access_token", {
     client_id: process.env.INSTAGRAM_APP_ID!, client_secret: process.env.INSTAGRAM_APP_SECRET!, grant_type: "authorization_code", redirect_uri: redirectUri, code,
   });
-  const s = short.data?.[0] ?? { access_token: short.access_token!, user_id: short.user_id! };
+  const s = short.data?.[0] ?? { access_token: short.access_token!, user_id: short.user_id!, permissions: short.permissions };
   const long = await call<{ access_token: string; expires_in: number }>(f, "GET", `${GRAPH}/access_token`, {
     grant_type: "ig_exchange_token", client_secret: process.env.INSTAGRAM_APP_SECRET!, access_token: s.access_token,
   });
-  return { accessToken: long.access_token, expiresAt: new Date(Date.now() + long.expires_in * 1000), userId: String(s.user_id) };
+  // The permissions the person actually granted (Instagram lists them with the first token); null if not given.
+  const perms = s.permissions == null ? null : (Array.isArray(s.permissions) ? s.permissions : String(s.permissions).split(",")).map((x) => x.trim()).filter(Boolean);
+  return { accessToken: long.access_token, expiresAt: new Date(Date.now() + long.expires_in * 1000), userId: String(s.user_id), granted: perms };
 }
 
 export async function instagramRefresh(token: string, f: Fetch = fetch) {

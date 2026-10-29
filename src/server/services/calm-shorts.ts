@@ -2,8 +2,11 @@ import type { Tx } from "@/server/db/client";
 import type { Actor } from "./content";
 import { nextSlot, type CalmClip, type Scheduler } from "./calm";
 import { defaultTikTokCaption, type TikTokChoice } from "./tiktok";
+import { isIgPermissionError } from "@/server/instagram/errors";
 
 export type ShortTarget = "youtube" | "instagram" | "tiktok";
+
+export const IG_PERMISSION_NOTE = "Instagram refused to publish: the connected account has no publishing permission (instagram_business_content_publish). Add it to the Meta app's Instagram use case, then Reconnect Instagram.";
 
 /**
  * Shorts and Reels cut from a calm video's script: consecutive lines grouped into 30-60 second pieces, rendered
@@ -177,8 +180,33 @@ export async function publishDueReels(tx: Tx, productId: string, api: ReelsApi) 
       );
       done.push(d.id);
     } catch (e) {
-      await tx.query("update calm_shorts set instagram_status = 'failed', error = $2 where id = $1", [d.id, (e as Error).message.slice(0, 300)]);
+      const msg = (e as Error).message.slice(0, 300);
+      await tx.query("update calm_shorts set instagram_status = 'failed', error = $2 where id = $1", [d.id, msg]);
+      if (isIgPermissionError(msg)) {
+        await tx.query("update channel_connections set last_error = $2 where product_id = $1 and channel = 'instagram' and status <> 'revoked'", [productId, IG_PERMISSION_NOTE]);
+      }
     }
   }
   return { published: done.length };
+}
+
+/**
+ * Instagram Reels for shorts already approved for YouTube: each upcoming scheduled short also goes out as a Reel at
+ * its own time (the owner approved the video itself already). Shorts less than 30 minutes away are left as they are.
+ */
+export async function addReelsToScheduledShorts(tx: Tx, actor: Actor, productId: string) {
+  const r = await tx.query<{ id: string }>(
+    `update calm_shorts set targets = array_append(targets, 'instagram'), instagram_status = 'queued', instagram_container_id = null
+      where product_id = $1 and status = 'scheduled' and publish_at > now() + interval '30 minutes' and not ('instagram' = any(targets))
+        and preview_asset_id is not null
+      returning id`,
+    [productId],
+  );
+  if (r.length) {
+    await tx.query(
+      "insert into outbound_actions (workspace_id, product_id, action, dedupe_key, result, reason) values ($1,$2,'publish',$3,'executed',$4) on conflict do nothing",
+      [actor.workspaceId, productId, `calm-reels-added:${Date.now()}`, `Instagram Reels added to ${r.length} scheduled short(s) at their times, by the owner`],
+    );
+  }
+  return r.length;
 }

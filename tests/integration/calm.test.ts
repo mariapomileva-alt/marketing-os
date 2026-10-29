@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closePools, withContext, type Tx } from "@/server/db/client";
 import { createBackApp } from "@/server/services/products";
 import type { Actor } from "@/server/services/content";
-import { approveShort, groupLines, publishDueReels, selectShorts } from "@/server/services/calm-shorts";
+import { addReelsToScheduledShorts, approveShort, groupLines, publishDueReels, selectShorts } from "@/server/services/calm-shorts";
 import { approveCalmVideo, claimRenderJob, createCalmVideo, createRendererToken, finishRender, getCalmSettings, nextSlot, updateCalmSettings, videosInPipeline, type CalmMedia } from "@/server/services/calm";
 import { asUser, createOwner } from "../helpers/db";
 
@@ -146,6 +146,29 @@ describe("shorts and reels", () => {
     expect((await as((tx) => publishDueReels(tx, productId, reels))).published).toBe(1);
     const s = await as((tx) => tx.one<{ instagram_media_id: string; status: string }>("select instagram_media_id, status from calm_shorts where id = $1", [shorts[0].id]));
     expect(s).toMatchObject({ instagram_media_id: "media1", status: "published" });
+  });
+
+  it("adds Instagram Reels to shorts already scheduled for YouTube; a missing permission is shown on the connection", async () => {
+    const v = await as((tx) => tx.one<{ id: string }>("select video_id id from calm_shorts where product_id = $1 limit 1", [productId]));
+    const asset = await as((tx) => tx.one<{ id: string }>("select preview_asset_id id from calm_shorts where preview_asset_id is not null and product_id = $1 limit 1", [productId]));
+    const soon = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    await as((tx) => tx.query(
+      "insert into calm_shorts (workspace_id, product_id, video_id, idx, line_from, line_to, title, targets, status, publish_at, preview_asset_id) values ($1,$2,$3,90,0,1,'Later short','{youtube}','scheduled',$4,$5)",
+      [owner.workspaceId, productId, v.id, soon, asset.id]));
+    expect(await as((tx) => addReelsToScheduledShorts(tx, actor, productId))).toBe(1);
+    expect(await as((tx) => addReelsToScheduledShorts(tx, actor, productId))).toBe(0);
+    const row = await as((tx) => tx.one<{ targets: string[]; instagram_status: string }>("select targets, instagram_status from calm_shorts where idx = 90 and product_id = $1", [productId]));
+    expect(row).toMatchObject({ targets: ["youtube", "instagram"], instagram_status: "queued" });
+    await as((tx) => tx.query("update calm_shorts set publish_at = now() - interval '1 minute' where idx = 90 and product_id = $1", [productId]));
+    const denied = {
+      token: async () => ({ token: "t", igUserId: "ig1" }), fileUrl: async (x: string) => x,
+      create: async () => { throw new Error("Instagram 403 IGApiException 10: Application does not have permission for this action"); },
+      status: async () => "FINISHED", publish: async () => "m",
+    };
+    await service((tx) => tx.query("insert into channel_connections (workspace_id, product_id, channel, adapter_kind, account_label, mode, status) select $1,$2,'instagram','official_api','@backapp.live','requires_approval','connected' where not exists (select 1 from channel_connections where product_id = $2 and channel = 'instagram' and status <> 'revoked')", [owner.workspaceId, productId]));
+    await as((tx) => publishDueReels(tx, productId, denied));
+    const conn = await as((tx) => tx.one<{ last_error: string | null }>("select last_error from channel_connections where product_id = $1 and channel = 'instagram' and status <> 'revoked'", [productId]));
+    expect(conn.last_error).toMatch(/publishing permission/);
   });
 });
 

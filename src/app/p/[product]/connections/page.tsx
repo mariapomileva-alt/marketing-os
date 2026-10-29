@@ -168,6 +168,7 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
               <div className="flex flex-wrap items-center gap-3">
                 <Status tone={tone(active.status)}>{active.status === "connected" ? `Replying as ${active.account_label}` : `Paused: ${active.paused_reason ?? active.status}`}</Status>
                 {!publishingEnabled("instagram") ? <span className="text-[13px] text-muted">Posting is switched off on the server (INSTAGRAM_PUBLISHING_ENABLED is not true).</span> : null}
+                {active.last_error ? <span className="basis-full text-[13px] text-red">{active.last_error}</span> : null}
                 <a href={`/api/instagram/oauth/start?product=${slug}`} className="text-[13px] underline">Reconnect</a>
                 <form action={disconnectInstagramAction.bind(null, slug)}><Button size="sm" variant="danger">Disconnect Instagram</Button></form>
               </div>

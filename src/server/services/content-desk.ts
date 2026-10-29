@@ -1,4 +1,6 @@
 import type { Tx } from "@/server/db/client";
+import { IG_PERMISSION_NOTE } from "./calm-shorts";
+import { isIgPermissionError } from "@/server/instagram/errors";
 import { contentDeskSchema, reelSpecSchema, type ContentBody, type ContentDeskOutput, type ReelSpec, type ReelSpecInput } from "@/domain/ai/schemas";
 import type { Actor } from "./content";
 import { decideApproval, editContent, runAgent, runReviews, scheduleItem, submitForApproval } from "./content";
@@ -563,6 +565,7 @@ export async function publishDueInstagramPosts(tx: Tx, actor: Actor, productId: 
         "insert into outbound_actions (workspace_id, product_id, connection_id, approval_item_id, action, result, reason) values ($1,$2,$3,$4,'publish','failed',$5)",
         [actor.workspaceId, productId, conn.id, approval.id, msg],
       );
+      if (isIgPermissionError(msg)) await tx.query("update channel_connections set last_error = $2 where id = $1", [conn.id, IG_PERMISSION_NOTE]);
       // Try again in an hour rather than at every queue run.
       await tx.query("update content_items set scheduled_for = now() + interval '1 hour' where id = $1", [it.id]);
       out.push({ id: it.id, result: `failed: ${msg}` });

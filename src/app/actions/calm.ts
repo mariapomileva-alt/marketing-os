@@ -6,7 +6,7 @@ import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { approveCalmVideo, createCalmVideo, createRendererToken, prepareCalmMedia, rejectCalmVideo, updateCalmSettings } from "@/server/services/calm";
 import { liveCalmMedia } from "@/server/calm/live";
-import { approveShort, rejectShort, selectShorts, type ShortTarget } from "@/server/services/calm-shorts";
+import { addReelsToScheduledShorts, approveShort, rejectShort, selectShorts, type ShortTarget } from "@/server/services/calm-shorts";
 import { tiktokAccess, tiktokConnection, validateDirectChoice, type TikTokChoice } from "@/server/services/tiktok";
 import { tiktokCreatorInfo, tiktokDirectPostEnabled, tiktokRefresh } from "@/server/tiktok/api";
 import { refreshTokenFor, youtubeConnection } from "@/server/services/youtube-publish";
@@ -214,6 +214,23 @@ export async function approveAllShortsAction(slug: string, videoId: string, _: A
     revalidatePath(path(slug));
     revalidatePath(`/p/${slug}/calendar`);
     return n ? ok(`${n} shorts approved${mixed?.moved ? " and mixed in with the other shorts so the same look does not repeat" : ": one goes out each day"}.`) : fail("No shorts are ready to approve yet.");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+/** Also post every upcoming scheduled short as an Instagram Reel, at its own time. */
+export async function addReelsToShortsAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const n = await db(async (tx, ctx) => {
+      const ig = await tx.maybeOne<{ id: string }>("select id from channel_connections where product_id = $1 and channel = 'instagram' and status = 'connected' and adapter_kind = 'official_api'", [product.id]);
+      if (!ig) throw new Error("Instagram is not connected (Connections).");
+      return addReelsToScheduledShorts(tx, actorOf(ctx), product.id);
+    }, { reason: "Instagram Reels added to scheduled shorts" });
+    revalidatePath(path(slug));
+    revalidatePath(`/p/${slug}/calendar`);
+    return n ? ok(`${n} scheduled short(s) will also go out as Instagram Reels, each at its own time.`) : ok("Every upcoming scheduled short already goes to Instagram too.");
   } catch (e) {
     return toFailure(e, msg);
   }

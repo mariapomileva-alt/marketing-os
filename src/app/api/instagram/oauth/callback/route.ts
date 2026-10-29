@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     if (product.id !== state.productId) return back("bad_state");
     const t = await instagramExchangeCode((q.get("code") ?? "").replace(/#_$/, ""), appUrl("/api/instagram/oauth/callback"));
     const me = await instagramMe(t.accessToken);
-    await db((tx, ctx) => saveTokenConnection(tx, ctx.workspaceId, product.id, "instagram", { id: me.user_id ?? me.id ?? t.userId, label: `@${me.username}` }, t.accessToken, t.expiresAt, INSTAGRAM_SCOPES), { reason: `Instagram account connected: @${me.username}` });
+    await db((tx, ctx) => saveTokenConnection(tx, ctx.workspaceId, product.id, "instagram", { id: me.user_id ?? me.id ?? t.userId, label: `@${me.username}` }, t.accessToken, t.expiresAt, t.granted ?? INSTAGRAM_SCOPES), { reason: `Instagram account connected: @${me.username}` });
     return back("connected");
   } catch (e) {
     return back(`error:${(e as Error).message.slice(0, 160)}`);
