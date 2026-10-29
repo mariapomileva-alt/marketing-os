@@ -57,7 +57,7 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
     <>
       <PageHeader
         title="Ideas & hooks"
-        description={`Every morning at 7:40 the desk researches what ${product.name}'s audience asks and shares right now, what worked for us and what we have not covered yet, then prepares ready pieces for Instagram: ${s.reels_per_day} Reel(s), ${s.carousels_per_day} carousel(s) and ${s.posts_per_day} post(s) a day, in Back's look with our own music, and ${s.articles_per_week} article idea(s) a week. Approve puts a piece on the calendar.`}
+        description={`Every morning at 7:40 the desk researches what ${product.name}'s audience asks and shares right now, what worked for us and what we have not covered yet, then prepares ready pieces for Instagram: ${s.reels_per_day} Reel(s), ${s.carousels_per_day} carousel(s) and ${s.posts_per_day} post(s) a day, in ${product.name}'s look, and ${s.articles_per_week} article idea(s) a week. Approve puts a piece on the calendar.`}
       />
       <Section
         title={`Today's desk${waiting.length ? ` · ${waiting.length} waiting` : ""}`}
