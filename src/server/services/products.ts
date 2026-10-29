@@ -118,6 +118,43 @@ export async function createMomentro(tx: Tx, workspaceId: string) {
   return p;
 }
 
+/**
+ * Brings an existing Momentro project up to the team's knowledge base (Foundation 00–12, FAQ, launch_01 rules):
+ * profile, marketing brief, facts and prohibited claims (claims no longer in the pack are archived, not deleted),
+ * and safety rules (updated by code). Idempotent.
+ */
+export async function applyMomentroPack(tx: Tx, workspaceId: string, productId: string) {
+  await tx.query(
+    `update products set short_description = $2, category = $3, legal_restrictions = $4, prohibited_topics = $5, pain_points = $6, triggers = $7,
+       desired_emotional_states = $8, customer_vocabulary = $9, advantages = $10, marketing_brief = $11 where id = $1`,
+    [productId, MOMENTRO.short_description, MOMENTRO.category, MOMENTRO.legal_restrictions, MOMENTRO.prohibited_topics, MOMENTRO.pain_points, MOMENTRO.triggers,
+     MOMENTRO.desired_emotional_states, MOMENTRO.customer_vocabulary, MOMENTRO.advantages, JSON.stringify(MOMENTRO_BRIEF)],
+  );
+  await tx.query("update brand_profiles set tone_of_voice = $2 where product_id = $1", [productId, MOMENTRO.tone_of_voice]);
+  const key = (k: string, st: string) => `${k}:${st.trim().toLowerCase()}`;
+  const wanted = new Set(MOMENTRO_CLAIMS.map((c) => key(c.kind, c.statement)));
+  const current = (await listClaims(tx, productId)).filter((c) => !c.archived);
+  let archived = 0;
+  for (const c of current) if (!wanted.has(key(c.kind, c.statement))) { await tx.query("update product_claims set archived = true where id = $1", [c.id]); archived++; }
+  const have = new Set(current.map((c) => key(c.kind, c.statement)));
+  let added = 0;
+  for (const c of MOMENTRO_CLAIMS) {
+    if (have.has(key(c.kind, c.statement))) continue;
+    await tx.query("insert into product_claims (workspace_id, product_id, kind, statement, rationale) values ($1,$2,$3,$4,$5)", [workspaceId, productId, c.kind, c.statement, c.rationale]);
+    added++;
+  }
+  let rules = 0;
+  for (const g of MOMENTRO_GUARDRAILS) {
+    const ex = await tx.maybeOne<{ id: string }>("select id from product_guardrails where product_id = $1 and code = $2", [productId, g.code]);
+    if (ex) await tx.query("update product_guardrails set rule_type = $2, patterns = $3, severity = $4, rationale = $5 where id = $1", [ex.id, g.ruleType, JSON.stringify(g.patterns ?? []), g.severity, g.rationale ?? ""]);
+    else await tx.query(
+      `insert into product_guardrails (workspace_id, product_id, code, rule_type, patterns, instruction, severity, rationale) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [workspaceId, productId, g.code, g.ruleType, JSON.stringify(g.patterns ?? []), g.instruction ?? "", g.severity, g.rationale ?? ""]);
+    rules++;
+  }
+  return { added, archived, rules };
+}
+
 export interface ProductProfile {
   id: string;
   slug: string;

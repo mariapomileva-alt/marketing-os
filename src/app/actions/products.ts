@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { db, getProduct, requireOwner } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { seedDemo } from "@/server/services/demo";
-import { applyBackRulesPack, createBackApp, createMomentro, createProduct, productInputSchema, profileUpdateSchema, slugify, updateProfile } from "@/server/services/products";
+import { applyBackRulesPack, applyMomentroPack, createBackApp, createMomentro, createProduct, productInputSchema, profileUpdateSchema, slugify, updateProfile } from "@/server/services/products";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 import { productBrief, saveBrief } from "@/server/services/marketing-brief";
 import { importWebsite } from "@/server/services/site-import";
@@ -223,4 +223,15 @@ export async function archiveProductAction(productSlug: string) {
   await db((tx) => tx.query("update products set status = 'archived' where id = $1", [product.id]), { reason: `Project archived: ${product.name}` });
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+export async function applyMomentroPackAction(productSlug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(productSlug);
+    const r = await db((tx, ctx) => applyMomentroPack(tx, ctx.workspaceId, product.id), { reason: "Momentro knowledge-base rules applied" });
+    revalidatePath(`/p/${productSlug}/products`);
+    return ok(`Applied: ${r.added} fact(s) and claim(s) added, ${r.archived} outdated archived, ${r.rules} safety rules up to date, brief and tone updated.`);
+  } catch (e) {
+    return toFailure(e, (x) => (x as Error).message);
+  }
 }

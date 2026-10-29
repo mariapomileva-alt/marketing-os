@@ -1,7 +1,7 @@
 import { db, getProduct } from "@/server/context";
 import { getProfile, rulesPackApplied, listClaims, listGuardrails, listLinks, listLocales, listTerms } from "@/server/services/products";
 import {
-  addClaimAction, addLinkAction, applyRulesPackAction, addLocaleAction, addTermAction, approveClaimAction, archiveClaimAction, archiveProductAction, importWebsiteAction, saveBriefAction, toggleGuardrailAction, updateProfileAction,
+  addClaimAction, addLinkAction, applyRulesPackAction, addLocaleAction, addTermAction, applyMomentroPackAction, approveClaimAction, archiveClaimAction, archiveProductAction, importWebsiteAction, saveBriefAction, toggleGuardrailAction, updateProfileAction,
 } from "@/app/actions/products";
 import { productBrief } from "@/server/services/marketing-brief";
 import { ActionForm } from "@/components/ui/action-form";
@@ -54,6 +54,16 @@ export default async function ProductsPage({ params }: PageProps<"/p/[product]/p
           <ActionForm action={applyRulesPackAction.bind(null, slug)} submitLabel={packApplied ? "Apply again" : "Apply rules"} pendingLabel="Applying…" submitVariant={packApplied ? "ghost" : "primary"} className="flex items-center gap-3 [&_p]:max-w-[360px] [&_p]:text-[12px]">
             <span className="sr-only">Apply the rules document to this product</span>
           </ActionForm>
+        </div>
+      ) : null}
+
+      {profile.slug === "momentro" ? (
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-panel)] border border-line bg-surface px-5 py-4">
+          <div className="max-w-[70ch]">
+            <p className="text-[14px] font-medium">Momentro knowledge base: Foundation 00–12, FAQ, launch_01 rules</p>
+            <p className="mt-1 text-[13px] text-muted">Brand language (words to use and avoid), core lines and message patterns, facts and claims never to make (fully offline, instant, prices, invented proof, AI magic, shame), safety rules, tone and brief. Applying again updates to the latest version; your old claims are archived, not deleted.</p>
+          </div>
+          <ActionForm action={applyMomentroPackAction.bind(null, slug)} submitLabel="Apply Momentro rules" pendingLabel="Applying…" className="flex items-center gap-3 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Apply the Momentro rules</span></ActionForm>
         </div>
       ) : null}
 

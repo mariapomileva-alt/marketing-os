@@ -30,6 +30,7 @@ export interface MarketingBrief {
   colors: { dark: string; light: string; ink: string; muted: string; pale: string; accent: string; accent2: string };
   reels: boolean;               // a recorded scene library exists for Reels (scripts/reels/shots)
   brief_tone: string;           // one line for the morning brief: what the product does and the tone
+  patterns?: string;            // the product's approved core lines, message patterns and content themes
 }
 
 export const BACK_BRIEF: MarketingBrief = {
@@ -123,6 +124,7 @@ export function fillPrompt(text: string, b: MarketingBrief) {
     CLOSING_TEXT: b.closing_text,
     END_CARD: `${b.end_card_title}${b.end_card_text ? ` · ${b.end_card_text}` : ""}`,
     BRIEF_TONE: b.brief_tone,
+    PATTERNS: b.patterns?.trim() ? b.patterns.trim() : "none written yet: use PRODUCT FACTS and KNOWLEDGE",
     SAFETY: b.sensitive
       ? "If an item touches suicide, self-harm or an emergency, include a line pointing to local emergency services."
       : "Never touch tragedies, crises or someone's private pain for reach.",

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { closePools, type Tx } from "@/server/db/client";
-import { createBackApp, createMomentro } from "@/server/services/products";
+import { applyMomentroPack, createBackApp, createMomentro } from "@/server/services/products";
 import { productBrief } from "@/server/services/marketing-brief";
 import { deskCounts, generateDesk, getDeskSettings, type DeskMedia } from "@/server/services/content-desk";
 import { htmlToText, importWebsite, type Fetcher } from "@/server/services/site-import";
@@ -25,7 +25,7 @@ describe("Momentro as its own project", () => {
     expect(m).toMatchObject({ name: "Momentro", reels: false, sensitive: false, card_brand: "Momentro" });
     expect(b).toMatchObject({ name: "Back", reels: true, sensitive: true });
     const claims = await as((tx) => tx.query<{ statement: string }>("select statement from product_claims where product_id = $1 and kind = 'prohibited_claim'", [momentro]));
-    expect(claims.map((c) => c.statement).join(" ")).toMatch(/entirely offline/);
+    expect(claims.map((c) => c.statement).join(" ")).toMatch(/fully offline/);
     const backFacts = await as((tx) => tx.query("select 1 from product_claims where product_id = $1 and statement ilike '%Momentro%'", [back]));
     expect(backFacts).toHaveLength(0);
   });
@@ -54,5 +54,17 @@ describe("Momentro as its own project", () => {
     const titles = await as((tx) => tx.query<{ title: string }>("select title from knowledge_sources where product_id = $1 order by title", [momentro]));
     expect(titles.map((t) => t.title)).toEqual(["Momentro", "Organize family videos"]);
     expect(htmlToText(pages["https://momentro.me/"]).text).not.toMatch(/menu|x\(\)/);
+  });
+
+  it("the rules pack from the knowledge base updates an existing Momentro: outdated claims archived, rules up to date", async () => {
+    await as((tx) => tx.query("insert into product_claims (workspace_id, product_id, kind, statement, rationale) values ($1,$2,'approved_fact','Unlocking costs €9.99 for one project.','old')", [owner.workspaceId, momentro]));
+    const r = await as((tx) => applyMomentroPack(tx, owner.workspaceId, momentro));
+    expect(r.archived).toBeGreaterThanOrEqual(1);
+    const again = await as((tx) => applyMomentroPack(tx, owner.workspaceId, momentro));
+    expect(again).toMatchObject({ added: 0, archived: 0 });
+    const b = await as((tx) => productBrief(tx, momentro));
+    expect(b.patterns).toMatch(/Turn the whole journey into one finished film/);
+    const codes = await as((tx) => tx.query<{ code: string }>("select code from product_guardrails where product_id = $1 order by code", [momentro]));
+    expect(codes.map((c) => c.code)).toEqual(expect.arrayContaining(["momentro.brand_language", "momentro.no_price_claims", "momentro.no_shame"]));
   });
 });

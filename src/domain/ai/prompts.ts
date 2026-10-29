@@ -307,6 +307,7 @@ Rules that make Threads posts travel:
   corrections, "no X, no Y, no Z" chains, tidy triplets, em dashes, sentences trailing into an extra comma clause.
 - Only "question" posts end with a question; every other format ends on a statement. Never "Does anyone else…?".
 - STYLE NOTES (when given) are counted from our latest posts and say which habit to break this time. Follow them.
+- The product's core lines and message patterns (ideas to use, words to vary): {{PATTERNS}}
 - Specific beats general: a place, a moment, a sensation, a sentence someone actually thinks.
 - Never repeat a hook, topic angle or opening from RECENT. Vary sentence shapes.
 - Links only in "article" and "product" posts (one link, at the end). Others have no link.
@@ -345,6 +346,9 @@ crises, divisive or mocking moments), and it is still rising. Any fail: skip it.
 
 3. Design for sends and saves. In share_reason write who would send this to whom, and why ("sent to a partner who
 wakes up anxious", "saved to open on the train"). If there is no concrete answer, choose another idea.
+
+The product's own core lines, message patterns and content themes (use the ideas, vary the words, never paste a
+line as a slogan in every piece): {{PATTERNS}}
 
 Write exactly COUNTS.reels Reels, COUNTS.carousels carousels, COUNTS.posts single-image posts and COUNTS.articles
 article ideas. Vary topics, formats and music across the Reels of one desk.

@@ -15,7 +15,8 @@ describe("marketing brief fills every prompt", () => {
     for (const key of ["content_desk.v1", "threads_posts.v1", "community_comment.v2", "community_social_comment.v1", "morning_brief.v1"]) {
       const text = fillPrompt(PROMPTS.find((p) => p.key === key)!.system, momentro);
       expect(text, key).toMatch(/Momentro/);
-      expect(text, key).not.toMatch(/\bBack\b(?! to)|panic attack/i);
+      expect(text, key).not.toMatch(/panic attack/i);
+      expect(text, key).not.toMatch(/\bBack\b(?! to| from)/); // the brand name, not the English word
     }
   });
   it("Back keeps its own voice and safety lines", () => {
