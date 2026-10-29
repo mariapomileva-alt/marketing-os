@@ -132,7 +132,8 @@ export async function mixShorts(tx: Tx, actor: Actor, productId: string, deps: M
         await deps.move(yt, to);
       }
       if (item.key.startsWith("gom:")) await tx.query("update calm_shorts set publish_at = $2 where id = $1", [item.key.slice(4), to.toISOString()]);
-      else await tx.query("update calendar_events set at = $3 where product_id = $1 and source = 'youtube' and external_id = $2", [productId, item.key.slice(3), to.toISOString()]);
+      // The calendar's copy of the YouTube video moves with it (until the next read from YouTube).
+      if (yt) await tx.query("update calendar_events set at = $3 where product_id = $1 and source = 'youtube' and external_id = $2", [productId, yt, to.toISOString()]);
       await tx.query(
         `insert into outbound_actions (workspace_id, product_id, action, dedupe_key, result, reason) values ($1,$2,'publish',$3,'executed',$4)
          on conflict do nothing`,
