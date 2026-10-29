@@ -22,6 +22,6 @@ describe("marketing brief fills every prompt", () => {
   it("Back keeps its own voice and safety lines", () => {
     const desk = fillPrompt(PROMPTS.find((p) => p.key === "content_desk.v1")!.system, BACK_BRIEF);
     expect(desk).toMatch(/Back panic app/);
-    expect(desk).toMatch(/emergency services/);
+    expect(desk).toMatch(/112 in the EU, 911 in the US, 999 in the UK/);
   });
 });

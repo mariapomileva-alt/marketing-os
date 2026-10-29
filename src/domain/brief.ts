@@ -31,6 +31,7 @@ export interface MarketingBrief {
   reels: boolean;               // a recorded scene library exists for Reels (scripts/reels/shots)
   brief_tone: string;           // one line for the morning brief: what the product does and the tone
   patterns?: string;            // the product's approved core lines, message patterns and content themes
+  emergency_line?: string;      // exact safety line required when a piece touches danger or an emergency
 }
 
 export const BACK_BRIEF: MarketingBrief = {
@@ -57,7 +58,8 @@ export const BACK_BRIEF: MarketingBrief = {
   closing_text: "Help for the first minute. One tap, no account, works offline.",
   card_brand: "Back",
   card_footer: "Back panic app · free on iPhone",
-  card_note: "In danger right now? Call your local emergency number.",
+  card_note: "In danger right now? Call your local emergency number — 112 in the EU, 911 in the US, 999 in the UK.",
+  emergency_line: "In danger right now? Call your local emergency number — 112 in the EU, 911 in the US, 999 in the UK.",
   end_card_title: "Back: Panic Attack Help",
   end_card_text: "Free on iPhone. Opens in one tap.",
   end_card_fine: "A self-help tool, not therapy or an emergency service.",
@@ -126,7 +128,7 @@ export function fillPrompt(text: string, b: MarketingBrief) {
     BRIEF_TONE: b.brief_tone,
     PATTERNS: b.patterns?.trim() ? b.patterns.trim() : "none written yet: use PRODUCT FACTS and KNOWLEDGE",
     SAFETY: b.sensitive
-      ? "If an item touches suicide, self-harm or an emergency, include a line pointing to local emergency services."
+      ? `If an item mentions danger, an emergency, calling for help, suicide or self-harm (on a slide, in the video or in the caption), its caption ends with exactly this line, word for word: "${b.emergency_line ?? "In danger right now? Call your local emergency number."}"`
       : "Never touch tragedies, crises or someone's private pain for reach.",
     EMERGENCY: b.sensitive
       ? "Danger, self-harm, suicidal thoughts, chest pain, fainting or another possible emergency: set handoff_to_human=true,\n  may_mention_product=false, and write only a short, caring note pointing to local emergency services. Nothing else."

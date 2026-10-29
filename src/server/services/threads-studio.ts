@@ -1,5 +1,6 @@
 import { styleNotes } from "@/domain/youtube";
 import { productBrief } from "./marketing-brief";
+import { deskRules } from "./content-desk";
 import type { Tx } from "@/server/db/client";
 import type { Actor } from "./content";
 import { decideApproval, editContent, runAgent, runReviews, scheduleItem, submitForApproval } from "./content";
@@ -94,6 +95,7 @@ export async function generateThreadsPosts(tx: Tx, actor: Actor, productId: stri
     COUNT: n,
     LANGUAGE: s.language === "ru" ? "Russian" : "English",
     WEB_SEARCH_ALLOWED: s.web_trends,
+    RULES: await deskRules(tx, productId),
     ARTICLES: articles.map((a) => ({ title: a.title, url: a.url })),
     KNOWLEDGE: knowledge,
     RECENT: recent.map((r) => `${r.format}: ${r.text.slice(0, 160)}`),

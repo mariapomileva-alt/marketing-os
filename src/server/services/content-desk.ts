@@ -121,6 +121,68 @@ export async function deskCounts(tx: Tx, productId: string, s: DeskSettings) {
   return { posts: s.posts_per_day, carousels: s.carousels_per_day, articles: week.articles < s.articles_per_week ? 1 : 0, reels };
 }
 
+type DeskOutItem = ContentDeskOutput["items"][number];
+
+/** A desk item from the writer → the content body, Reel spec, title and visual note stored for it. */
+function deskBody(it: DeskOutItem) {
+  const hook = it.hooks[it.chosen_hook]?.text ?? it.hooks[0].text;
+  const slides: Slide[] = it.kind === "post" ? [{ title: hook, text: "" }] : it.kind === "carousel" ? [{ title: hook, text: "" }, ...it.slides.slice(1).map((x) => ({ title: x.title, text: x.text ?? "" }))] : [];
+  const reel: ReelSpec | null = it.kind === "reel" ? reelSpecSchema.parse(it.reel ?? { intro_style: "dark", intro_lines: hookLines(hook), scenes: [{ shot: "home", caption: "" }, { shot: "breathe", caption: "" }] }) : null;
+  const body: ContentBody = it.kind === "reel"
+    ? { hook, caption: it.caption, script: reel!.scenes.map((sc, i) => ({ timecode: `scene ${i + 1}`, line: sc.caption, visual: sc.shot })) }
+    : it.kind === "article"
+    ? {
+        hook: it.article?.title ?? hook,
+        body: [it.article?.answer_first ?? "", "", ...(it.article?.outline ?? []).map((o) => `- ${o}`), "", `Search: ${it.article?.search_query ?? ""}`].join("\n").trim(),
+        caption: it.caption,
+      }
+    : { hook, caption: it.caption, slides };
+  const title = (it.kind === "article" ? it.article?.title ?? hook : hook).replace(/^\[MOCK\]\s*/, "");
+  const visual = it.kind === "article" ? "" : it.kind === "reel" ? `Reel (${reel!.format.replace("_", " ")}), intro and end cards, original ${reel!.music} music composed for it` : "Brand cards in the product's look";
+  return { body, reel, title, visual };
+}
+
+/** What the reviewers check, given to the writer up front: the product's rules, claims never to make, required lines. */
+export async function deskRules(tx: Tx, productId: string) {
+  const rules = await tx.query<{ code: string; rule_type: string; severity: string; rationale: string; instruction: string; patterns: unknown }>(
+    "select code, rule_type, severity, rationale, instruction, patterns from product_guardrails where product_id = $1 and active order by severity, code", [productId]);
+  const prohibited = (await tx.query<{ statement: string }>("select statement from product_claims where product_id = $1 and kind = 'prohibited_claim' and not archived", [productId])).map((p) => p.statement);
+  const b = await productBrief(tx, productId);
+  return {
+    rules: rules.map((r) => ({ severity: r.severity, rule: r.rationale || r.instruction || r.code })),
+    claims_never_to_make: prohibited,
+    required_lines: b.emergency_line ? [`When a piece mentions danger, an emergency, calling for help, suicide or self-harm, its caption ends with exactly: "${b.emergency_line}"`] : [],
+  };
+}
+
+/** One AI rewrite of a stopped piece that fixes exactly the reviewers' findings; the result is drawn and reviewed again. */
+async function fixDeskItem(tx: Tx, actor: Actor, productId: string, itemId: string, original: DeskOutItem, wfId: string, rules: unknown, media: DeskMedia) {
+  const cur = await tx.one<{ v: string; n: number }>("select i.current_version_id v, (select max(version) from content_versions where content_item_id = i.id)::int n from content_items i where i.id = $1", [itemId]);
+  const findings = (await tx.query<{ reviewer: string; findings: Array<{ severity: string; message: string; excerpt?: string }> }>(
+    "select reviewer, findings from content_reviews where content_version_id = $1", [cur.v]))
+    .flatMap((r) => r.findings.filter((f) => f.severity === "block").map((f) => ({ reviewer: r.reviewer, problem: f.message, excerpt: f.excerpt ?? null })));
+  if (!findings.length) return null;
+  const r = await runAgent(tx, {
+    actor, productId, workflowRunId: wfId, step: "content_desk_fix", task: "content_desk", promptKey: "content_desk_fix.v1",
+    schema: contentDeskSchema, sourceIds: [], input: { ITEM: original, FINDINGS: findings, RULES: rules }, maxTokens: 5000,
+  });
+  const it = r.output.items[0];
+  if (!it || it.kind !== original.kind) return null;
+  const { body, reel, visual } = deskBody(it);
+  const ver = await tx.one<{ id: string }>(
+    `insert into content_versions (workspace_id, product_id, content_item_id, version, body, visual_concept, rationale, evidence, author_type, agent_run_id, edit_note)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,'ai',$9,'Rewritten by AI to fix what the safety review stopped') returning id`,
+    [actor.workspaceId, productId, itemId, cur.n + 1, JSON.stringify(body), visual, JSON.stringify({ insight: it.insight, why_now: it.why_now }), JSON.stringify(it.sources), r.agentRunId],
+  );
+  await tx.query("update content_items set current_version_id = $1, status = 'draft' where id = $2", [ver.id, itemId]);
+  await tx.query(
+    "update content_desk_items set hooks = $2, chosen_hook = $3, reel = $4, render_status = $5, video_asset_id = null, craft = $6 where content_item_id = $1",
+    [itemId, JSON.stringify(it.hooks), it.chosen_hook, reel ? JSON.stringify(reel) : null, reel ? "waiting" : null, JSON.stringify({ share_reason: it.share_reason, borrowed_mechanism: it.borrowed_mechanism })],
+  );
+  await drawCards(tx, productId, itemId, media);
+  return runReviews(tx, actor, productId, itemId, wfId);
+}
+
 export async function generateDesk(tx: Tx, actor: Actor, productId: string, media: DeskMedia, counts?: { posts: number; carousels: number; articles: number; reels?: number }) {
   const s = await getDeskSettings(tx, actor.workspaceId, productId);
   const k = { reels: 0, ...(counts ?? (await deskCounts(tx, productId, s))) };
@@ -158,6 +220,7 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
     PERFORMANCE: { threads: await performanceSummary(tx, productId), instagram_posts: published },
     COMPETITORS: competitors.map((c) => c.name),
     TREND_SIGNALS: signals,
+    RULES: await deskRules(tx, productId),
     KNOWLEDGE: await draftingKnowledge(tx, actor.workspaceId, productId, `${(await productBrief(tx, productId)).niche} what helps`, 6),
   };
   const run = (inp: typeof input, web: boolean) => runAgent(tx, {
@@ -173,20 +236,8 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
   }
   const created: Array<{ id: string; kind: DeskKind; status: string }> = [];
   for (const it of r.output.items) {
-    const hook = it.hooks[it.chosen_hook]?.text ?? it.hooks[0].text;
+    const { body, reel, title, visual } = deskBody(it);
     const f = FORMAT[it.kind];
-    const slides: Slide[] = it.kind === "post" ? [{ title: hook, text: "" }] : it.kind === "carousel" ? [{ title: hook, text: "" }, ...it.slides.slice(1).map((x) => ({ title: x.title, text: x.text ?? "" }))] : [];
-    const reel: ReelSpec | null = it.kind === "reel" ? reelSpecSchema.parse(it.reel ?? { intro_style: "dark", intro_lines: hookLines(hook), scenes: [{ shot: "home", caption: "" }, { shot: "breathe", caption: "" }] }) : null;
-    const body: ContentBody = it.kind === "reel"
-      ? { hook, caption: it.caption, script: reel!.scenes.map((sc, i) => ({ timecode: `scene ${i + 1}`, line: sc.caption, visual: sc.shot })) }
-      : it.kind === "article"
-      ? {
-          hook: it.article?.title ?? hook,
-          body: [it.article?.answer_first ?? "", "", ...(it.article?.outline ?? []).map((o) => `- ${o}`), "", `Search: ${it.article?.search_query ?? ""}`].join("\n").trim(),
-          caption: it.caption,
-        }
-      : { hook, caption: it.caption, slides };
-    const title = (it.kind === "article" ? it.article?.title ?? hook : hook).replace(/^\[MOCK\]\s*/, "");
     const item = await tx.one<{ id: string }>(
       `insert into content_items (workspace_id, product_id, channel, format, goal, funnel_stage, language, topic, title)
        values ($1,$2,$3,$4,$5,'awareness','en',$6,$7) returning id`,
@@ -195,8 +246,7 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
     const ver = await tx.one<{ id: string }>(
       `insert into content_versions (workspace_id, product_id, content_item_id, version, body, visual_concept, rationale, evidence, author_type, agent_run_id)
        values ($1,$2,$3,1,$4,$5,$6,$7,'ai',$8) returning id`,
-      [actor.workspaceId, productId, item.id, JSON.stringify(body), it.kind === "article" ? "" : it.kind === "reel" ? `Reel (${reel!.format.replace("_", " ")}), Back intro and end cards, original ${reel!.music} music composed for it` : "Back brand cards (ivory/forest, Fraunces + Outfit)",
-       JSON.stringify({ insight: it.insight, why_now: it.why_now }), JSON.stringify(it.sources), r.agentRunId],
+      [actor.workspaceId, productId, item.id, JSON.stringify(body), visual, JSON.stringify({ insight: it.insight, why_now: it.why_now }), JSON.stringify(it.sources), r.agentRunId],
     );
     await tx.query("update content_items set current_version_id = $1 where id = $2", [ver.id, item.id]);
     await tx.query(
@@ -206,7 +256,12 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
        reel ? JSON.stringify(reel) : null, reel ? "waiting" : null, JSON.stringify({ share_reason: it.share_reason, borrowed_mechanism: it.borrowed_mechanism })],
     );
     await drawCards(tx, productId, item.id, media);
-    const review = await runReviews(tx, actor, productId, item.id, wf.id);
+    let review = await runReviews(tx, actor, productId, item.id, wf.id);
+    // Stopped by the rules: one rewrite that fixes exactly what the reviewers named, then reviewed again.
+    if (review.outcome === "block") {
+      const fixed = await fixDeskItem(tx, actor, productId, item.id, it, wf.id, input.RULES, media).catch(() => null);
+      if (fixed) review = fixed;
+    }
     if (review.outcome !== "block") await submitForApproval(tx, actor, productId, item.id);
     created.push({ id: item.id, kind: it.kind, status: review.outcome === "block" ? "blocked" : "waiting" });
   }

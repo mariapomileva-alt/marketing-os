@@ -272,6 +272,7 @@ export class MockProvider implements LLMProvider {
       : req.task === "morning_brief" ? mockMorningBrief(c)
       : req.task === "morning_brief_translate" ? (c.BRIEF as Record<string, unknown>)
       : req.task === "threads_posts" ? mockThreadsPosts(c)
+      : req.task === "content_desk" && c.ITEM ? { items: [{ ...(c.ITEM as Record<string, unknown>), caption: "[MOCK] A calmer caption, fixed after review." }] }
       : req.task === "content_desk" ? mockContentDesk(c)
       : mockReview(req.task);
     const output = req.schema.parse(raw);

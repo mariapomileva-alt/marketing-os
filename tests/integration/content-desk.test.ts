@@ -200,4 +200,21 @@ describe("content desk", () => {
     expect(hookLines("3:07 am. Heart racing. Nobody awake.")).toEqual(["3:07 am.", "Heart racing.", "Nobody awake."]);
     expect(hookLines("An anxiety app that won't make you breathe right").every((l) => l.length <= 28)).toBe(true);
   });
+
+  it("the writer gets the rules up front, and a piece the rules stop is rewritten once and reviewed again", async () => {
+    const { deskRules } = await import("@/server/services/content-desk");
+    const rules = await as((tx) => deskRules(tx, productId));
+    expect(rules.required_lines[0]).toMatch(/112 in the EU, 911 in the US, 999 in the UK/);
+    expect(rules.rules.length).toBeGreaterThan(0);
+    // A rule the mock writer's first caption breaks, but the fixed caption does not.
+    await as((tx) => tx.query(
+      "insert into product_guardrails (workspace_id, product_id, code, rule_type, patterns, severity, rationale) values ($1,$2,'test.no_mock_hashtag','forbidden_phrase',$3,'block','test')",
+      [owner.workspaceId, productId, JSON.stringify(["#panicattack"])]));
+    const r = await as((tx) => generateDesk(tx, actor, productId, media, { posts: 1, carousels: 0, articles: 0 }));
+    expect(r.created[0].status).toBe("waiting");
+    const v = await as((tx) => tx.one<{ version: number; edit_note: string; caption: string }>(
+      "select v.version, v.edit_note, v.body->>'caption' caption from content_items i join content_versions v on v.id = i.current_version_id where i.id = $1", [r.created[0].id]));
+    expect(v).toMatchObject({ version: 2, caption: "[MOCK] A calmer caption, fixed after review." });
+    await as((tx) => tx.query("delete from product_guardrails where code = 'test.no_mock_hashtag' and product_id = $1", [productId]));
+  });
 });
