@@ -14,6 +14,8 @@ import { disconnectInstagramAction, disconnectThreadsAction, disconnectTiktokAct
 import { instagramOauthConfigured } from "@/server/instagram/api";
 import { threadsOauthConfigured } from "@/server/threads/api";
 import { tiktokDirectPostEnabled, tiktokOauthConfigured } from "@/server/tiktok/api";
+import { connectAppStoreAction, disconnectAppStoreAction } from "@/app/actions/app-store";
+import { getSiteSettings } from "@/server/services/traffic";
 
 export const metadata = { title: "Connections" };
 
@@ -66,7 +68,15 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
          from channel_connections c where c.product_id = $1 order by c.created_at desc`,
       [product.id],
     ),
+    site: await getSiteSettings(tx, ctx.workspaceId, product.id),
+    asc: await tx.maybeOne<{ app_name: string | null; app_apple_id: string; last_synced_at: string | null; last_data_date: string | null; last_error: string | null; last_four: string | null }>(
+      `select a.app_name, a.app_apple_id, a.last_synced_at::text, a.last_data_date::text, a.last_error, s.last_four
+         from app_store_sync a join channel_connections c on c.product_id = a.product_id and c.channel = 'app_store' and c.status = 'connected'
+         left join secrets s on s.id = c.secret_id where a.product_id = $1`,
+      [product.id],
+    ),
   }));
+  const appId = /id(\d{6,12})/.exec(d.site.app_store_url ?? "")?.[1] ?? "";
   const tone = (s: string) => (s === "connected" ? "green" : s === "revoked" ? "neutral" : "red") as "green" | "neutral" | "red";
   return (
     <>
@@ -191,6 +201,35 @@ export default async function ConnectionsPage({ params, searchParams }: PageProp
             <p className="text-[13px] text-muted">TikTok sign-in is not set up yet. In Vercel → Settings → Environment Variables add TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET (from TikTok for Developers → Back Publisher → Credentials), redeploy, then a Connect button appears here.</p>
           );
         })()}
+      </Section>
+
+      <Section title="App Store Connect (downloads analytics)" description="Read-only. Every morning God of Marketing reads Apple's downloads report: how many people downloaded the app, how they found it (search, browse, a website, another app) and which tagged link they came from (ct=web, ct=instagram, …). Nothing in App Store Connect is changed. The key is stored encrypted and is never shown again.">
+        {d.asc ? (
+          <div className="flex flex-wrap items-center gap-3 text-[13px]">
+            <Status tone={d.asc.last_error ? "red" : "green"}>{d.asc.app_name ?? `App ${d.asc.app_apple_id}`}</Status>
+            <span className="text-muted">
+              Key …{d.asc.last_four ?? "????"} · {d.asc.last_synced_at ? `read ${formatDateTime(d.asc.last_synced_at)}` : "not read yet"}
+              {d.asc.last_data_date ? ` · data up to ${d.asc.last_data_date}` : " · Apple's first report arrives 1–2 days after connecting"}
+            </span>
+            {d.asc.last_error ? <span className="text-red">{d.asc.last_error}</span> : null}
+            <form action={disconnectAppStoreAction.bind(null, slug)}><Button size="sm" variant="danger">Disconnect</Button></form>
+          </div>
+        ) : (
+          <>
+            <ol className="mb-3 list-decimal pl-5 text-[13px] text-muted">
+              <li>App Store Connect → Users and Access → Integrations → App Store Connect API → Team Keys → “+”.</li>
+              <li>Name it “God of Marketing”, access <b>Admin</b> (Apple requires Admin once to start the reports; you can later replace it with a “Sales and Reports” key here).</li>
+              <li>Download the .p8 file (Apple lets you download it only once) and copy the Key ID and the Issuer ID shown above the list.</li>
+              <li>Fill in the form below. Do not send the key anywhere else.</li>
+            </ol>
+            <ActionForm action={connectAppStoreAction.bind(null, slug)} submitLabel="Check and connect" pendingLabel="Checking the key with Apple…" resetOnSuccess className="grid gap-3 md:grid-cols-2">
+              <Field label="Issuer ID" htmlFor="asc-iss"><Input id="asc-iss" name="issuer_id" autoComplete="off" placeholder="57246542-96fe-1a63-e053-0824d011072a" /></Field>
+              <Field label="Key ID" htmlFor="asc-kid"><Input id="asc-kid" name="key_id" autoComplete="off" placeholder="2X9R4HXF34" /></Field>
+              <Field label="Key file (.p8)" htmlFor="asc-p8"><Input id="asc-p8" name="p8" type="file" accept=".p8,text/plain" className="h-auto py-1.5" /></Field>
+              <Field label="App's Apple ID" htmlFor="asc-app" hint="The number in the App Store link"><Input id="asc-app" name="app_id" defaultValue={appId} placeholder="6811918141" /></Field>
+            </ActionForm>
+          </>
+        )}
       </Section>
 
       <Section title={`Channels for ${product.name}`}>

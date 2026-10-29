@@ -12,9 +12,13 @@ import { nowMs } from "@/lib/time";
 import { directBreakdown, getSiteSettings, pagePerformance, topYoutubeComments, trafficBySource, youtubeCommentTotals } from "@/server/services/traffic";
 import { AI_SOURCES } from "@/domain/traffic";
 import { appUrl } from "@/server/notify/telegram";
+import { appStoreSummary } from "@/server/services/app-store";
+import { syncAppStoreAction } from "@/app/actions/app-store";
+import { ActionForm } from "@/components/ui/action-form";
 import { CounterSetup, DirectVisits, PageTraffic, WebsiteTraffic, YoutubeCommentStats } from "./traffic-sections";
 
 export const metadata = { title: "Analytics" };
+export const maxDuration = 120;
 
 const PERIODS: Record<string, number> = { "30": 30, "90": 90, "365": 365 };
 
@@ -47,6 +51,7 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps<
       direct: await directBreakdown(tx, product.id, from),
       ytTotals: await youtubeCommentTotals(tx, product.id, from),
       ytTop: await topYoutubeComments(tx, product.id),
+      asc: await appStoreSummary(tx, product.id, Math.min(days, 90)),
       demoCount: (await tx.one<{ n: number }>("select count(*)::int n from publications where product_id = $1 and is_demo", [product.id])).n,
     };
   });
@@ -76,6 +81,34 @@ export default async function AnalyticsPage({ params, searchParams }: PageProps<
         {d.demoCount && !product.is_demo ? <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" name="demo" value="1" defaultChecked={includeDemo} /> Include demo data</label> : null}
         <Button type="submit">Update</Button>
       </form>
+
+      <Section
+        title="App Store downloads"
+        description={d.asc.connected
+          ? `First-time downloads in the last ${Math.min(days, 90)} days from Apple's report${d.asc.sync?.last_data_date ? `, data up to ${d.asc.sync.last_data_date}` : ""}. Apple completes a day about two days later and hides very small groups for privacy, so small numbers can be missing. Campaign = the ct= of our App Store links.`
+          : "Connect App Store Connect in Connections to see downloads by source and by tagged link (ct=)."}
+      >
+        {d.asc.connected ? (
+          <>
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <span className="num text-[22px] font-semibold">{formatNumber(d.asc.total)}</span>
+              <span className="text-[13px] text-muted">first-time downloads</span>
+              {d.asc.sync?.last_error ? <span className="text-[12.5px] text-red">{d.asc.sync.last_error}</span> : null}
+              <ActionForm action={syncAppStoreAction.bind(null, slug)} submitLabel="Read now" pendingLabel="Reading Apple's reports…" submitVariant="secondary" className="ml-auto flex items-center gap-2 [&_p]:text-[12px]"><span className="sr-only">Read the App Store report now</span></ActionForm>
+            </div>
+            {d.asc.total ? (
+              <div className="grid gap-4 md:grid-cols-3">
+                {([["By tagged link (ct=)", d.asc.byCampaign.map((r) => [r.campaign, r.downloads])], ["By source", d.asc.bySource.map((r) => [r.source, r.downloads])], ["By country", d.asc.byTerritory.map((r) => [r.territory, r.downloads])]] as Array<[string, Array<[string, number]>]>).map(([title, rows]) => (
+                  <Table key={title}>
+                    <thead><tr><th>{title}</th><th className="text-right">Downloads</th></tr></thead>
+                    <tbody>{rows.map(([k, n]) => <tr key={k}><td className="max-w-[240px] truncate">{k}</td><td className="num text-right">{formatNumber(n)}</td></tr>)}</tbody>
+                  </Table>
+                ))}
+              </div>
+            ) : <p className="text-[13px] text-muted">{d.asc.sync?.last_synced_at ? "No first-time downloads in Apple's reports for this period yet." : "Apple prepares the first report 1–2 days after connecting; it is read every morning."}</p>}
+          </>
+        ) : null}
+      </Section>
 
       <Section title="Pipeline and results">
         <dl className="flex flex-wrap divide-x divide-line rounded-[var(--radius-panel)] border border-line bg-surface">
