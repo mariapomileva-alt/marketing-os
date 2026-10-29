@@ -211,6 +211,21 @@ export async function scheduleVideo(token: string, videoId: string, publishAt: D
   });
 }
 
+/**
+ * Moves an already scheduled private video to another publish time and changes nothing else: the current status
+ * (made-for-kids, synthetic-media label, licence, embedding) is read first and sent back with only publishAt changed.
+ */
+export async function moveScheduledVideo(token: string, videoId: string, publishAt: Date) {
+  const cur = await call<{ items?: Array<{ status?: Record<string, unknown> }> }>("GET", `videos?part=status&id=${encodeURIComponent(videoId)}`, token);
+  const status = cur.items?.[0]?.status;
+  if (!status) throw new YouTubeWriteError("YouTube: the video was not found on the channel.", 404, "notFound");
+  if (status.privacyStatus !== "private" || !status.publishAt) throw new YouTubeWriteError("YouTube: the video is no longer scheduled.", 409, "notScheduled");
+  const keep = ["privacyStatus", "license", "embeddable", "publicStatsViewable", "selfDeclaredMadeForKids", "containsSyntheticMedia"];
+  const next: Record<string, unknown> = Object.fromEntries(keep.filter((k) => k in status).map((k) => [k, status[k]]));
+  next.publishAt = publishAt.toISOString();
+  return call<{ id: string }>("PUT", "videos?part=status", token, { id: videoId, status: next });
+}
+
 export interface OwnVideo { id: string; title: string; publishedAt: string | null; publishAt: string | null; privacy: string; thumbnail: string | null; seconds: number | null }
 
 /** Our channel's latest uploads with their privacy and scheduled time (youtube.force-ssl covers reading our own videos). */

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { db, getProduct } from "@/server/context";
 import { calendarItems, lastCalendarSync, CAL_CHANNELS, type CalChannel, type CalCount, type CalItem } from "@/server/services/calendar";
-import { syncCalendarAction } from "@/app/actions/calendar";
+import { mixShortsAction, syncCalendarAction } from "@/app/actions/calendar";
 import { ActionForm } from "@/components/ui/action-form";
 import { cn } from "@/lib/cn";
 
@@ -49,6 +49,7 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
     ...(await calendarItems(tx, product.id, from, to)),
     synced: await lastCalendarSync(tx, product.id),
     connected: (await tx.query<{ channel: string }>("select channel from channel_connections where product_id = $1 and status in ('connected', 'paused')", [product.id])).map((r) => r.channel),
+    mixAuto: (await tx.maybeOne<{ m: boolean }>("select mix_shorts m from calm_settings where product_id = $1", [product.id]))?.m ?? true,
   }));
   const items = d.items.filter((i) => shown(i.channel));
   const byDay = new Map<string, CalItem[]>();
@@ -94,6 +95,17 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
           </ActionForm>
         </div>
       </header>
+
+      <details className="rounded-[10px] border border-line bg-surface">
+        <summary className="cursor-pointer px-4 py-3 text-[13.5px] font-medium">Mix shorts by look</summary>
+        <div className="border-t border-line p-4 text-[13px]">
+          <p className="mb-3 max-w-[75ch] text-muted">Shorts cut from one long video look the same, and so do your own videos. Mixing keeps every publishing time as it is and only changes which short goes when, so the same look does not come twice in a day or on two days in a row where it can be avoided, at irregular gaps. Shorts less than two hours away are not moved.</p>
+          <ActionForm action={mixShortsAction.bind(null, slug)} submitLabel="Mix shorts now" pendingLabel="Reading YouTube and mixing…" submitVariant="secondary" className="flex flex-wrap items-center gap-4 [&_p]:basis-full [&_p]:text-[12.5px]">
+            <label className="flex items-center gap-2"><input type="checkbox" name="include_own" defaultChecked className="size-4" /> Include shorts scheduled directly on YouTube (your own videos)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="auto" defaultChecked={d.mixAuto} className="size-4" /> Mix again after every approved short</label>
+          </ActionForm>
+        </div>
+      </details>
 
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-y border-line py-3">

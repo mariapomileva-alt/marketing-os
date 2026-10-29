@@ -12,6 +12,21 @@ import { tiktokCreatorInfo, tiktokDirectPostEnabled, tiktokRefresh } from "@/ser
 import { refreshTokenFor, youtubeConnection } from "@/server/services/youtube-publish";
 import { accessToken, scheduleVideo } from "@/server/youtube/write";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
+import { mixShorts } from "@/server/services/shorts-mix";
+import { youtubeMover } from "@/server/services/shorts-mix-live";
+
+/** After approvals: mix the scheduled shorts by look when the owner has that switched on. Never fails the approval. */
+async function mixAfterApproval(productId: string) {
+  try {
+    return await db(async (tx, ctx) => {
+      const on = (await tx.maybeOne<{ m: boolean }>("select mix_shorts m from calm_settings where product_id = $1", [productId]))?.m ?? true;
+      if (!on) return null;
+      return mixShorts(tx, actorOf(ctx), productId, await youtubeMover(tx, productId), { includeOwn: true });
+    }, { reason: "Scheduled shorts mixed by look after approval" });
+  } catch {
+    return null;
+  }
+}
 
 const msg = (x: unknown) => (x instanceof Error && !("code" in x) ? x.message : describeDbError(x));
 const actorOf = (ctx: { workspaceId: string; user: { id: string } }) => ({ workspaceId: ctx.workspaceId, userId: ctx.user.id });
@@ -168,7 +183,10 @@ export async function approveShortAction(slug: string, id: string, _: ActionResu
       }
       return approveShort(tx, actorOf(ctx), product.id, id, token ? { schedule: async (videoId, at) => void (await scheduleVideo(token, videoId, at)) } : null, tiktok);
     }, { reason: "Short approved" });
+    const mixed = await mixAfterApproval(product.id);
     revalidatePath(path(slug));
+    revalidatePath(`/p/${slug}/calendar`);
+    if (mixed?.moved) return ok(`Approved and mixed in with the other shorts so the same look does not repeat (${mixed.moved} moved). See the calendar for its time.`);
     return ok(`Approved. It goes out on ${r.publishAt.toUTCString().replace(/:00 GMT/, " UTC")}.`);
   } catch (e) {
     return toFailure(e, msg);
@@ -192,8 +210,10 @@ export async function approveAllShortsAction(slug: string, videoId: string, _: A
       for (const r of ready) await approveShort(tx, actorOf(ctx), product.id, r.id, token ? { schedule: async (v, at) => void (await scheduleVideo(token, v, at)) } : null);
       return ready.length;
     }, { reason: "Shorts approved" });
+    const mixed = n ? await mixAfterApproval(product.id) : null;
     revalidatePath(path(slug));
-    return n ? ok(`${n} shorts approved: one goes out each day.`) : fail("No shorts are ready to approve yet.");
+    revalidatePath(`/p/${slug}/calendar`);
+    return n ? ok(`${n} shorts approved${mixed?.moved ? " and mixed in with the other shorts so the same look does not repeat" : ": one goes out each day"}.`) : fail("No shorts are ready to approve yet.");
   } catch (e) {
     return toFailure(e, msg);
   }
