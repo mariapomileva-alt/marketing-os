@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getAppContext, listProducts } from "@/server/context";
+import { getAppContext, listAllProducts, listProducts } from "@/server/context";
 import { createBackAppAction, createDemoProductAction, createMomentroAction, createProductAction } from "@/app/actions/products";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,10 @@ export const metadata = { title: "Add a product" };
 export default async function StartPage() {
   await getAppContext();
   const products = await listProducts();
-  const hasBackApp = products.some((p) => p.slug === "back-app");
+  const everywhere = await listAllProducts();
+  const hasBackApp = everywhere.some((p) => p.slug === "back-app");
   const hasDemo = products.some((p) => p.slug === "demo-calm");
-  const hasMomentro = products.some((p) => p.slug === "momentro");
+  const hasMomentro = everywhere.some((p) => p.slug === "momentro");
   return (
     <main className="mx-auto max-w-[720px] px-4 py-12">
       <p className="text-[13px] font-medium text-green">God of Marketing</p>
