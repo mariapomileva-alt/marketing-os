@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { db, getProduct } from "@/server/context";
+import { db, getProduct, requireOwner } from "@/server/context";
 import { liveAscDeps, validateCredentials } from "@/server/appstore/api";
 import { connectAppStore, disconnectAppStore, syncAppStore } from "@/server/services/app-store";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -11,6 +11,7 @@ const msg = (x: unknown) => (x as Error).message;
 /** Connect: the key is checked against Apple first, then stored encrypted; the .p8 text never leaves the server. */
 export async function connectAppStoreAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
+    await requireOwner();
     const product = await getProduct(slug);
     const file = data.get("p8");
     const pasted = str(data.get("p8_text"));
@@ -28,6 +29,7 @@ export async function connectAppStoreAction(slug: string, _: ActionResult | null
 }
 
 export async function disconnectAppStoreAction(slug: string): Promise<void> {
+  await requireOwner();
   const product = await getProduct(slug);
   await db((tx) => disconnectAppStore(tx, product.id), { reason: "App Store Connect disconnected; key deleted" });
   revalidatePath(`/p/${slug}/connections`);

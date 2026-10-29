@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getProduct } from "@/server/context";
+import { getAppContext, getProduct } from "@/server/context";
 import { appUrl } from "@/server/notify/telegram";
 import { authUrl, newNonce, oauthConfigured, signState } from "@/server/youtube/write";
 
@@ -12,6 +12,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(appUrl(`/api/youtube/oauth/start?product=${encodeURIComponent(slug)}`));
   }
   const product = await getProduct(slug); // requires sign-in; 404 for products outside the workspace
+  // Connecting an account is the owner's; editors are sent back.
+  if ((await getAppContext()).role !== "owner") return NextResponse.redirect(appUrl(`/p/${slug}/connections`));
   if (!oauthConfigured()) {
     return NextResponse.redirect(appUrl(`/p/${slug}/connections?yt=not_configured`));
   }

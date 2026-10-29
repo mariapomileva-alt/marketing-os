@@ -72,7 +72,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const { data } = await supabase.auth.getUser();
   if (!data.user) return null;
   const allowed = allowedEmails();
-  if (allowed && !allowed.includes((data.user.email ?? "").toLowerCase())) return null;
+  const email = (data.user.email ?? "").toLowerCase();
+  if (allowed && !allowed.includes(email) && !(await isInvited(email))) return null;
   return { id: data.user.id, email: data.user.email ?? "", mode: "supabase" };
 }
 
@@ -107,9 +108,16 @@ export function allowedEmails(env: Record<string, string | undefined> = process.
   return list.length ? list : null;
 }
 
+/** Someone an owner invited into a space (and not revoked) may sign in with a link, without being in ALLOWED_EMAILS. */
+export async function isInvited(email: string) {
+  if (!email) return false;
+  const r = await getPool().query("select 1 from public.workspace_invites where email = $1 and revoked_at is null limit 1", [email.trim().toLowerCase()]);
+  return (r.rowCount ?? 0) > 0;
+}
+
 export async function sendMagicLink(email: string, redirectTo: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = await supabaseClient();
-  const listed = allowedEmails()?.includes(email.trim().toLowerCase()) ?? false;
+  const listed = (allowedEmails()?.includes(email.trim().toLowerCase()) ?? false) || (await isInvited(email));
   const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo, shouldCreateUser: listed } });
   return error ? { ok: false, error: error.message } : { ok: true };
 }

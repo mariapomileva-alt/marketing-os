@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { db, getProduct } from "@/server/context";
+import { db, getProduct, requireOwner } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { connectAiProvider, connectChannel, revokeAiProvider, revokeChannel, rotateAiKey } from "@/server/services/connections";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -10,6 +10,7 @@ const msg = (x: unknown) => (x instanceof Error && !("code" in x) ? x.message : 
 
 export async function connectAiAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
+    await requireOwner();
     const provider = str(data.get("provider")) as "anthropic" | "openai";
     if (!["anthropic", "openai"].includes(provider)) return fail("Choose a provider.");
     await db((tx, ctx) => connectAiProvider(tx, ctx.workspaceId, provider, String(data.get("api_key") ?? ""), str(data.get("label"))), { reason: "AI provider connected" });
@@ -22,6 +23,7 @@ export async function connectAiAction(slug: string, _: ActionResult | null, data
 
 export async function rotateAiAction(slug: string, id: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
+    await requireOwner();
     const key = String(data.get("api_key") ?? "");
     if (key.trim().length < 20) return fail("Paste the new key.");
     await db((tx, ctx) => rotateAiKey(tx, ctx.workspaceId, id, key), { reason: "AI key rotated" });
@@ -33,12 +35,14 @@ export async function rotateAiAction(slug: string, id: string, _: ActionResult |
 }
 
 export async function revokeAiAction(slug: string, id: string) {
+  await requireOwner();
   await db((tx, ctx) => revokeAiProvider(tx, ctx.workspaceId, id), { reason: "AI provider disconnected" });
   revalidatePath(`/p/${slug}`, "layout");
 }
 
 export async function connectChannelAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
+    await requireOwner();
     const product = await getProduct(slug);
     const mode = str(data.get("mode")) as "draft_only" | "requires_approval";
     if (!["draft_only", "requires_approval"].includes(mode)) return fail("Automatic mode is not available in this version.");
@@ -51,6 +55,7 @@ export async function connectChannelAction(slug: string, _: ActionResult | null,
 }
 
 export async function revokeChannelAction(slug: string, id: string) {
+  await requireOwner();
   const product = await getProduct(slug);
   await db((tx) => revokeChannel(tx, product.id, id), { reason: "channel disconnected" });
   revalidatePath(`/p/${slug}`, "layout");
@@ -58,6 +63,7 @@ export async function revokeChannelAction(slug: string, id: string) {
 
 export async function updateLimitsAction(slug: string, id: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
+    await requireOwner();
     const product = await getProduct(slug);
     const n = (k: string, min: number, max: number) => {
       const v = Number(str(data.get(k)));
@@ -87,6 +93,7 @@ export async function updateLimitsAction(slug: string, id: string, _: ActionResu
 
 export async function updateSettingsAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
   try {
+    await requireOwner();
     const v = (k: string) => Number(str(data.get(k)));
     const vals = [v("min_publications_per_group"), v("min_impressions_per_group"), v("min_n_share_cell"), v("ai_run_budget_usd"), v("ai_daily_budget_usd")];
     if (vals.some((x) => !Number.isFinite(x) || x <= 0)) return fail("All values must be positive numbers.");

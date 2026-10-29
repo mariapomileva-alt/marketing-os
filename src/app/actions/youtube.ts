@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { db, getProduct } from "@/server/context";
+import { db, getProduct, requireOwner } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { approveDraft, receiveReply, rejectDraft, runDiscovery, updateYtSettings } from "@/server/services/youtube";
 import { configuredSource, demoSource } from "@/server/youtube/source";
@@ -133,6 +133,7 @@ export async function syncYtRepliesAction(slug: string, _: ActionResult | null):
 }
 
 export async function disconnectYoutubeAction(slug: string) {
+  await requireOwner();
   const product = await getProduct(slug);
   const conn = await db((tx) => youtubeConnection(tx, product.id));
   if (conn?.secret_id) await revokeToken(await refreshTokenFor(conn.secret_id)).catch(() => undefined);

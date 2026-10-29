@@ -1,7 +1,7 @@
 import { db, getProduct } from "@/server/context";
 import { getProfile, rulesPackApplied, listClaims, listGuardrails, listLinks, listLocales, listTerms } from "@/server/services/products";
 import {
-  addClaimAction, addLinkAction, applyRulesPackAction, addLocaleAction, addTermAction, approveClaimAction, archiveClaimAction, importWebsiteAction, saveBriefAction, toggleGuardrailAction, updateProfileAction,
+  addClaimAction, addLinkAction, applyRulesPackAction, addLocaleAction, addTermAction, approveClaimAction, archiveClaimAction, archiveProductAction, importWebsiteAction, saveBriefAction, toggleGuardrailAction, updateProfileAction,
 } from "@/app/actions/products";
 import { productBrief } from "@/server/services/marketing-brief";
 import { ActionForm } from "@/components/ui/action-form";
@@ -220,6 +220,9 @@ export default async function ProductsPage({ params }: PageProps<"/p/[product]/p
           <Field label="List" htmlFor="vocabulary"><Select id="vocabulary" name="vocabulary">{vocabularies.map((v) => <option key={v} value={v}>{vocabLabel[v]}</option>)}</Select></Field>
           <Field label="Value" htmlFor="term-label"><Input id="term-label" name="label" required /></Field>
         </ActionForm>
+      </Section>
+          <Section title="Archive this project" description="It disappears from the switcher and from every daily job (desk, Threads, brief, posting). Its history stays. Only the owner can do this.">
+        <form action={archiveProductAction.bind(null, slug)}><Button variant="danger" size="sm">Archive {profile.name}</Button></form>
       </Section>
     </>
   );

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { db, getAppContext, getProduct, listProducts } from "@/server/context";
+import { db, getAppContext, getProduct, listAllProducts } from "@/server/context";
 import { DesktopNav, MobileNav } from "@/components/shell/sidebar";
 import { ProductSelector } from "@/components/shell/product-selector";
 import { signOutAction } from "@/app/actions/auth";
@@ -8,7 +8,8 @@ import { Status } from "@/components/ui/status";
 export default async function ProductLayout({ children, params }: LayoutProps<"/p/[product]">) {
   const { product: slug } = await params;
   const ctx = await getAppContext();
-  const [product, products] = await Promise.all([getProduct(slug), listProducts()]);
+  const [product, products] = await Promise.all([getProduct(slug), listAllProducts()]);
+  const spaceName = (id: string) => ctx.spaces.find((s) => s.workspace_id === id)?.name ?? "";
   const { approvals, problems } = await db(async (tx) => {
     const a = await tx.one<{ n: number }>("select count(*)::int n from approval_items where product_id = $1 and state = 'pending'", [product.id]);
     const c = await tx.one<{ n: number }>(
@@ -31,7 +32,7 @@ export default async function ProductLayout({ children, params }: LayoutProps<"/
           <span aria-hidden className="size-2.5 rounded-full bg-mint shadow-[0_0_10px_2px_rgba(159,220,184,.45)]" />
           God of Marketing
         </Link>
-        <ProductSelector current={{ slug: product.slug, name: product.name, isDemo: product.is_demo }} products={products.map((p) => ({ slug: p.slug, name: p.name, isDemo: p.is_demo }))} />
+        <ProductSelector current={{ slug: product.slug, name: product.name, isDemo: product.is_demo }} products={products.map((p) => ({ slug: p.slug, name: p.name, isDemo: p.is_demo, space: ctx.spaces.length > 1 ? spaceName(p.workspace_id) : "", switchTo: p.workspace_id === ctx.workspaceId ? null : p.workspace_id }))} />
         <div className="ml-auto flex items-center gap-3">
           <Link href={`/p/${product.slug}/connections`} className="hidden sm:block" aria-label={problems ? `${problems} integration problems` : "Integrations healthy"}>
             {problems ? <Status tone="red" className="text-night-ink">{problems} integration {problems === 1 ? "problem" : "problems"}</Status> : <Status tone="green" className="text-night-muted">Integrations OK</Status>}

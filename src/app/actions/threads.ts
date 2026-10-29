@@ -5,7 +5,7 @@ import { tiktokRefresh, tiktokRevoke } from "@/server/tiktok/api";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { db, getProduct } from "@/server/context";
+import { db, getProduct, requireOwner } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { addInstagramReel, publishThreadsPost, refreshThreadsStats, runThreadsDiscovery, syncThreadsReplies, updateThreadsSettings } from "@/server/services/threads";
 import { channelConnection } from "@/server/services/youtube-publish";
@@ -105,6 +105,7 @@ export async function publishThreadsPostAction(slug: string, itemId: string, _: 
 }
 
 export async function disconnectThreadsAction(slug: string) {
+  await requireOwner();
   const product = await getProduct(slug);
   await db(async (tx) => {
     const conn = await channelConnection(tx, product.id, "threads");
@@ -129,6 +130,7 @@ export async function syncInstagramAction(slug: string, _: ActionResult | null):
 }
 
 export async function disconnectInstagramAction(slug: string) {
+  await requireOwner();
   const product = await getProduct(slug);
   await db(async (tx) => {
     const conn = await channelConnection(tx, product.id, "instagram");
@@ -140,6 +142,7 @@ export async function disconnectInstagramAction(slug: string) {
 }
 
 export async function disconnectTiktokAction(slug: string) {
+  await requireOwner();
   const product = await getProduct(slug);
   await db(async (tx) => {
     const conn = await tiktokConnection(tx, product.id);

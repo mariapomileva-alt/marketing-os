@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { db, getProduct } from "@/server/context";
+import { db, getProduct, requireOwner } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { approveCalmVideo, createCalmVideo, createRendererToken, prepareCalmMedia, rejectCalmVideo, updateCalmSettings } from "@/server/services/calm";
 import { liveCalmMedia } from "@/server/calm/live";
@@ -105,6 +105,7 @@ export async function retryCalmMediaAction(slug: string, id: string, _: ActionRe
 
 export async function createRendererTokenAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
   try {
+    await requireOwner();
     const product = await getProduct(slug);
     const token = await db((tx, ctx) => createRendererToken(tx, ctx.workspaceId, product.id), { reason: "Calm renderer key created" });
     revalidatePath(path(slug));

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db, getProduct } from "@/server/context";
+import { db, getProduct, requireOwner } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { seedDemo } from "@/server/services/demo";
 import { applyBackRulesPack, createBackApp, createMomentro, createProduct, productInputSchema, profileUpdateSchema, slugify, updateProfile } from "@/server/services/products";
@@ -214,4 +214,13 @@ export async function importWebsiteAction(productSlug: string, _: ActionResult |
   } catch (e) {
     return toFailure(e, (x) => (x as Error).message);
   }
+}
+
+/** Archive a project: it disappears from the switcher and from every daily job; its history stays. Owner only. */
+export async function archiveProductAction(productSlug: string) {
+  await requireOwner();
+  const product = await getProduct(productSlug);
+  await db((tx) => tx.query("update products set status = 'archived' where id = $1", [product.id]), { reason: `Project archived: ${product.name}` });
+  revalidatePath("/", "layout");
+  redirect("/");
 }
