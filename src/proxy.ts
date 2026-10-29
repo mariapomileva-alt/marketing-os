@@ -12,7 +12,7 @@ export async function proxy(request: NextRequest) {
   const hasSession = request.cookies.getAll().some((c) => c.name === "mos_dev_session" || c.name.startsWith("sb-"));
   if (!hasSession) return NextResponse.redirect(new URL("/login", request.url));
   // The page path tells the server which project (and so which space) a request works in, also for server actions.
-  request.headers.set("x-mos-path", request.nextUrl.pathname);
+  request.headers.set("x-mos-path", spacePath(request));
 
   const url = supabaseUrl();
   const key = supabaseAnonKey();
@@ -32,6 +32,25 @@ export async function proxy(request: NextRequest) {
   const { data } = await supabase.auth.getUser();
   if (!data.user) return NextResponse.redirect(new URL("/login", request.url));
   return response;
+}
+
+/**
+ * The path that names the project of a request. Account connections run outside /p/…: their start link carries
+ * ?product=<slug>, their callback carries it inside the signed state (read here only to pick among the user's own
+ * spaces; the route itself checks the signature).
+ */
+export function spacePath(request: Pick<NextRequest, "nextUrl">) {
+  const { pathname, searchParams } = request.nextUrl;
+  const m = /^\/api\/(instagram|threads|tiktok|youtube)\/oauth\/(start|callback)$/.exec(pathname);
+  if (!m) return pathname;
+  let slug = searchParams.get("product") ?? "";
+  if (m[2] === "callback") {
+    try {
+      const body = (searchParams.get("state") ?? "").split(".")[0];
+      slug = String((JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/"))) as { slug?: string }).slug ?? "");
+    } catch { slug = ""; }
+  }
+  return /^[a-z0-9][a-z0-9-]{1,47}$/.test(slug) ? `/p/${slug}` : pathname;
 }
 
 export const config = {
