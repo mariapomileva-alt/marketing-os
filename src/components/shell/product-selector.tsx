@@ -11,7 +11,7 @@ export interface SelectorProduct {
   isDemo: boolean;
   /** The space it belongs to, shown when you belong to several. */
   space?: string;
-  /** Set when the product is in another of your spaces: the link switches space first. */
+  /** Set when the product is in another of your spaces (its page opens in that space). */
   switchTo?: string | null;
 }
 
@@ -35,7 +35,7 @@ export function ProductSelector({ current, products }: { current: SelectorProduc
         <DropdownMenu.Content align="start" sideOffset={6} className="z-50 min-w-[260px] rounded-[var(--radius-panel)] border border-line bg-surface p-1 shadow-[0_8px_24px_rgba(30,38,34,0.12)]">
           {products.map((p) => (
             <DropdownMenu.Item key={p.slug} asChild>
-              <Link href={p.switchTo ? `/switch?space=${p.switchTo}&to=${encodeURIComponent(`/p/${p.slug}/${section}`)}` : `/p/${p.slug}/${section}`} prefetch={false} className="flex h-9 items-center gap-2 rounded-[var(--radius-control)] px-2 text-[13.5px] outline-none data-[highlighted]:bg-sage-tint">
+              <Link href={`/p/${p.slug}/${section}`} prefetch={false} className="flex h-9 items-center gap-2 rounded-[var(--radius-control)] px-2 text-[13.5px] outline-none data-[highlighted]:bg-sage-tint">
                 <span aria-hidden className="grid size-5 place-items-center rounded-[4px] bg-green-soft text-[11px] font-semibold text-green">{p.name.slice(0, 1).toUpperCase()}</span>
                 <span className="truncate">{p.name}</span>
                 {p.space ? <span className="truncate text-[11.5px] text-faint">{p.space}</span> : null}

@@ -1,8 +1,8 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { cache } from "react";
-import { notFound, redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { notFound } from "next/navigation";
+import { cookies, headers } from "next/headers";
 import { withContext, type Tx } from "@/server/db/client";
 import { requireUser, type SessionUser } from "@/server/auth/session";
 
@@ -30,7 +30,15 @@ export const getAppContext = cache(async (): Promise<AppContext> => {
     );
   });
   const wanted = (await cookies()).get(SPACE_COOKIE)?.value;
-  const active = spaces.find((s) => s.workspace_id === wanted) ?? spaces[0];
+  // On a project page the project decides the space (so two tabs in two spaces never mix); elsewhere the last space.
+  const slug = /^\/p\/([a-z0-9][a-z0-9-]{1,47})(\/|$)/.exec((await headers()).get("x-mos-path") ?? "")?.[1];
+  let active = spaces.find((s) => s.workspace_id === wanted) ?? spaces[0];
+  if (slug) {
+    const owners = await withContext({ userId: null, role: "service", actorType: "system" }, (tx) =>
+      tx.query<{ workspace_id: string }>("select workspace_id from products where slug = $1 and status <> 'archived' and workspace_id = any($2)", [slug, spaces.map((s) => s.workspace_id)]));
+    const ids = owners.map((o) => o.workspace_id);
+    if (ids.length && !ids.includes(active.workspace_id)) active = spaces.find((s) => s.workspace_id === ids[0]) ?? active;
+  }
   return { user, workspaceId: active.workspace_id, role: active.role, spaces };
 });
 
@@ -85,7 +93,5 @@ export const getProduct = cache(async (slug: string): Promise<ProductRow> => {
   const all = await listAllProducts();
   const p = all.find((x) => x.slug === slug && x.workspace_id === ctx.workspaceId);
   if (p) return p;
-  const other = all.find((x) => x.slug === slug);
-  if (other) redirect(`/switch?space=${other.workspace_id}&to=${encodeURIComponent(`/p/${slug}`)}`);
   notFound();
 });

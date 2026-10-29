@@ -11,10 +11,12 @@ import { supabaseAnonKey, supabaseUrl } from "@/server/env";
 export async function proxy(request: NextRequest) {
   const hasSession = request.cookies.getAll().some((c) => c.name === "mos_dev_session" || c.name.startsWith("sb-"));
   if (!hasSession) return NextResponse.redirect(new URL("/login", request.url));
+  // The page path tells the server which project (and so which space) a request works in, also for server actions.
+  request.headers.set("x-mos-path", request.nextUrl.pathname);
 
   const url = supabaseUrl();
   const key = supabaseAnonKey();
-  if (process.env.AUTH_MODE === "dev" || !url || !key) return NextResponse.next();
+  if (process.env.AUTH_MODE === "dev" || !url || !key) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(url, key, {
