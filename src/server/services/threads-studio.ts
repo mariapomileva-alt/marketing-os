@@ -1,4 +1,5 @@
 import { styleNotes } from "@/domain/youtube";
+import { productBrief } from "./marketing-brief";
 import type { Tx } from "@/server/db/client";
 import type { Actor } from "./content";
 import { decideApproval, editContent, runAgent, runReviews, scheduleItem, submitForApproval } from "./content";
@@ -79,7 +80,7 @@ export async function generateThreadsPosts(tx: Tx, actor: Actor, productId: stri
       limit 3`,
     [productId],
   );
-  const knowledge = await draftingKnowledge(tx, actor.workspaceId, productId, articles[0]?.title ?? "first minute of a panic attack", 6);
+  const knowledge = await draftingKnowledge(tx, actor.workspaceId, productId, articles[0]?.title ?? (await productBrief(tx, productId)).niche, 6);
   const recent = await tx.query<{ text: string; format: string }>(
     `select coalesce(v.body->>'body', '') text, m.format from threads_studio_posts m join content_items i on i.id = m.content_item_id
        join content_versions v on v.id = i.current_version_id where m.product_id = $1 order by m.created_at desc limit 20`,

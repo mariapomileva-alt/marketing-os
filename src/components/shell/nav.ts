@@ -51,7 +51,7 @@ export const NAV: ReadonlyArray<{ group: string; items: ReadonlyArray<NavItem> }
     group: "What we know",
     items: [
       { slug: "knowledge", label: "Knowledge", icon: BookOpen, hint: "Our articles and methodology the AI writes from" },
-      { slug: "products", label: "Product & rules", icon: Layers, hint: "Facts about Back and the safety rules" },
+      { slug: "products", label: "Product & rules", icon: Layers, hint: "Facts about the product, its brief and the safety rules" },
       { slug: "audience", label: "Audience", icon: Users, hint: "Who our people are and what they need" },
       { slug: "competitors", label: "Competitors", icon: Swords, hint: "Who else helps with panic, and what they do" },
       { slug: "signals", label: "Research", icon: Radar, hint: "Saved posts and observations from the market" },

@@ -5,8 +5,11 @@ import { redirect } from "next/navigation";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
 import { seedDemo } from "@/server/services/demo";
-import { applyBackRulesPack, createBackApp, createProduct, productInputSchema, profileUpdateSchema, slugify, updateProfile } from "@/server/services/products";
+import { applyBackRulesPack, createBackApp, createMomentro, createProduct, productInputSchema, profileUpdateSchema, slugify, updateProfile } from "@/server/services/products";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
+import { productBrief, saveBrief } from "@/server/services/marketing-brief";
+import { importWebsite } from "@/server/services/site-import";
+import type { MarketingBrief } from "@/domain/brief";
 
 export async function createProductAction(_: ActionResult | null, data: FormData): Promise<ActionResult> {
   let slug = "";
@@ -30,6 +33,12 @@ export async function createProductAction(_: ActionResult | null, data: FormData
 
 export async function createBackAppAction() {
   const p = await db((tx, ctx) => createBackApp(tx, ctx.workspaceId), { reason: "Back App created with brief §6 rules" });
+  revalidatePath("/", "layout");
+  redirect(`/p/${p.slug}/products`);
+}
+
+export async function createMomentroAction() {
+  const p = await db((tx, ctx) => createMomentro(tx, ctx.workspaceId), { reason: "Momentro created with facts and rules from momentro.me" });
   revalidatePath("/", "layout");
   redirect(`/p/${p.slug}/products`);
 }
@@ -160,5 +169,49 @@ export async function applyRulesPackAction(productSlug: string, _: ActionResult 
     return ok(`Rules applied: profile and tone updated, ${r.claims} facts and prohibited claims, ${r.rules} safety rules, ${r.links} links, ${r.knowledgeChunks ? "the document added to Knowledge" : "the document was already in Knowledge"}.`);
   } catch (e) {
     return toFailure(e, describeDbError);
+  }
+}
+
+const BRIEF_TEXT = ["what", "audience", "niche", "mention", "product_moment", "never", "never_claim", "skip_topics", "voice_bad", "search_phrases", "hashtags",
+  "hashtag_rule", "closing_title", "closing_text", "card_brand", "card_footer", "card_note", "brief_tone"] as const;
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** The product's marketing brief: what every generator (desk, Threads, comments, morning brief) is filled with. */
+export async function saveBriefAction(productSlug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const product = await getProduct(productSlug);
+    const current = await db((tx) => productBrief(tx, product.id));
+    const next: Partial<MarketingBrief> = { name: str(data.get("name")).slice(0, 60) || current.name };
+    for (const k of BRIEF_TEXT) (next as Record<string, unknown>)[k] = str(data.get(k)).slice(0, 1200);
+    next.voice_good = lines(data.get("voice_good")).slice(0, 5).map((v) => v.slice(0, 400));
+    next.sensitive = data.get("sensitive") === "on";
+    const colors = { ...current.colors };
+    for (const k of Object.keys(colors) as Array<keyof typeof colors>) {
+      const v = str(data.get(`color_${k}`));
+      if (v) { if (!HEX.test(v)) return fail(`Colours look like #10233d; "${v}" does not.`); colors[k] = v; }
+    }
+    next.colors = colors;
+    next.reels = current.reels;
+    await db((tx) => saveBrief(tx, product.id, next), { reason: "Marketing brief changed" });
+    revalidatePath(`/p/${productSlug}/products`);
+    return ok("Saved. New drafts, cards and comments use this brief.");
+  } catch (e) {
+    return toFailure(e, (x) => (x as Error).message);
+  }
+}
+
+/** Reads the product's own website (sitemap) into Knowledge. */
+export async function importWebsiteAction(productSlug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const product = await getProduct(productSlug);
+    const url = str(data.get("site_url"));
+    if (!/^https:\/\/[a-z0-9.-]+\.[a-z]{2,}/i.test(url)) return fail("The website is a full address like https://momentro.me");
+    const r = await db((tx, ctx) => importWebsite(tx, { workspaceId: ctx.workspaceId }, product.id, url), { reason: `Website read into Knowledge: ${url}` });
+    revalidatePath(`/p/${productSlug}/knowledge`);
+    revalidatePath(`/p/${productSlug}/products`);
+    const fails = r.failed.length ? ` ${r.failed.length} page(s) could not be read.` : "";
+    return ok(`Read ${r.pages} page(s): ${r.added} new in Knowledge, ${r.same} already there.${fails}`);
+  } catch (e) {
+    return toFailure(e, (x) => (x as Error).message);
   }
 }

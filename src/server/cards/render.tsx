@@ -10,7 +10,17 @@ import sharp from "sharp";
  * format Instagram accepts for feed images.
  */
 export const CARD = { width: 1080, height: 1350 };
-const C = { ivory: "#f3ede1", forest: "#0c3b2e", ink: "#153c32", muted: "#65736c", sage: "#6d9773", pale: "#d7e0d5", clay: "#bb8a52" };
+/** What a card shows of the product: its brand word, footer, closing note and colours (from the marketing brief). */
+export interface CardBrand {
+  brand: string;
+  footer: string;
+  note: string;
+  colors: { dark: string; light: string; ink: string; muted: string; pale: string; accent: string; accent2: string };
+}
+export const BACK_CARD: CardBrand = {
+  brand: "Back", footer: "Back panic app · free on iPhone", note: "In danger right now? Call your local emergency number.",
+  colors: { dark: "#0c3b2e", light: "#f3ede1", ink: "#153c32", muted: "#65736c", pale: "#d7e0d5", accent: "#6d9773", accent2: "#bb8a52" },
+};
 
 let fonts: Promise<Array<{ name: string; data: Buffer; weight: 400 | 500 | 600; style: "normal" }>> | null = null;
 function loadFonts() {
@@ -33,23 +43,25 @@ function fit(text: string, base: number, min: number) {
   return Math.max(min, Math.round(n <= 40 ? base : base * Math.sqrt(40 / n)));
 }
 
-function Brand({ dark }: { dark: boolean }) {
+function Brand({ dark, b }: { dark: boolean; b: CardBrand }) {
+  const C = b.colors;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-      <div style={{ width: 34, height: 34, borderRadius: 34, background: dark ? C.pale : C.forest }} />
-      <div style={{ fontFamily: "Fraunces", fontWeight: 500, fontSize: 38, color: dark ? C.ivory : C.forest }}>Back</div>
+      <div style={{ width: 34, height: 34, borderRadius: 34, background: dark ? C.pale : C.dark }} />
+      <div style={{ fontFamily: "Fraunces", fontWeight: 500, fontSize: 38, color: dark ? C.light : C.dark }}>{b.brand}</div>
     </div>
   );
 }
 
-function Card({ slide, kind, index, total }: { slide: CardSlide; kind: CardKind; index: number; total: number }) {
+function Card({ slide, kind, index, total, b }: { slide: CardSlide; kind: CardKind; index: number; total: number; b: CardBrand }) {
+  const C = { ivory: b.colors.light, forest: b.colors.dark, ink: b.colors.ink, muted: b.colors.muted, sage: b.colors.accent, pale: b.colors.pale, clay: b.colors.accent2 };
   const dark = kind === "cover" || kind === "single";
   const fg = dark ? C.ivory : C.ink;
   const sub = dark ? C.pale : C.muted;
   return (
     <div style={{ width: CARD.width, height: CARD.height, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "88px 96px", background: dark ? C.forest : C.ivory, fontFamily: "Outfit" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Brand dark={dark} />
+        <Brand dark={dark} b={b} />
         {total > 1 ? <div style={{ fontSize: 30, color: sub }}>{`${index + 1} / ${total}`}</div> : <div />}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>
@@ -60,22 +72,22 @@ function Card({ slide, kind, index, total }: { slide: CardSlide; kind: CardKind;
         {slide.text ? <div style={{ fontSize: fit(slide.text, 42, 32), lineHeight: 1.4, color: sub }}>{slide.text}</div> : null}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", fontSize: 28, color: sub }}>
-        {kind === "cover" && total > 1 ? <div>Swipe</div> : kind === "closing" || kind === "single" ? <div>Back panic app · free on iPhone</div> : <div />}
-        {kind === "closing" ? <div style={{ maxWidth: 520, textAlign: "right" }}>In danger right now? Call your local emergency number.</div> : <div />}
+        {kind === "cover" && total > 1 ? <div>Swipe</div> : kind === "closing" || kind === "single" ? <div>{b.footer}</div> : <div />}
+        {kind === "closing" && b.note ? <div style={{ maxWidth: 520, textAlign: "right" }}>{b.note}</div> : <div />}
       </div>
     </div>
   );
 }
 
-export async function renderCard(slide: CardSlide, kind: CardKind, index: number, total: number): Promise<Uint8Array> {
-  const res = new ImageResponse(<Card slide={slide} kind={kind} index={index} total={total} />, { ...CARD, fonts: await loadFonts() });
+export async function renderCard(slide: CardSlide, kind: CardKind, index: number, total: number, b: CardBrand = BACK_CARD): Promise<Uint8Array> {
+  const res = new ImageResponse(<Card slide={slide} kind={kind} index={index} total={total} b={b} />, { ...CARD, fonts: await loadFonts() });
   const png = Buffer.from(await res.arrayBuffer());
   return new Uint8Array(await sharp(png).jpeg({ quality: 90, mozjpeg: true }).toBuffer());
 }
 
 /** All images for one post: a single card, or cover + inner slides + a closing slide for a carousel. */
-export async function renderPost(format: "static_concept" | "carousel", slides: CardSlide[]) {
-  if (format === "static_concept") return [await renderCard(slides[0], "single", 0, 1)];
+export async function renderPost(format: "static_concept" | "carousel", slides: CardSlide[], b: CardBrand = BACK_CARD) {
+  if (format === "static_concept") return [await renderCard(slides[0], "single", 0, 1, b)];
   const all = slides.slice(0, 10);
-  return Promise.all(all.map((s, i) => renderCard(s, i === 0 ? "cover" : i === all.length - 1 ? "closing" : "inner", i, all.length)));
+  return Promise.all(all.map((s, i) => renderCard(s, i === 0 ? "cover" : i === all.length - 1 ? "closing" : "inner", i, all.length, b)));
 }

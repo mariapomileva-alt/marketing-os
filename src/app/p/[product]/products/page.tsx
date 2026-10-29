@@ -1,8 +1,9 @@
 import { db, getProduct } from "@/server/context";
 import { getProfile, rulesPackApplied, listClaims, listGuardrails, listLinks, listLocales, listTerms } from "@/server/services/products";
 import {
-  addClaimAction, addLinkAction, applyRulesPackAction, addLocaleAction, addTermAction, approveClaimAction, archiveClaimAction, toggleGuardrailAction, updateProfileAction,
+  addClaimAction, addLinkAction, applyRulesPackAction, addLocaleAction, addTermAction, approveClaimAction, archiveClaimAction, importWebsiteAction, saveBriefAction, toggleGuardrailAction, updateProfileAction,
 } from "@/app/actions/products";
+import { productBrief } from "@/server/services/marketing-brief";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -11,13 +12,14 @@ import { DataFlag, Status } from "@/components/ui/status";
 import { EpistemicTag } from "@/components/ui/epistemic";
 
 export const metadata = { title: "Product profile" };
+export const maxDuration = 120;
 
 const listField = (v: string[]) => v.join("\n");
 
 export default async function ProductsPage({ params }: PageProps<"/p/[product]/products">) {
   const { product: slug } = await params;
   const product = await getProduct(slug);
-  const { profile, claims, guardrails, links, locales, terms, packApplied } = await db(async (tx) => ({
+  const { profile, claims, guardrails, links, locales, terms, packApplied, brief, knowledgeCount } = await db(async (tx) => ({
     profile: await getProfile(tx, product.id),
     claims: await listClaims(tx, product.id),
     guardrails: await listGuardrails(tx, product.id),
@@ -25,6 +27,8 @@ export default async function ProductsPage({ params }: PageProps<"/p/[product]/p
     locales: await listLocales(tx, product.id),
     terms: await listTerms(tx, product.id),
     packApplied: await rulesPackApplied(tx, product.id),
+    brief: await productBrief(tx, product.id),
+    knowledgeCount: (await tx.one<{ n: number }>("select count(*)::int n from knowledge_sources where product_id = $1", [product.id])).n,
   }));
   const vocabularies = ["format", "goal", "funnel_stage", "cta", "topic", "visual_device", "emotional_trigger"];
   const vocabLabel: Record<string, string> = { format: "Formats", goal: "Goals", funnel_stage: "Funnel stages", cta: "CTAs", topic: "Topics", visual_device: "Visual devices", emotional_trigger: "Emotional triggers" };
@@ -52,6 +56,44 @@ export default async function ProductsPage({ params }: PageProps<"/p/[product]/p
           </ActionForm>
         </div>
       ) : null}
+
+      <Section title="Marketing brief" description="What every generator uses for this product: the content desk, Threads posts, comments and replies, the morning brief, and the cards' look. Each product has its own.">
+        <ActionForm action={saveBriefAction.bind(null, slug)} submitLabel="Save brief" className="grid gap-4 rounded-[var(--radius-panel)] border border-line bg-surface p-5 md:grid-cols-2">
+          <Field label="Name in texts" htmlFor="b-name"><Input id="b-name" name="name" defaultValue={brief.name} /></Field>
+          <Field label="What it is (one line)" htmlFor="b-what"><Input id="b-what" name="what" defaultValue={brief.what} /></Field>
+          <Field label="Who reads us" htmlFor="b-aud" className="md:col-span-2"><Textarea id="b-aud" name="audience" rows={2} defaultValue={brief.audience} /></Field>
+          <Field label="Our topic / niche" htmlFor="b-niche"><Input id="b-niche" name="niche" defaultValue={brief.niche} /></Field>
+          <Field label="How we mention ourselves" htmlFor="b-mention"><Input id="b-mention" name="mention" defaultValue={brief.mention} /></Field>
+          <Field label="When the product honestly helps" htmlFor="b-moment" className="md:col-span-2"><Input id="b-moment" name="product_moment" defaultValue={brief.product_moment} /></Field>
+          <Field label="We never say" htmlFor="b-never" className="md:col-span-2"><Textarea id="b-never" name="never" rows={2} defaultValue={brief.never} /></Field>
+          <Field label="The team never pretends" htmlFor="b-nc"><Input id="b-nc" name="never_claim" defaultValue={brief.never_claim} /></Field>
+          <Field label="Topics where we stay out" htmlFor="b-skip"><Input id="b-skip" name="skip_topics" defaultValue={brief.skip_topics} /></Field>
+          <Field label="Good comments in our tone" htmlFor="b-good" hint="One per line. Examples of tone, never copied." className="md:col-span-2"><Textarea id="b-good" name="voice_good" rows={3} defaultValue={brief.voice_good.join("\n")} /></Field>
+          <Field label="What we never sound like" htmlFor="b-bad" className="md:col-span-2"><Input id="b-bad" name="voice_bad" defaultValue={brief.voice_bad} /></Field>
+          <Field label="Words people search" htmlFor="b-search"><Input id="b-search" name="search_phrases" defaultValue={brief.search_phrases} /></Field>
+          <Field label="Hashtags" htmlFor="b-tags"><Input id="b-tags" name="hashtags" defaultValue={brief.hashtags} /></Field>
+          <Field label="Hashtag rule" htmlFor="b-tagrule"><Input id="b-tagrule" name="hashtag_rule" defaultValue={brief.hashtag_rule} /></Field>
+          <Field label="Morning brief tone" htmlFor="b-tone"><Input id="b-tone" name="brief_tone" defaultValue={brief.brief_tone} /></Field>
+          <Field label="Last carousel slide: title" htmlFor="b-ct"><Input id="b-ct" name="closing_title" defaultValue={brief.closing_title} /></Field>
+          <Field label="Last carousel slide: text" htmlFor="b-cx"><Input id="b-cx" name="closing_text" defaultValue={brief.closing_text} /></Field>
+          <Field label="Brand word on cards" htmlFor="b-cb"><Input id="b-cb" name="card_brand" defaultValue={brief.card_brand} /></Field>
+          <Field label="Footer on cards" htmlFor="b-cf"><Input id="b-cf" name="card_footer" defaultValue={brief.card_footer} /></Field>
+          <Field label="Note on the closing card" htmlFor="b-cn" hint="Empty for none." className="md:col-span-2"><Input id="b-cn" name="card_note" defaultValue={brief.card_note} /></Field>
+          <fieldset className="flex flex-wrap items-end gap-3 md:col-span-2">
+            <legend className="mb-1 text-[12px] text-muted">Card colours</legend>
+            {(Object.entries(brief.colors) as Array<[string, string]>).map(([k, v]) => (
+              <label key={k} className="flex items-center gap-1.5 text-[12px]"><span className="inline-block size-4 rounded-full border border-line" style={{ background: v }} />{k}<Input name={`color_${k}`} defaultValue={v} className="h-7 w-24" /></label>
+            ))}
+          </fieldset>
+          <label className="flex items-center gap-2 text-[13.5px] md:col-span-2"><input type="checkbox" name="sensitive" defaultChecked={brief.sensitive} className="size-4" /> Health or safety topic: add emergency lines and hand risky conversations to a person</label>
+        </ActionForm>
+      </Section>
+
+      <Section title="Read the website into Knowledge" description={`All public pages of the site (from its sitemap) become this product's knowledge: facts, wording and guides the generators use. ${knowledgeCount} source(s) in Knowledge now. Reading again adds only changed pages.`}>
+        <ActionForm action={importWebsiteAction.bind(null, slug)} submitLabel="Read the website" pendingLabel="Reading the pages…" className="flex flex-wrap items-end gap-3 [&_p]:basis-full [&_p]:text-[12.5px]">
+          <Field label="Website" htmlFor="site-url"><Input id="site-url" name="site_url" defaultValue={profile.website_url ?? ""} placeholder="https://momentro.me" className="w-80" /></Field>
+        </ActionForm>
+      </Section>
 
       <Section title="Basics and positioning">
         <ActionForm action={updateProfileAction.bind(null, slug)} submitLabel="Save profile" className="grid gap-4 rounded-[var(--radius-panel)] border border-line bg-surface p-5 md:grid-cols-2">

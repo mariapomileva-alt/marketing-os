@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getAppContext, listProducts } from "@/server/context";
-import { createBackAppAction, createDemoProductAction, createProductAction } from "@/app/actions/products";
+import { createBackAppAction, createDemoProductAction, createMomentroAction, createProductAction } from "@/app/actions/products";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/form";
@@ -12,6 +12,7 @@ export default async function StartPage() {
   const products = await listProducts();
   const hasBackApp = products.some((p) => p.slug === "back-app");
   const hasDemo = products.some((p) => p.slug === "demo-calm");
+  const hasMomentro = products.some((p) => p.slug === "momentro");
   return (
     <main className="mx-auto max-w-[720px] px-4 py-12">
       <p className="text-[13px] font-medium text-green">God of Marketing</p>
@@ -32,6 +33,20 @@ export default async function StartPage() {
             <Button variant="primary" type="submit">
               Create Back App
             </Button>
+          </form>
+        </section>
+      ) : null}
+
+      {!hasMomentro ? (
+        <section className="mt-6 rounded-[var(--radius-panel)] border border-line bg-surface p-5">
+          <h2 className="text-[16px]">Momentro, with its facts and rules</h2>
+          <p className="prose-measure mt-1 text-[13px] text-muted">
+            Creates Momentro (momentro.me) as its own project: facts and prices from the site, claims it must never make (fully offline, instant,
+            free forever, invented users), its marketing brief and card colours, a content desk without Reels for now. Then read the website into its
+            Knowledge and connect its Instagram and YouTube on its Connections page.
+          </p>
+          <form action={createMomentroAction} className="mt-4">
+            <Button variant="primary" type="submit">Create Momentro</Button>
           </form>
         </section>
       ) : null}

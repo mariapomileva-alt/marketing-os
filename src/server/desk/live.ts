@@ -6,7 +6,7 @@ import type { DeskMedia } from "@/server/services/content-desk";
 /** Live card drawing and storage for the content desk. */
 export function liveDeskMedia(): DeskMedia {
   return {
-    render: (format, slides) => renderPost(format, slides),
+    render: (format, slides, brand) => renderPost(format, slides, brand),
     store: (key, bytes) => fileStore().put(key, bytes, "image/jpeg"),
   };
 }

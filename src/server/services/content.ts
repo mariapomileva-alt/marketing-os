@@ -1,6 +1,8 @@
 import type { Tx } from "@/server/db/client";
 import { resolveProvider } from "@/server/ai";
 import { PROMPTS } from "@/domain/ai/prompts";
+import { fillPrompt } from "@/domain/brief";
+import { productBrief } from "./marketing-brief";
 import { contentOutputSchema, hooksOutputSchema, reviewOutputSchema, type ContentBody } from "@/domain/ai/schemas";
 import { BudgetExceededError, type AiTask } from "@/domain/ai/types";
 import { checkText, outcomeOf, type GuardrailRule } from "@/domain/guardrails";
@@ -74,7 +76,9 @@ export async function runAgent<T>(tx: Tx, a: RunArgs<T>): Promise<{ output: T; a
   const role = PROMPTS.find((p) => p.key === a.promptKey)!.role;
   const started = Date.now();
   try {
-    const r = await provider.generate({ task: a.task, system: pv.system_prompt, input: JSON.stringify(a.input), schema: a.schema, context: a.input, webSearch: a.webSearch, maxTokens: a.maxTokens });
+    // One prompt text for every product; the product's own brief fills its name, audience, rules and endings.
+    const system = fillPrompt(pv.system_prompt, await productBrief(tx, a.productId));
+    const r = await provider.generate({ task: a.task, system, input: JSON.stringify(a.input), schema: a.schema, context: a.input, webSearch: a.webSearch, maxTokens: a.maxTokens });
     const run = await tx.one<{ id: string }>(
       `insert into agent_runs (workspace_id, product_id, workflow_run_id, step, role, provider, model, is_mock, prompt_template_version_id,
          input_snapshot, source_ids, output, raw_output, input_tokens, output_tokens, cost_usd, duration_ms)

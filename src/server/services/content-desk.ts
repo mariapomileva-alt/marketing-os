@@ -1,4 +1,6 @@
 import type { Tx } from "@/server/db/client";
+import type { MarketingBrief } from "@/domain/brief";
+import { productBrief } from "./marketing-brief";
 import { IG_PERMISSION_NOTE } from "./calm-shorts";
 import { isIgPermissionError } from "@/server/instagram/errors";
 import { contentDeskSchema, reelSpecSchema, type ContentBody, type ContentDeskOutput, type ReelSpec, type ReelSpecInput } from "@/domain/ai/schemas";
@@ -76,7 +78,7 @@ const FORMAT: Record<DeskKind, { channel: string; format: string }> = {
 };
 
 export interface DeskMedia {
-  render(format: "static_concept" | "carousel", slides: Slide[]): Promise<Uint8Array[]>;
+  render(format: "static_concept" | "carousel", slides: Slide[], brand?: { brand: string; footer: string; note: string; colors: MarketingBrief["colors"] }): Promise<Uint8Array[]>;
   store(key: string, bytes: Uint8Array): Promise<void>;
 }
 
@@ -89,14 +91,15 @@ async function drawCards(tx: Tx, productId: string, itemId: string, media: DeskM
   if (it.format !== "static_concept" && it.format !== "carousel") return;
   const slides = (it.body.slides ?? []).map((s) => ({ title: s.title, text: s.text ?? "" }));
   try {
-    const images = await media.render(it.format, it.format === "static_concept" ? slides.slice(0, 1) : slides);
+    const b = await productBrief(tx, productId);
+    const images = await media.render(it.format, it.format === "static_concept" ? slides.slice(0, 1) : slides, { brand: b.card_brand, footer: b.card_footer, note: b.card_note, colors: b.colors });
     const ids: string[] = [];
     for (const [i, bytes] of images.entries()) {
       const key = `${it.workspace_id}/${productId}/desk/${it.current_version_id}-${i + 1}.jpg`;
       await media.store(key, bytes);
       const a = await tx.one<{ id: string }>(
         `insert into creative_assets (workspace_id, product_id, kind, title, storage_path, mime_type, origin, tags, rights_note)
-         values ($1,$2,'image',$3,$4,'image/jpeg','generated','{desk-card}','Drawn by God of Marketing in Back''s brand style (Fraunces, Outfit; OFL).') returning id`,
+         values ($1,$2,'image',$3,$4,'image/jpeg','generated','{desk-card}','Drawn by God of Marketing in the product''s brand style (Fraunces, Outfit; OFL).') returning id`,
         [it.workspace_id, productId, `${it.title} · ${i + 1}`.slice(0, 200), key],
       );
       ids.push(a.id);
@@ -113,7 +116,9 @@ export async function deskCounts(tx: Tx, productId: string, s: DeskSettings) {
     "select count(*) filter (where kind = 'article')::int articles from content_desk_items where product_id = $1 and created_at > now() - interval '7 days'",
     [productId],
   );
-  return { posts: s.posts_per_day, carousels: s.carousels_per_day, articles: week.articles < s.articles_per_week ? 1 : 0, reels: s.reels_per_day };
+  // Reels need the product's own recorded scene library (only Back has one so far).
+  const reels = (await productBrief(tx, productId)).reels ? s.reels_per_day : 0;
+  return { posts: s.posts_per_day, carousels: s.carousels_per_day, articles: week.articles < s.articles_per_week ? 1 : 0, reels };
 }
 
 export async function generateDesk(tx: Tx, actor: Actor, productId: string, media: DeskMedia, counts?: { posts: number; carousels: number; articles: number; reels?: number }) {
@@ -153,7 +158,7 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
     PERFORMANCE: { threads: await performanceSummary(tx, productId), instagram_posts: published },
     COMPETITORS: competitors.map((c) => c.name),
     TREND_SIGNALS: signals,
-    KNOWLEDGE: await draftingKnowledge(tx, actor.workspaceId, productId, "panic attack first minute what helps", 6),
+    KNOWLEDGE: await draftingKnowledge(tx, actor.workspaceId, productId, `${(await productBrief(tx, productId)).niche} what helps`, 6),
   };
   const run = (inp: typeof input, web: boolean) => runAgent(tx, {
     actor, productId, workflowRunId: wf.id, step: "content_desk", task: "content_desk", promptKey: "content_desk.v1",

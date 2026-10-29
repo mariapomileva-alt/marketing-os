@@ -4,6 +4,7 @@ import { BACK_APP, BACK_APP_CLAIMS, BACK_APP_GUARDRAILS } from "@/domain/seed/ba
 import { DEFAULT_UTM } from "@/domain/utm";
 import { BACK_RULES_DOC, BACK_RULES_PACK, BACK_RULES_PACK_GUARDRAILS } from "@/domain/seed/back-rules-2026-10";
 import { ingestSource } from "./knowledge";
+import { MOMENTRO, MOMENTRO_BRIEF, MOMENTRO_CLAIMS, MOMENTRO_GUARDRAILS } from "@/domain/seed/momentro";
 
 export const productInputSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
@@ -73,6 +74,47 @@ export async function createBackApp(tx: Tx, workspaceId: string) {
       [workspaceId, p.id, g.code, g.ruleType, JSON.stringify(g.patterns ?? []), g.instruction ?? "", g.severity, g.rationale ?? ""],
     );
   }
+  return p;
+}
+
+/** Momentro with its facts, rules and marketing brief (from the team's own site). Its connections start empty. */
+export async function createMomentro(tx: Tx, workspaceId: string) {
+  const existing = await tx.maybeOne<{ id: string; slug: string }>("select id, slug from products where workspace_id = $1 and slug = $2", [workspaceId, MOMENTRO.slug]);
+  if (existing) return existing;
+  const p = await createProduct(tx, workspaceId, { name: MOMENTRO.name, slug: MOMENTRO.slug, short_description: MOMENTRO.short_description, category: MOMENTRO.category, website_url: MOMENTRO.website_url });
+  await tx.query(
+    `update products set legal_restrictions = $2, prohibited_topics = $3, pain_points = $4, triggers = $5, desired_emotional_states = $6,
+       customer_vocabulary = $7, advantages = $8, countries = $9, marketing_brief = $10 where id = $1`,
+    [p.id, MOMENTRO.legal_restrictions, MOMENTRO.prohibited_topics, MOMENTRO.pain_points, MOMENTRO.triggers, MOMENTRO.desired_emotional_states,
+     MOMENTRO.customer_vocabulary, MOMENTRO.advantages, ["GB", "US", "DE", "LV"], JSON.stringify(MOMENTRO_BRIEF)],
+  );
+  await tx.query("update brand_profiles set tone_of_voice = $2 where product_id = $1", [p.id, MOMENTRO.tone_of_voice]);
+  for (const c of MOMENTRO_CLAIMS) {
+    await tx.query("insert into product_claims (workspace_id, product_id, kind, statement, rationale) values ($1,$2,$3,$4,$5)", [workspaceId, p.id, c.kind, c.statement, c.rationale]);
+  }
+  for (const g of MOMENTRO_GUARDRAILS) {
+    await tx.query(
+      `insert into product_guardrails (workspace_id, product_id, code, rule_type, patterns, instruction, severity, rationale)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [workspaceId, p.id, g.code, g.ruleType, JSON.stringify(g.patterns ?? []), g.instruction ?? "", g.severity, g.rationale ?? ""],
+    );
+  }
+  // Content desk: posts and carousels (no Reels until Momentro has its own recorded scene library), articles for momentro.me/guides.
+  await tx.query(
+    `insert into content_desk_settings (product_id, workspace_id, posts_per_day, carousels_per_day, reels_per_day, articles_per_week, slots)
+     values ($1,$2,1,1,0,2,array['12:30','19:00']) on conflict (product_id) do nothing`,
+    [p.id, workspaceId],
+  );
+  await tx.query("insert into site_settings (product_id, workspace_id, domain) values ($1,$2,'momentro.me') on conflict (product_id) do update set domain = excluded.domain", [p.id, workspaceId]);
+  // Where the team joins conversations (both off until switched on): people talking about their clips and family films.
+  await tx.query(
+    `insert into yt_settings (product_id, workspace_id, queries, languages, brand_name) values ($1,$2,$3,'{en}','Momentro') on conflict (product_id) do nothing`,
+    [p.id, workspaceId, ["family vacation video", "how to edit family videos", "organize family videos", "travel video from phone clips", "year in review family video"]],
+  );
+  await tx.query(
+    "insert into threads_settings (product_id, workspace_id, queries) values ($1,$2,$3) on conflict (product_id) do nothing",
+    [p.id, workspaceId, ["camera roll full of videos", "never edit my vacation videos", "family videos", "travel video", "so many clips"]],
+  );
   return p;
 }
 

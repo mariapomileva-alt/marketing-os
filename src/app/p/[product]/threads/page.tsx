@@ -62,7 +62,7 @@ export default async function ThreadsStudioPage({ params }: PageProps<"/p/[produ
         <div>
           <h1>Threads</h1>
           <p className="mt-1 max-w-[68ch] text-[13.5px] text-muted">
-            Our own posts, written every morning from our articles, what we know about panic and about Back. You approve each one; it goes out at the next posting time ({d.settings.slots.join(" and ")}, Riga). Reactions are read every hour.
+            Our own posts, written every morning from our articles, what we know about the topic and about {product.name}. You approve each one; it goes out at the next posting time ({d.settings.slots.join(" and ")}, Riga). Reactions are read every hour.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
