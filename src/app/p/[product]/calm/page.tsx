@@ -221,6 +221,7 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
           </fieldset>
           <Field label="Shorts from each video" htmlFor="calm-per" hint="Spread over the video; half go to YouTube Shorts, half to Instagram Reels + TikTok, at random"><Input id="calm-per" name="shorts_per_video" type="number" min={1} max={15} defaultValue={s.shorts_per_video} /></Field>
           <Field label="Short times a day (UTC)" htmlFor="calm-slots" hint="Each platform gets one short at each time, mixed by look. 06:30 UTC = 08:30 Riga"><Input id="calm-slots" name="short_slots" defaultValue={s.short_slots.join(", ")} /></Field>
+          <Field label="Of those, Instagram Reels" htmlFor="calm-reels" hint="The other Instagram+TikTok pieces go to TikTok only, leaving room for the desk's own Reels"><Input id="calm-reels" name="reels_per_video" type="number" min={0} max={15} defaultValue={s.reels_per_video} /></Field>
           <Field label="Long videos kept ready" htmlFor="calm-pipe" hint="Waiting for you or scheduled; one new video a day at most"><Input id="calm-pipe" name="pipeline" type="number" min={1} max={7} defaultValue={s.pipeline} /></Field>
           <Field label="Topics, one per line (used in turn)" htmlFor="calm-topics" className="md:col-span-3"><Textarea id="calm-topics" name="topics" rows={8} defaultValue={s.topics.join("\n")} /></Field>
         </ActionForm>

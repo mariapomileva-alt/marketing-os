@@ -30,6 +30,7 @@ export interface CalmSettings {
   shorts_per_video: number;
   short_slots: string[];
   pipeline: number;
+  reels_per_video: number;
   auto_shorts_targets: string[];
 }
 
@@ -37,15 +38,15 @@ export async function getCalmSettings(tx: Tx, workspaceId: string, productId: st
   await tx.query("insert into calm_settings (product_id, workspace_id) values ($1, $2) on conflict (product_id) do nothing", [productId, workspaceId]);
   return tx.one<CalmSettings>(
     `select enabled, publish_days, publish_hour_utc, minutes, voice, language, topics, themes, renderer_token_hash,
-            renderer_seen_at::text, last_created_at::text, auto_shorts, auto_shorts_targets, own_music, shorts_per_video, short_slots, pipeline from calm_settings where product_id = $1`,
+            renderer_seen_at::text, last_created_at::text, auto_shorts, auto_shorts_targets, own_music, shorts_per_video, short_slots, pipeline, reels_per_video from calm_settings where product_id = $1`,
     [productId],
   );
 }
 
-export async function updateCalmSettings(tx: Tx, workspaceId: string, productId: string, s: Pick<CalmSettings, "enabled" | "publish_days" | "publish_hour_utc" | "minutes" | "voice" | "topics" | "themes"> & Partial<Pick<CalmSettings, "auto_shorts" | "auto_shorts_targets" | "shorts_per_video" | "short_slots" | "pipeline">>) {
+export async function updateCalmSettings(tx: Tx, workspaceId: string, productId: string, s: Pick<CalmSettings, "enabled" | "publish_days" | "publish_hour_utc" | "minutes" | "voice" | "topics" | "themes"> & Partial<Pick<CalmSettings, "auto_shorts" | "auto_shorts_targets" | "shorts_per_video" | "short_slots" | "pipeline" | "reels_per_video">>) {
   const cur = await getCalmSettings(tx, workspaceId, productId);
-  await tx.query("update calm_settings set shorts_per_video = $2, short_slots = $3, pipeline = $4 where product_id = $1",
-    [productId, s.shorts_per_video ?? cur.shorts_per_video, (s.short_slots ?? cur.short_slots).map((x) => x.padStart(5, "0")), s.pipeline ?? cur.pipeline]);
+  await tx.query("update calm_settings set shorts_per_video = $2, short_slots = $3, pipeline = $4, reels_per_video = $5 where product_id = $1",
+    [productId, s.shorts_per_video ?? cur.shorts_per_video, (s.short_slots ?? cur.short_slots).map((x) => x.padStart(5, "0")), s.pipeline ?? cur.pipeline, s.reels_per_video ?? cur.reels_per_video]);
   await tx.query(
     "update calm_settings set enabled = $2, publish_days = $3, publish_hour_utc = $4, minutes = $5, voice = $6, topics = $7, themes = $8, auto_shorts = $9, auto_shorts_targets = $10 where product_id = $1",
     [productId, s.enabled, s.publish_days, s.publish_hour_utc, s.minutes, s.voice, s.topics, s.themes, s.auto_shorts ?? cur.auto_shorts, s.auto_shorts_targets ?? cur.auto_shorts_targets],
@@ -228,10 +229,19 @@ export async function finishRender(tx: Tx, token: string, id: string, result: { 
       // on falls back to the other one, so no piece is left unmade.
       const yt = targets.filter((t) => t === "youtube");
       const social = targets.filter((t) => t !== "youtube");
-      await selectShorts(tx, s.product_id, planned.map((p) => ({
-        id: p.id,
-        targets: p.lane === "youtube" ? (yt.length ? yt : social) : p.lane === "social" ? (social.length ? social : yt) : targets,
-      })));
+      // Only the first few social pieces also go to Instagram (the rest TikTok only), leaving room for the desk's Reels.
+      const reelsPer = (await tx.maybeOne<{ n: number }>("select reels_per_video n from calm_settings where product_id = $1", [s.product_id]))?.n ?? 2;
+      let reels = 0;
+      await selectShorts(tx, s.product_id, planned.map((p) => {
+        if (p.lane === "youtube") return { id: p.id, targets: yt.length ? yt : social };
+        if (p.lane !== "social") return { id: p.id, targets };
+        let t = social;
+        if (t.includes("instagram")) {
+          if (reels < reelsPer) reels++;
+          else if (t.includes("tiktok")) t = t.filter((x) => x !== "instagram");
+        }
+        return { id: p.id, targets: t.length ? t : yt };
+      }));
     }
     await tx.query("update calm_videos set status = 'review', youtube_video_id = $3, render_url = $4, rendered_at = now(), error = case when error like 'Removed %' then error else null end where id = $1 and product_id = $2 and status = 'rendering'", [id, s.product_id, result.youtubeVideoId, result.renderUrl ?? null]);
   } else {
