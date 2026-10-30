@@ -63,7 +63,8 @@ export async function POST(request: NextRequest) {
     }
     const music_url = job.music_path ? await store.signedUrl(job.music_path, 3 * 3600) : null;
     // A copy goes to private storage too, so it can be watched inside God of Marketing (and Reels published from it).
-    const previewKey = isShort ? `${job.workspace_id}/${claimed.productId}/calm/shorts/${job.id}.mp4` : `${job.workspace_id}/${claimed.productId}/calm/${job.id}-preview.mp4`;
+    const previewKey = "preview_key" in job && job.preview_key ? job.preview_key
+      : isShort ? `${job.workspace_id}/${claimed.productId}/calm/shorts/${job.id}.mp4` : `${job.workspace_id}/${claimed.productId}/calm/${job.id}-preview.mp4`;
     const preview_upload_url = await store.signedUploadUrl(previewKey).catch(() => null);
     return NextResponse.json({
       id: job.id, format: isShort ? "short" : "video", title: job.title, minutes: isShort ? 1 : job.minutes, lines, clips, music_url,
@@ -72,7 +73,10 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     const msg = (e as Error).message.slice(0, 400);
     await withContext({ userId: null, role: "service", actorType: "system" }, (tx) =>
-      tx.query(job.kind === "short" ? "update calm_shorts set status = 'failed', error = $2 where id = $1" : "update calm_videos set status = 'failed', error = $2 where id = $1", [job.id, `Could not start rendering: ${msg}`]),
+      "remix" in job && job.remix
+        // A failed remix never touches the approved video: only the note changes.
+        ? tx.query(`update ${job.kind === "short" ? "calm_shorts" : "calm_videos"} set remix = null, error = $2 where id = $1`, [job.id, `New music not applied: ${msg}`])
+        : tx.query(job.kind === "short" ? "update calm_shorts set status = 'failed', error = $2 where id = $1" : "update calm_videos set status = 'failed', error = $2 where id = $1", [job.id, `Could not start rendering: ${msg}`]),
     );
     return NextResponse.json({ error: msg }, { status: 409 });
   }

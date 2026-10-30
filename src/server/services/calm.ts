@@ -6,6 +6,7 @@ import { runAgent, type Actor } from "./content";
 import { draftingKnowledge } from "./knowledge-context";
 import { claimShortJob, finishShortRender, planShorts, selectShorts } from "./calm-shorts";
 import { productRules } from "./youtube";
+import { claimRemixJob, finishRemix, isRemix, type RemixYoutube } from "./calm-remix";
 
 /**
  * Calm affirmation videos for YouTube. The pipeline, with the owner in control of anything public:
@@ -25,6 +26,7 @@ export interface CalmSettings {
   renderer_seen_at: string | null;
   last_created_at: string | null;
   auto_shorts: boolean;
+  own_music: boolean;
   auto_shorts_targets: string[];
 }
 
@@ -32,7 +34,7 @@ export async function getCalmSettings(tx: Tx, workspaceId: string, productId: st
   await tx.query("insert into calm_settings (product_id, workspace_id) values ($1, $2) on conflict (product_id) do nothing", [productId, workspaceId]);
   return tx.one<CalmSettings>(
     `select enabled, publish_days, publish_hour_utc, minutes, voice, language, topics, themes, renderer_token_hash,
-            renderer_seen_at::text, last_created_at::text, auto_shorts, auto_shorts_targets from calm_settings where product_id = $1`,
+            renderer_seen_at::text, last_created_at::text, auto_shorts, auto_shorts_targets, own_music from calm_settings where product_id = $1`,
     [productId],
   );
 }
@@ -143,8 +145,10 @@ export async function prepareCalmMedia(tx: Tx, productId: string, videoId: strin
     );
     const own = library.map((a) => ({ source: "library", asset_id: a.id, kind: a.kind, author: "our library" }));
     const stock = own.length >= 3 ? [] : (await media.clips(v.theme).catch(() => [])).slice(0, 6 - own.length).map((c) => ({ source: "pexels", kind: "video", ...c }));
+    // Our own generated music by default; a library track (tagged calm) only when the owner switched own music off.
     const music = await tx.maybeOne<{ id: string }>(
       `select a.id from creative_assets a where a.product_id = $1 and a.kind = 'audio' and a.storage_path is not null and 'calm' = any(a.tags)
+          and not coalesce((select own_music from calm_settings where product_id = $1), true)
         order by (select max(created_at) from calm_videos c where c.music_asset_id = a.id) nulls first, random() limit 1`,
       [productId],
     );
@@ -167,9 +171,13 @@ export async function claimRenderJob(tx: Tx, token: string) {
   const s = await tx.maybeOne<{ product_id: string; minutes: number }>("select product_id, minutes from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
   if (!s) return { authorized: false as const };
   await tx.query("update calm_settings set renderer_seen_at = now() where product_id = $1", [s.product_id]);
+  // New music for upcoming videos first: they have a publish time to keep.
+  const remix = await claimRemixJob(tx, s.product_id);
+  if (remix) return { authorized: true as const, productId: s.product_id, job: remix.kind === "video" ? { ...remix, minutes: s.minutes } : remix };
   const v = await tx.maybeOne<{ id: string; workspace_id: string; title: string; description: string; tags: string[]; lines: Array<{ text: string; pause: number }>; audio_keys: string[]; clips: CalmClip[]; music_path: string | null; music_title: string | null }>(
     `select id, workspace_id, title, description, tags, lines, audio_keys, clips,
-            (select storage_path from creative_assets a where a.id = v.music_asset_id) music_path,
+            case when (select own_music from calm_settings cs where cs.product_id = v.product_id) then null
+                 else (select storage_path from creative_assets a where a.id = v.music_asset_id) end music_path,
             (select rights_note from creative_assets a where a.id = v.music_asset_id) music_title
        from calm_videos v
       where product_id = $1 and (status = 'ready_to_render' or (status = 'rendering' and render_started_at < now() - interval '2 hours'))
@@ -183,9 +191,13 @@ export async function claimRenderJob(tx: Tx, token: string) {
   return { authorized: true as const, productId: s.product_id, job: { ...v, kind: "video" as const, minutes: s.minutes, libraryPaths: Object.fromEntries(paths.map((p) => [p.id, p.storage_path])) } };
 }
 
-export async function finishRender(tx: Tx, token: string, id: string, result: { youtubeVideoId?: string; error?: string; renderUrl?: string; preview?: boolean }) {
+export async function finishRender(tx: Tx, token: string, id: string, result: { youtubeVideoId?: string; error?: string; renderUrl?: string; preview?: boolean }, youtube?: (productId: string) => Promise<RemixYoutube | null>) {
   const s = await tx.maybeOne<{ product_id: string }>("select product_id from calm_settings where renderer_token_hash = $1", [hashToken(token)]);
   if (!s) return false;
+  if (await isRemix(tx, s.product_id, id)) {
+    await finishRemix(tx, s.product_id, id, result, youtube ? await youtube(s.product_id).catch(() => null) : null);
+    return true;
+  }
   if (await tx.maybeOne("select 1 from calm_shorts where id = $1 and product_id = $2", [id, s.product_id])) return finishShortRender(tx, s.product_id, id, result);
   if (result.youtubeVideoId && result.preview) {
     // The preview the renderer uploaded becomes a Creative Library video, watchable inside God of Marketing.

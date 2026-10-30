@@ -4,7 +4,8 @@
  *
  *   1. Asks Marketing OS for the next job (POST {MOS_URL}/api/cron/calm-next, Bearer MOS_RENDER_TOKEN).
  *   2. Downloads the voice lines and nature clips, renders a 1080p video: clips with slow cross-fades, each line
- *      fading in and out on screen, the voice over a soft generated ambient pad that ducks under the voice.
+ *      fading in and out on screen, the voice over our own
+ *      generated music (scripts/reels/ambient.py for long videos, music.py for Shorts) that ducks under the voice.
  *   3. Uploads it to the YouTube upload session Marketing OS opened (the video is PRIVATE), reports back.
  *
  * Nothing here can publish: the owner approves the private video in Marketing OS, which schedules it.
@@ -18,6 +19,26 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
+const HERE = path.dirname(new URL(import.meta.url).pathname);
+const MOODS = ["night", "piano", "warm", "airy"];
+const hashOf = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+
+/**
+ * Our own music, written for each video (scripts/reels): Shorts get the Reels sound (music.py, resolving on the end
+ * card), long videos a slow meditative piece (ambient.py). The mood and melody follow the job id, so every video sounds
+ * different and a re-render sounds the same. Loudness-normalized so the voice always sits clearly on top.
+ */
+export async function ownMusic(job, T, endAt, work) {
+  const seed = hashOf(job.id ?? job.title ?? "calm") % 100000;
+  const mood = MOODS.includes(job.music_mood) ? job.music_mood : MOODS[seed % MOODS.length];
+  const raw = path.join(work, "music-raw.wav");
+  const out = path.join(work, "music.wav");
+  const py = process.env.PYTHON ?? "python3";
+  if (job.format === "short") await run(py, [path.join(HERE, "reels", "music.py"), raw, String(T), String(endAt), String(seed), mood], { maxBuffer: 1 << 24 });
+  else await run(py, [path.join(HERE, "reels", "ambient.py"), raw, String(T), String(seed), mood], { maxBuffer: 1 << 24, timeout: 20 * 60_000 });
+  await ffmpeg(["-i", raw, "-af", "loudnorm=I=-16:TP=-1.5:LRA=7", "-ar", "44100", "-ac", "2", out], "music loudness");
+  return { file: out, mood };
+}
 // Landscape for long videos; vertical 9:16 for Shorts and Reels (set per job in render()).
 let W = 1920;
 let H = 1080;
@@ -172,12 +193,24 @@ export async function render(job, out, work) {
   const vi = voice.map((_, i) => `[${i + 1}:a]adelay=${Math.round(tl.items[i].start * 1000)}:all=1,volume=1.0[a${i}]`);
   filters.push(...vi);
   filters.push(`${voice.map((_, i) => `[a${i}]`).join("")}amix=inputs=${voice.length}:normalize=0:dropout_transition=0,apad,atrim=0:${T},asplit=2[voice][side]`);
-  // Music: the product's own track from the Creative Library when there is one (looped), otherwise a soft generated pad.
-  const musicFile = job.music_file ?? (job.music_url ? await download(job.music_url, path.join(work, "music.media")) : null);
+  // Music: our own generated piece (default); a Creative Library track only when the owner chose library music.
+  let musicFile = job.music_file ?? (job.music_url ? await download(job.music_url, path.join(work, "music.media")) : null);
+  let generated = false;
+  if (!musicFile) {
+    try {
+      musicFile = (await ownMusic(job, T, vertical ? tl.outroFrom : T, work)).file;
+      generated = true;
+    } catch (e) {
+      console.warn(`Own music failed, using the soft pad: ${String(e.message ?? e).slice(0, 300)}`);
+    }
+  }
   const pad = `aevalsrc='0.05*sin(2*PI*110*t)*(0.6+0.4*sin(2*PI*0.05*t))+0.04*sin(2*PI*164.81*t)*(0.6+0.4*sin(2*PI*0.031*t))+0.035*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*0.043*t))+0.025*sin(2*PI*277.18*t)*(0.5+0.5*sin(2*PI*0.027*t))':s=44100:d=${T}`;
   const padIdx = voice.length + 1;
   const noiseIdx = voice.length + 2;
-  if (musicFile) {
+  if (generated) {
+    // Normalized to -16 LUFS: about 11 dB under the voice, and a little more present in Shorts (the music is the hook).
+    filters.push(`[${padIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:${T},volume=${vertical ? 0.36 : 0.28}[music]`);
+  } else if (musicFile) {
     filters.push(`[${padIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:${T},volume=0.22,afade=t=in:d=4,afade=t=out:st=${T - 6}:d=6[music]`);
   } else {
     filters.push(`[${padIdx}:a]lowpass=f=900,aecho=0.8:0.7:120|240:0.35|0.25,volume=0.9[padv]`);
@@ -191,7 +224,7 @@ export async function render(job, out, work) {
   await writeFile(script, filters.join(";\n"));
   await ffmpeg([
     "-i", bg, ...voiceInputs,
-    ...(musicFile ? ["-stream_loop", "-1", "-i", musicFile] : ["-f", "lavfi", "-i", pad]),
+    ...(generated ? ["-i", musicFile] : musicFile ? ["-stream_loop", "-1", "-i", musicFile] : ["-f", "lavfi", "-i", pad]),
     "-f", "lavfi", "-i", `anoisesrc=color=brown:amplitude=0.05:d=${T}:r=44100`,
     "-filter_complex_script", script, "-map", `[${v}]`, "-map", "[aout]",
     "-c:v", "libx264", "-preset", job.preset ?? "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-r", String(FPS),

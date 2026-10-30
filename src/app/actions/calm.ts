@@ -14,6 +14,7 @@ import { accessToken, scheduleVideo } from "@/server/youtube/write";
 import { fail, lines, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
 import { mixShorts } from "@/server/services/shorts-mix";
 import { youtubeMover } from "@/server/services/shorts-mix-live";
+import { remixUpcoming } from "@/server/services/calm-remix";
 
 /** After approvals: mix the scheduled shorts by look when the owner has that switched on. Never fails the approval. */
 async function mixAfterApproval(productId: string) {
@@ -232,6 +233,33 @@ export async function addReelsToShortsAction(slug: string, _: ActionResult | nul
     revalidatePath(path(slug));
     revalidatePath(`/p/${slug}/calendar`);
     return n ? ok(`${n} scheduled short(s) will also go out as Instagram Reels, each at its own time.`) : ok("Every upcoming scheduled short already goes to Instagram too.");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+/** New own music for every upcoming video and short: each is made again and replaces the old one at the same time. */
+export async function remixUpcomingAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    await requireOwner();
+    const r = await db((tx, ctx) => remixUpcoming(tx, actorOf(ctx), product.id), { reason: "New own music for upcoming calm videos and shorts" });
+    revalidatePath(path(slug));
+    if (!r.shorts && !r.videos) return ok("Nothing upcoming to change: every video not out yet already has the new music or is being remade.");
+    return ok(`${r.shorts} short(s) and ${r.videos} long video(s) will be remade with the new music by the renderer (shorts first, soonest first). Each keeps its time; the old YouTube version is set to private.`);
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+/** Own generated music (default) or the Creative Library tracks tagged calm. */
+export async function setOwnMusicAction(slug: string, _: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const own = form.get("own_music") === "on";
+    await db((tx) => tx.query("update calm_settings set own_music = $2 where product_id = $1", [product.id, own]), { reason: "Calm music source changed" });
+    revalidatePath(path(slug));
+    return ok(own ? "New videos get our own generated music." : "New videos use your Creative Library tracks tagged calm.");
   } catch (e) {
     return toFailure(e, msg);
   }

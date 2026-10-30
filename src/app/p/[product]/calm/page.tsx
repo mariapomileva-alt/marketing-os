@@ -2,7 +2,7 @@ import { db, getProduct } from "@/server/context";
 import { getCalmSettings } from "@/server/services/calm";
 import { openaiKey } from "@/server/ai";
 import { youtubeConnection } from "@/server/services/youtube-publish";
-import { addReelsToShortsAction, approveCalmAction, createCalmVideoAction, createRendererTokenAction, rejectCalmAction, retryCalmMediaAction, saveCalmSettingsAction } from "@/app/actions/calm";
+import { addReelsToShortsAction, remixUpcomingAction, setOwnMusicAction, approveCalmAction, createCalmVideoAction, createRendererTokenAction, rejectCalmAction, retryCalmMediaAction, saveCalmSettingsAction } from "@/app/actions/calm";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -13,6 +13,7 @@ import { planShorts } from "@/server/services/calm-shorts";
 import { channelConnection } from "@/server/services/youtube-publish";
 import { ShortsBlock, type ShortRow } from "./shorts-block";
 import { tiktokAccess, tiktokConnection } from "@/server/services/tiktok";
+import { remixState } from "@/server/services/calm-remix";
 import { tiktokCreatorInfo, tiktokDirectPostEnabled, tiktokRefresh } from "@/server/tiktok/api";
 
 export const metadata = { title: "Calm Videos" };
@@ -50,6 +51,10 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
     igInfo: await tx.maybeOne<{ last_error: string | null; scopes: string[] }>("select last_error, scopes from channel_connections where product_id = $1 and channel = 'instagram' and status <> 'revoked' and adapter_kind = 'official_api' order by created_at desc limit 1", [product.id]),
     reelsToAdd: (await tx.one<{ n: number }>("select count(*)::int n from calm_shorts where product_id = $1 and status = 'scheduled' and publish_at > now() + interval '30 minutes' and not ('instagram' = any(targets)) and preview_asset_id is not null", [product.id])).n,
     tt: await tiktokConnection(tx, product.id),
+    remix: await remixState(tx, product.id),
+    remixNotes: await tx.query<{ title: string; error: string }>(
+      `select title, error from calm_shorts where product_id = $1 and error like 'New music not applied%' and status in ('review', 'scheduled')
+       union all select title, error from calm_videos where product_id = $1 and error like 'New music not applied%' and status in ('review', 'scheduled') limit 6`, [product.id]),
     s: await getCalmSettings(tx, ctx.workspaceId, product.id),
     yt: await youtubeConnection(tx, product.id),
     openai: Boolean(await openaiKey(ctx.workspaceId)),
@@ -92,7 +97,7 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
             ["Footage", d.library.clips >= 3
               ? <Status key="f" tone="green">{`Your Creative Library: ${d.library.clips} clips and images tagged calm`}</Status>
               : <span key="f"><Status tone="amber">{`${d.library.clips} of yours tagged calm`}</Status> <span className="text-muted">{pexels ? "· the rest from free stock footage" : "· add clips in Creative Library (tag: calm, river…) or set PIXABAY_API_KEY; otherwise a soft gradient"}</span></span>],
-            ["Music", d.library.music ? <Status key="m" tone="green">{`Your Creative Library: ${d.library.music} track${d.library.music === 1 ? "" : "s"} tagged calm, used in turn`}</Status> : "A soft ambient pad generated for each video. Add your own tracks in Creative Library with the tag calm."],
+            ["Music", s.own_music ? <Status key="m" tone="green">Our own music, written for each video (slow and meditative for long videos, the Reels sound for shorts)</Status> : d.library.music ? <Status key="m" tone="green">{`Your Creative Library: ${d.library.music} track${d.library.music === 1 ? "" : "s"} tagged calm, used in turn`}</Status> : "Our own generated music (no library tracks tagged calm)."],
             ["YouTube", d.yt?.status === "connected" ? <Status key="y" tone="green">{`Uploads as private to ${d.yt.account_label}`}</Status> : <Status key="y" tone="red">Connect the YouTube channel in Connections</Status>],
             ["Renderer (GitHub)", s.renderer_token_hash ? (rendererSeen ? <Status key="r" tone="green">{`Last checked in ${rendererSeen}`}</Status> : <Status key="r" tone="amber">Key created; waiting for the first check-in</Status>) : <Status key="r" tone="amber">Create a renderer key below and add it to GitHub</Status>],
             ["Automatic videos", s.enabled ? <Status key="a" tone="green">{`On: two in the pipeline, published ${s.publish_days.map((x) => DAYS[x - 1]).join(" and ")} at ${s.publish_hour_utc}:00 UTC after your approval`}</Status> : <Status key="a">Off (Settings below)</Status>],
@@ -110,6 +115,19 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
           <Field label="Topic" htmlFor="calm-topic" hint="Leave empty to take the next one from your list"><Input id="calm-topic" name="topic" placeholder="e.g. a panic attack on the train" /></Field>
           <Field label="Nature" htmlFor="calm-theme"><Select id="calm-theme" name="theme" defaultValue=""><option value="">Next in turn</option>{THEMES.map((t) => <option key={t} value={t}>{t}</option>)}</Select></Field>
         </ActionForm>
+      </Section>
+
+      <Section title="Music" description="Every video gets its own original piece: long videos a slow meditative score that never loops, shorts and Reels the same warm sound as our Reels ads. Each video has its own melody and mood, written by God of Marketing (no licensed tracks).">
+        <ActionForm action={setOwnMusicAction.bind(null, slug)} submitLabel="Save" submitVariant="secondary" className="flex flex-wrap items-center gap-3 text-[13.5px] [&_p]:text-[12.5px]">
+          <label className="flex items-center gap-2"><input type="checkbox" name="own_music" defaultChecked={s.own_music} /> Use our own music (otherwise: Creative Library tracks tagged calm)</label>
+        </ActionForm>
+        <div className="mt-4 rounded-[var(--radius-panel)] border border-line bg-surface p-4 text-[13.5px]">
+          <p className="font-medium">New music on videos that are not out yet</p>
+          <p className="mt-1 text-muted">Every approved or waiting video and short that has not gone out is made again with the new music: same words, voice and footage, same publish time. The renderer does shorts first, soonest first; the old YouTube version is set to private (delete it in YouTube Studio when you like). Reels and TikTok use the new file.</p>
+          {d.remix.queued || d.remix.rendering ? <p className="mt-2"><Status tone="amber">{`Remaking: ${d.remix.rendering} now, ${d.remix.queued} waiting`}</Status></p> : null}
+          <ActionForm action={remixUpcomingAction.bind(null, slug)} submitLabel="Put the new music on every upcoming video" pendingLabel="Queuing…" className="mt-3 flex flex-col gap-2 [&_p]:text-[12.5px]"><span className="sr-only">Remake upcoming videos with new music</span></ActionForm>
+          {d.remixNotes.length ? <ul className="mt-3 list-disc pl-5 text-[12.5px] text-muted">{d.remixNotes.map((n, i) => <li key={i}>{n.title}: {n.error}</li>)}</ul> : null}
+        </div>
       </Section>
 
       {d.ig?.status === "connected" ? (

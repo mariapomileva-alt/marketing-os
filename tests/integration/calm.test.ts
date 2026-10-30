@@ -10,6 +10,7 @@ import type { Actor } from "@/server/services/content";
 import { addReelsToScheduledShorts, approveShort, groupLines, publishDueReels, selectShorts } from "@/server/services/calm-shorts";
 import { approveCalmVideo, claimRenderJob, createCalmVideo, createRendererToken, finishRender, getCalmSettings, nextSlot, updateCalmSettings, videosInPipeline, type CalmMedia } from "@/server/services/calm";
 import { asUser, createOwner } from "../helpers/db";
+import { remixUpcoming } from "@/server/services/calm-remix";
 
 let owner: { userId: string; workspaceId: string };
 let actor: Actor;
@@ -87,7 +88,7 @@ describe("calm videos", () => {
 });
 
 describe("own media from the Creative Library", () => {
-  it("prefers our clips and music tagged calm over stock footage", async () => {
+  it("prefers our clips over stock footage; library music only when own music is switched off", async () => {
     await as((tx) => tx.query(
       `insert into creative_assets (workspace_id, product_id, kind, title, storage_path, mime_type, tags, rights_note) values
         ($1,$2,'video','river 1','a/r1.mp4','video/mp4','{calm,river}','filmed by us'),
@@ -96,7 +97,11 @@ describe("own media from the Creative Library", () => {
         ($1,$2,'audio','pad','a/m.mp3','audio/mpeg','{calm}','YouTube Audio Library'),
         ($1,$2,'video','competitor','a/x.mp4','video/mp4','{calm}','reference')`, [owner.workspaceId, productId]));
     await as((tx) => tx.query("update creative_assets set origin = 'competitor_reference' where title = 'competitor' and product_id = $1", [productId]));
+    const own = await as((tx) => createCalmVideo(tx, actor, productId, media, { theme: "river" }));
+    expect((await as((tx) => tx.one<{ m: string | null }>("select music_asset_id m from calm_videos where id = $1", [own.id]))).m).toBeNull();
+    await as((tx) => tx.query("update calm_settings set own_music = false where product_id = $1", [productId]));
     const r = await as((tx) => createCalmVideo(tx, actor, productId, media, { theme: "river" }));
+    await as((tx) => tx.query("update calm_settings set own_music = true where product_id = $1", [productId]));
     const v = await as((tx) => tx.one<{ clips: Array<{ source: string; kind: string }>; music_asset_id: string | null }>("select clips, music_asset_id from calm_videos where id = $1", [r.id]));
     expect(v.clips).toHaveLength(3);
     expect(v.clips.every((c) => c.source === "library")).toBe(true);
@@ -169,6 +174,52 @@ describe("shorts and reels", () => {
     await as((tx) => publishDueReels(tx, productId, denied));
     const conn = await as((tx) => tx.one<{ last_error: string | null }>("select last_error from channel_connections where product_id = $1 and channel = 'instagram' and status <> 'revoked'", [productId]));
     expect(conn.last_error).toMatch(/publishing permission/);
+  });
+});
+
+describe("new music on upcoming videos", () => {
+  it("remakes scheduled shorts and keeps their time; the old YouTube video only goes private", async () => {
+    const v = await as((tx) => tx.one<{ id: string }>("select id from calm_videos where product_id = $1 and array_length(audio_keys, 1) > 0 limit 1", [productId]));
+    const at = new Date(Date.now() + 2 * 86_400_000);
+    const asset = await as((tx) => tx.one<{ id: string }>("select preview_asset_id id from calm_shorts where preview_asset_id is not null and product_id = $1 limit 1", [productId]));
+    const ids = await as((tx) => tx.query<{ id: string }>(
+      `insert into calm_shorts (workspace_id, product_id, video_id, idx, line_from, line_to, title, targets, status, publish_at, youtube_video_id, preview_asset_id, instagram_status)
+       values ($1,$2,$3,201,0,1,'Remix me','{youtube,instagram}','scheduled',$4,'oldVID00001',$5,'queued'),
+              ($1,$2,$3,202,0,1,'Too soon','{youtube}','scheduled',now() + interval '20 minutes','oldVID00002',$5,null) returning id`,
+      [owner.workspaceId, productId, v.id, at.toISOString(), asset.id]));
+    await service((tx) => tx.query("insert into calendar_events (workspace_id, product_id, source, external_id, status, title, at) values ($1,$2,'youtube','oldVID00001','scheduled','Remix me',$3)", [owner.workspaceId, productId, at.toISOString()]));
+    const r = await as((tx) => remixUpcoming(tx, actor, productId));
+    expect(r.shorts).toBeGreaterThanOrEqual(1);
+    expect((await as((tx) => tx.one<{ remix: string | null }>("select remix from calm_shorts where id = $1", [ids[1].id]))).remix).toBeNull(); // too close to go out
+
+    const token = await as((tx) => createRendererToken(tx, owner.workspaceId, productId));
+    const claimed = (await service((tx) => claimRenderJob(tx, token))) as { job: { id: string; remix?: boolean; preview_key?: string; music_path: string | null } | null };
+    expect(claimed.job?.id).toBe(ids[0].id); // soonest remix first, before any new work
+    expect(claimed.job?.remix).toBe(true);
+    expect(claimed.job?.preview_key).toMatch(/-m2\.mp4$/);
+    expect(claimed.job?.music_path).toBeNull();
+
+    const calls: string[] = [];
+    const yt = async () => ({ schedule: async (id: string, when: Date) => void calls.push(`schedule ${id} ${when.toISOString()}`), keepPrivate: async (id: string) => void calls.push(`private ${id}`) });
+    expect(await service((tx) => finishRender(tx, token, ids[0].id, { youtubeVideoId: "newVID00001", preview: true }, yt))).toBe(true);
+    expect(calls).toEqual([`schedule newVID00001 ${at.toISOString()}`, "private oldVID00001"]);
+    const row = await as((tx) => tx.one<{ youtube_video_id: string; replaced_youtube_ids: string[]; remix: string | null; status: string; publish_at: string; preview_asset_id: string }>(
+      "select youtube_video_id, replaced_youtube_ids, remix, status, publish_at::text, preview_asset_id from calm_shorts where id = $1", [ids[0].id]));
+    expect(row).toMatchObject({ youtube_video_id: "newVID00001", replaced_youtube_ids: ["oldVID00001"], remix: null, status: "scheduled" });
+    expect(new Date(row.publish_at).getTime()).toBe(at.getTime());
+    expect(row.preview_asset_id).not.toBe(asset.id);
+    const ev = await as((tx) => tx.query<{ external_id: string }>("select external_id from calendar_events where product_id = $1 and title = 'Remix me'", [productId]));
+    expect(ev[0].external_id).toBe("newVID00001");
+  });
+
+  it("keeps the approved version when the new render fails", async () => {
+    const s = await as((tx) => tx.one<{ id: string }>("select id from calm_shorts where product_id = $1 and youtube_video_id = 'newVID00001'", [productId]));
+    await as((tx) => tx.query("update calm_shorts set remix = 'rendering', remix_started_at = now() where id = $1", [s.id]));
+    const token = await as((tx) => createRendererToken(tx, owner.workspaceId, productId));
+    await service((tx) => finishRender(tx, token, s.id, { error: "ffmpeg died" }, async () => null));
+    const row = await as((tx) => tx.one<{ youtube_video_id: string; status: string; remix: string | null; error: string }>("select youtube_video_id, status, remix, error from calm_shorts where id = $1", [s.id]));
+    expect(row).toMatchObject({ youtube_video_id: "newVID00001", status: "scheduled", remix: null });
+    expect(row.error).toMatch(/New music not applied/);
   });
 });
 

@@ -70,7 +70,10 @@ export async function claimShortJob(tx: Tx, productId: string) {
   );
   if (!s) return null;
   const v = await tx.one<{ lines: Array<{ text: string; pause: number }>; audio_keys: string[]; clips: CalmClip[]; music_path: string | null; description: string; tags: string[] }>(
-    `select lines, audio_keys, clips, description, tags, (select storage_path from creative_assets a where a.id = v.music_asset_id) music_path from calm_videos v where id = $1`,
+    `select lines, audio_keys, clips, description, tags,
+            case when (select own_music from calm_settings cs where cs.product_id = v.product_id) then null
+                 else (select storage_path from creative_assets a where a.id = v.music_asset_id) end music_path
+       from calm_videos v where id = $1`,
     [s.video_id],
   );
   if (v.audio_keys.length < v.lines.length) {

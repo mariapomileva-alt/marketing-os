@@ -211,6 +211,17 @@ export async function scheduleVideo(token: string, videoId: string, publishAt: D
   });
 }
 
+/** Takes a video off its schedule and keeps it private (used when a new version replaces it). Never deletes. */
+export async function keepPrivate(token: string, videoId: string) {
+  const cur = await call<{ items?: Array<{ status?: Record<string, unknown> }> }>("GET", `videos?part=status&id=${encodeURIComponent(videoId)}`, token);
+  const status = cur.items?.[0]?.status;
+  if (!status || status.privacyStatus !== "private") return;
+  const keep = ["license", "embeddable", "publicStatsViewable", "selfDeclaredMadeForKids", "containsSyntheticMedia"];
+  const next: Record<string, unknown> = Object.fromEntries(keep.filter((k) => k in status).map((k) => [k, status[k]]));
+  next.privacyStatus = "private";
+  return call<{ id: string }>("PUT", "videos?part=status", token, { id: videoId, status: next });
+}
+
 /**
  * Moves an already scheduled private video to another publish time and changes nothing else: the current status
  * (made-for-kids, synthetic-media label, licence, embedding) is read first and sent back with only publishAt changed.
