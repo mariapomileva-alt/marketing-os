@@ -44,9 +44,16 @@ export async function remixState(tx: Tx, productId: string) {
 
 const musicPath = (own: string) => `case when (select own_music from calm_settings cs where cs.product_id = v.product_id) then null else (select storage_path from creative_assets a where a.id = v.music_asset_id) end ${own}`;
 
-/** The renderer's next remix: Shorts first (soonest first), then long videos. */
+/** The renderer's next remix: whatever goes out soonest (a short or a long video), unscheduled ones last. */
 export async function claimRemixJob(tx: Tx, productId: string) {
-  const s = await tx.maybeOne<{ id: string; workspace_id: string; video_id: string; title: string; line_from: number; line_to: number; targets: string[]; music_version: number }>(
+  const next = await tx.maybeOne<{ kind: "short" | "video" }>(
+    `select kind from (
+       select 'short' kind, publish_at from calm_shorts where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '1 hour')) and ${SHORT_OPEN}
+       union all
+       select 'video', publish_at from calm_videos where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '2 hours')) and ${VIDEO_OPEN}
+     ) x order by publish_at nulls last, kind limit 1`, [productId]);
+  if (!next) return null;
+  const s = next.kind === "video" ? null : await tx.maybeOne<{ id: string; workspace_id: string; video_id: string; title: string; line_from: number; line_to: number; targets: string[]; music_version: number }>(
     `select id, workspace_id, video_id, title, line_from, line_to, targets, music_version from calm_shorts
       where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '1 hour')) and ${SHORT_OPEN}
       order by publish_at nulls last, idx limit 1 for update skip locked`,

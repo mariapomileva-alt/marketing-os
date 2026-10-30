@@ -180,7 +180,7 @@ describe("shorts and reels", () => {
 describe("new music on upcoming videos", () => {
   it("remakes scheduled shorts and keeps their time; the old YouTube video only goes private", async () => {
     const v = await as((tx) => tx.one<{ id: string }>("select id from calm_videos where product_id = $1 and array_length(audio_keys, 1) > 0 limit 1", [productId]));
-    const at = new Date(Date.now() + 2 * 86_400_000);
+    const at = new Date(Date.now() + 2 * 3_600_000); // goes out soonest of all
     const asset = await as((tx) => tx.one<{ id: string }>("select preview_asset_id id from calm_shorts where preview_asset_id is not null and product_id = $1 limit 1", [productId]));
     const ids = await as((tx) => tx.query<{ id: string }>(
       `insert into calm_shorts (workspace_id, product_id, video_id, idx, line_from, line_to, title, targets, status, publish_at, youtube_video_id, preview_asset_id, instagram_status)
