@@ -5,7 +5,7 @@
  *   1. Asks Marketing OS for the next job (POST {MOS_URL}/api/cron/calm-next, Bearer MOS_RENDER_TOKEN).
  *   2. Downloads the voice lines and nature clips, renders a 1080p video: clips with slow cross-fades, each line
  *      fading in and out on screen, the voice over our own
- *      generated music (scripts/reels/ambient.py for long videos, music.py for Shorts) that ducks under the voice.
+ *      generated ambient bed (scripts/reels/ambient_voice.py: drift, tide or glow) that ducks under the voice.
  *   3. Uploads it to the YouTube upload session Marketing OS opened (the video is PRIVATE), reports back.
  *
  * Nothing here can publish: the owner approves the private video in Marketing OS, which schedules it.
@@ -20,24 +20,23 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 const HERE = path.dirname(new URL(import.meta.url).pathname);
-const MOODS = ["night", "piano", "warm", "airy", "dawn"]; // five music variants, picked per video
+// Three soft ambient beds made to sit under a voice (no bells or melody): picked per video, the same on a re-render.
+const BEDS = ["drift", "tide", "glow"];
 const hashOf = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
 /**
- * Our own music, written for each video (scripts/reels): Shorts get the Reels sound (music.py, resolving on the end
- * card), long videos a slow meditative piece (ambient.py). The mood and melody follow the job id, so every video sounds
- * different and a re-render sounds the same. Loudness-normalized so the voice always sits clearly on top.
+ * Our own music, written for each video (scripts/reels/ambient_voice.py): slow warm chords, a low drone and, for
+ * "tide", a far-away sea, all kept below the speech range so the voice stays clear. Loudness-normalized.
  */
-export async function ownMusic(job, T, endAt, work) {
+export async function ownMusic(job, T, _endAt, work) {
   const seed = hashOf(job.id ?? job.title ?? "calm") % 100000;
-  const mood = MOODS.includes(job.music_mood) ? job.music_mood : MOODS[seed % MOODS.length];
+  const bed = BEDS.includes(job.music_bed) ? job.music_bed : BEDS[seed % BEDS.length];
   const raw = path.join(work, "music-raw.wav");
   const out = path.join(work, "music.wav");
   const py = process.env.PYTHON ?? "python3";
-  if (job.format === "short") await run(py, [path.join(HERE, "reels", "music.py"), raw, String(T), String(endAt), String(seed), mood], { maxBuffer: 1 << 24 });
-  else await run(py, [path.join(HERE, "reels", "ambient.py"), raw, String(T), String(seed), mood], { maxBuffer: 1 << 24, timeout: 20 * 60_000 });
+  await run(py, [path.join(HERE, "reels", "ambient_voice.py"), raw, String(T), String(seed), bed], { maxBuffer: 1 << 24, timeout: 20 * 60_000 });
   await ffmpeg(["-i", raw, "-af", "loudnorm=I=-16:TP=-1.5:LRA=7", "-ar", "44100", "-ac", "2", out], "music loudness");
-  return { file: out, mood };
+  return { file: out, bed };
 }
 // Landscape for long videos; vertical 9:16 for Shorts and Reels (set per job in render()).
 let W = 1920;
@@ -208,8 +207,8 @@ export async function render(job, out, work) {
   const padIdx = voice.length + 1;
   const noiseIdx = voice.length + 2;
   if (generated) {
-    // Normalized to -16 LUFS: about 11 dB under the voice, and a little more present in Shorts (the music is the hook).
-    filters.push(`[${padIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:${T},volume=${vertical ? 0.36 : 0.28}[music]`);
+    // Normalized to -16 LUFS, then about 11 dB under the voice (a touch more present in Shorts); ducks while the voice speaks.
+    filters.push(`[${padIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:${T},volume=${vertical ? 0.34 : 0.27}[music]`);
   } else if (musicFile) {
     filters.push(`[${padIdx}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:${T},volume=0.22,afade=t=in:d=4,afade=t=out:st=${T - 6}:d=6[music]`);
   } else {

@@ -212,6 +212,18 @@ describe("new music on upcoming videos", () => {
     expect(ev[0].external_id).toBe("newVID00001");
   });
 
+  it("past today's YouTube re-upload allowance, a short gets the new sound on Instagram only", async () => {
+    const s = await as((tx) => tx.one<{ id: string; youtube_video_id: string }>("select id, youtube_video_id from calm_shorts where product_id = $1 and youtube_video_id = 'newVID00001'", [productId]));
+    await as((tx) => tx.query("update calm_shorts set remix = 'queued' where id = $1", [s.id]));
+    const token = await as((tx) => createRendererToken(tx, owner.workspaceId, productId));
+    const claimed = (await service((tx) => claimRenderJob(tx, token))) as { job: { id: string; skip_youtube?: boolean } | null };
+    expect(claimed.job?.id).toBe(s.id);
+    expect(claimed.job?.skip_youtube).toBe(true); // the one allowed re-upload today was used above
+    await service((tx) => finishRender(tx, token, s.id, { preview: true }, async () => null));
+    const row = await as((tx) => tx.one<{ youtube_video_id: string; remix: string | null; error: string | null; status: string }>("select youtube_video_id, remix, error, status from calm_shorts where id = $1", [s.id]));
+    expect(row).toMatchObject({ youtube_video_id: "newVID00001", remix: null, error: null, status: "scheduled" });
+  });
+
   it("keeps the approved version when the new render fails", async () => {
     const s = await as((tx) => tx.one<{ id: string }>("select id from calm_shorts where product_id = $1 and youtube_video_id = 'newVID00001'", [productId]));
     await as((tx) => tx.query("update calm_shorts set remix = 'rendering', remix_started_at = now() where id = $1", [s.id]));

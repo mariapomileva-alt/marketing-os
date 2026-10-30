@@ -33,9 +33,10 @@ export async function POST(request: NextRequest) {
     const site = stock.some((c) => c.source_url.includes("pixabay")) ? "Pixabay" : "Pexels";
     const footer = `${credits ? `\n\nFootage: ${credits} (${site}).` : ""}\nVoice: AI-generated.`;
     const isShort = job.kind === "short";
-    const wantsYoutube = !isShort || job.targets.includes("youtube");
+    const skipYoutube = "skip_youtube" in job && job.skip_youtube;
+    const wantsYoutube = (!isShort || job.targets.includes("youtube")) && !skipYoutube;
     let uploadUrl: string | null = null;
-    if (wantsYoutube) {
+    if (wantsYoutube) try {
       const yt = await accessToken(await refreshTokenFor(conn.secret_id));
       uploadUrl = isShort
         ? await createUploadSession(yt, {
@@ -44,6 +45,11 @@ export async function POST(request: NextRequest) {
             tags: job.tags,
           })
         : await createUploadSession(yt, { title: job.title, description: `${job.description.replace(/LINK/g, link)}${footer}`.slice(0, 4900), tags: job.tags });
+    } catch (e) {
+      // YouTube's daily limit reached while giving a short new music: Instagram and TikTok still get the new sound.
+      const social = isShort && job.targets.some((t) => t !== "youtube");
+      if (!("remix" in job && job.remix) || !social || !/quota/i.test((e as Error).message)) throw e;
+      await withContext({ userId: null, role: "service", actorType: "system" }, (tx) => tx.query("update calm_shorts set remix_skip_youtube = true where id = $1", [job.id]));
     }
     const store = fileStore();
     const lines = [];

@@ -46,26 +46,43 @@ const musicPath = (own: string) => `case when (select own_music from calm_settin
 
 /** The renderer's next remix: whatever goes out soonest (a short or a long video), unscheduled ones last. */
 export async function claimRemixJob(tx: Tx, productId: string) {
+  // YouTube re-uploads left today (new daily videos need most of YouTube's upload quota).
+  const left = (await tx.maybeOne<{ n: number }>(
+    `select greatest(0, remix_youtube_per_day - case when remix_youtube_day = current_date then remix_youtube_used else 0 end)::int n
+       from calm_settings where product_id = $1`, [productId]))?.n ?? 0;
+  // Without YouTube uploads left, only shorts that also go to Instagram or TikTok can get the new sound now.
+  const shortOk = left > 0 ? "true" : "targets && array['instagram', 'tiktok']";
+  const videoOk = left > 0 ? "true" : "false";
   const next = await tx.maybeOne<{ kind: "short" | "video" }>(
     `select kind from (
-       select 'short' kind, publish_at from calm_shorts where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '1 hour')) and ${SHORT_OPEN}
+       select 'short' kind, publish_at from calm_shorts where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '1 hour')) and ${SHORT_OPEN} and ${shortOk}
        union all
-       select 'video', publish_at from calm_videos where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '2 hours')) and ${VIDEO_OPEN}
+       select 'video', publish_at from calm_videos where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '2 hours')) and ${VIDEO_OPEN} and ${videoOk}
      ) x order by publish_at nulls last, kind limit 1`, [productId]);
   if (!next) return null;
+  const useYoutube = async (needs: boolean) => {
+    if (!needs || left <= 0) return false;
+    await tx.query(
+      `update calm_settings set remix_youtube_used = case when remix_youtube_day = current_date then remix_youtube_used + 1 else 1 end,
+              remix_youtube_day = current_date where product_id = $1`, [productId]);
+    return true;
+  };
   const s = next.kind === "video" ? null : await tx.maybeOne<{ id: string; workspace_id: string; video_id: string; title: string; line_from: number; line_to: number; targets: string[]; music_version: number }>(
     `select id, workspace_id, video_id, title, line_from, line_to, targets, music_version from calm_shorts
-      where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '1 hour')) and ${SHORT_OPEN}
+      where product_id = $1 and (remix = 'queued' or (remix = 'rendering' and remix_started_at < now() - interval '1 hour')) and ${SHORT_OPEN} and ${shortOk}
       order by publish_at nulls last, idx limit 1 for update skip locked`,
     [productId],
   );
   if (s) {
+    const needs = s.targets.includes("youtube");
+    const skipYoutube = needs && !(await useYoutube(true));
+    await tx.query("update calm_shorts set remix_skip_youtube = $2 where id = $1", [s.id, skipYoutube]);
     const v = await tx.one<{ lines: Array<{ text: string; pause: number }>; audio_keys: string[]; clips: CalmClip[]; music_path: string | null; tags: string[] }>(
       `select lines, audio_keys, clips, tags, ${musicPath("music_path")} from calm_videos v where id = $1`, [s.video_id]);
     await tx.query("update calm_shorts set remix = 'rendering', remix_started_at = now() where id = $1", [s.id]);
     const range = <T,>(a: T[]) => a.slice(s.line_from, s.line_to + 1);
     return {
-      kind: "short" as const, remix: true, id: s.id, workspace_id: s.workspace_id, title: s.title, targets: s.targets,
+      kind: "short" as const, remix: true, skip_youtube: skipYoutube, id: s.id, workspace_id: s.workspace_id, title: s.title, targets: s.targets,
       lines: range(v.lines), audio_keys: range(v.audio_keys), clips: v.clips.slice(0, 3), music_path: v.music_path,
       tags: [...v.tags.slice(0, 10), "shorts"], description: "", libraryPaths: await libraryPaths(tx, v.clips),
       preview_key: `${s.workspace_id}/${productId}/calm/shorts/${s.id}-m${s.music_version}.mp4`,
@@ -78,9 +95,10 @@ export async function claimRemixJob(tx: Tx, productId: string) {
     [productId],
   );
   if (!v) return null;
-  await tx.query("update calm_videos set remix = 'rendering', remix_started_at = now() where id = $1", [v.id]);
+  await useYoutube(true);
+  await tx.query("update calm_videos set remix = 'rendering', remix_started_at = now(), remix_skip_youtube = false where id = $1", [v.id]);
   return {
-    kind: "video" as const, remix: true, ...v, libraryPaths: await libraryPaths(tx, v.clips),
+    kind: "video" as const, remix: true, skip_youtube: false, ...v, libraryPaths: await libraryPaths(tx, v.clips),
     preview_key: `${v.workspace_id}/${productId}/calm/${v.id}-preview-m${v.music_version}.mp4`,
   };
 }
@@ -101,8 +119,8 @@ export async function isRemix(tx: Tx, productId: string, id: string) {
 
 /** The new version arrived: it takes the old one's place, or nothing changes when something went wrong. */
 export async function finishRemix(tx: Tx, productId: string, id: string, result: { youtubeVideoId?: string; error?: string; preview?: boolean }, yt: RemixYoutube | null) {
-  const short = await tx.maybeOne<{ workspace_id: string; title: string; status: string; publish_at: string | null; youtube_video_id: string | null; targets: string[]; music_version: number; instagram_status: string | null }>(
-    "select workspace_id, title, status, publish_at::text, youtube_video_id, targets, music_version, instagram_status from calm_shorts where id = $1 and product_id = $2 and remix = 'rendering' for update", [id, productId]);
+  const short = await tx.maybeOne<{ workspace_id: string; title: string; status: string; publish_at: string | null; youtube_video_id: string | null; targets: string[]; music_version: number; instagram_status: string | null; remix_skip_youtube: boolean }>(
+    "select workspace_id, title, status, publish_at::text, youtube_video_id, targets, music_version, instagram_status, remix_skip_youtube from calm_shorts where id = $1 and product_id = $2 and remix = 'rendering' for update", [id, productId]);
   const video = short ? null : await tx.maybeOne<{ workspace_id: string; title: string; theme: string; status: string; publish_at: string | null; youtube_video_id: string | null; music_version: number }>(
     "select workspace_id, title, theme, status, publish_at::text, youtube_video_id, music_version from calm_videos where id = $1 and product_id = $2 and remix = 'rendering' for update", [id, productId]);
   const row = short ?? video;
@@ -112,7 +130,8 @@ export async function finishRemix(tx: Tx, productId: string, id: string, result:
     await tx.query(`update ${table} set remix = null, error = $2 where id = $1`, [id, `New music not applied: ${why.slice(0, 300)} The current version stays.`]);
     return { ok: true as const, applied: false, why };
   };
-  const needsYoutube = !short || short.targets.includes("youtube");
+  // A short past today's YouTube re-upload allowance gets the new sound on Instagram and TikTok only.
+  const needsYoutube = !short || (short.targets.includes("youtube") && !short.remix_skip_youtube);
   if (result.error) return keepOld(`render failed (${result.error})`);
   if (needsYoutube && !result.youtubeVideoId) return keepOld("the new video did not reach YouTube.");
   if (short && !result.preview) return keepOld("the new file did not arrive.");
