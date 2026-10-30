@@ -9,6 +9,7 @@ import type { Actor } from "./content";
  */
 export interface MixItem {
   key: string;           // "gom:<calm_short id>" or "yt:<youtube video id>"
+  lane?: string;         // the platforms it goes to ("youtube", "instagram+tiktok"); each lane is mixed on its own
   family: string;        // the look: "calm:<long video id>" or "own"
   at: Date;
   label: string;
@@ -89,14 +90,15 @@ export function planMix(items: MixItem[], seed = Date.now()) {
 
 /** Scheduled shorts that can still be moved (at least two hours ahead, nothing sent anywhere yet). */
 export async function movableShorts(tx: Tx, productId: string, includeOwn: boolean): Promise<Array<MixItem & { youtubeId: string | null }>> {
-  const ours = await tx.query<{ id: string; video_id: string; title: string; publish_at: string; youtube_video_id: string | null }>(
-    `select id, video_id, title, publish_at::text, youtube_video_id from calm_shorts
+  const ours = await tx.query<{ id: string; video_id: string; title: string; publish_at: string; youtube_video_id: string | null; targets: string[] }>(
+    `select id, video_id, title, publish_at::text, youtube_video_id, targets from calm_shorts
       where product_id = $1 and status = 'scheduled' and publish_at > now() + interval '2 hours'
         and coalesce(instagram_status, 'queued') = 'queued' and coalesce(tiktok_status, 'queued') = 'queued'`,
     [productId],
   );
   const items: Array<MixItem & { youtubeId: string | null }> = ours.map((s) => ({
     key: `gom:${s.id}`, family: `calm:${s.video_id}`, at: new Date(s.publish_at), label: s.title, youtubeId: s.youtube_video_id,
+    lane: [...s.targets].sort().join("+"),
   }));
   if (includeOwn) {
     // Shorts scheduled on YouTube outside God of Marketing (the owner's own videos), as last read from the channel.
@@ -107,7 +109,7 @@ export async function movableShorts(tx: Tx, productId: string, includeOwn: boole
           and not exists (select 1 from calm_videos v where v.product_id = e.product_id and v.youtube_video_id = e.external_id)`,
       [productId],
     );
-    items.push(...theirs.map((e) => ({ key: `yt:${e.external_id}`, family: "own", at: new Date(e.at), label: e.title, youtubeId: e.external_id })));
+    items.push(...theirs.map((e) => ({ key: `yt:${e.external_id}`, family: "own", at: new Date(e.at), label: e.title, youtubeId: e.external_id, lane: "youtube" })));
   }
   return items;
 }
@@ -118,9 +120,22 @@ export interface MixDeps {
 }
 
 export async function mixShorts(tx: Tx, actor: Actor, productId: string, deps: MixDeps | null, opts: { includeOwn: boolean; seed?: number }) {
-  const items = await movableShorts(tx, productId, opts.includeOwn && Boolean(deps));
-  if (items.length < 3 || new Set(items.map((i) => i.family)).size < 2) return { moved: 0, failed: [] as string[], before: 0, after: 0 };
-  const plan = planMix(items, opts.seed);
+  const all = await movableShorts(tx, productId, opts.includeOwn && Boolean(deps));
+  // Each set of platforms keeps its own times, so a lane never ends up with two shorts at once.
+  const lanes = new Map<string, typeof all>();
+  for (const i of all) lanes.set(i.lane ?? "", [...(lanes.get(i.lane ?? "") ?? []), i]);
+  const moves: Array<{ item: MixItem; to: Date }> = [];
+  let before = 0;
+  let after = 0;
+  for (const items of lanes.values()) {
+    if (items.length < 3 || new Set(items.map((i) => i.family)).size < 2) continue;
+    const plan = planMix(items, opts.seed);
+    moves.push(...plan.moves);
+    before += plan.before;
+    after += plan.cost;
+  }
+  if (!moves.length) return { moved: 0, failed: [] as string[], before: 0, after: 0 };
+  const plan = { moves, before, cost: after };
   let moved = 0;
   const failed: string[] = [];
   for (const { item, to } of plan.moves) {

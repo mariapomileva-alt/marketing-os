@@ -43,6 +43,9 @@ const settingsSchema = z.object({
   themes: z.array(z.enum(["river", "forest", "clouds", "rain", "ocean", "snow", "lake", "meadow"])).min(1),
   auto_shorts: z.boolean(),
   auto_shorts_targets: z.array(z.enum(["youtube", "instagram", "tiktok"])),
+  shorts_per_video: z.coerce.number().int().min(1).max(15),
+  short_slots: z.array(z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d$/, "Short times look like 06:30 (UTC).")).min(1, "Give at least one time for shorts.").max(8),
+  pipeline: z.coerce.number().int().min(1).max(7),
 });
 
 export async function saveCalmSettingsAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
@@ -58,6 +61,9 @@ export async function saveCalmSettingsAction(slug: string, _: ActionResult | nul
       themes: data.getAll("themes"),
       auto_shorts: data.get("auto_shorts") === "on",
       auto_shorts_targets: data.getAll("auto_shorts_targets"),
+      shorts_per_video: data.get("shorts_per_video") ?? 6,
+      short_slots: str(data.get("short_slots") ?? "06:30, 11:30, 17:30").split(/[,\s]+/).filter(Boolean),
+      pipeline: data.get("pipeline") ?? 3,
     });
     if (!parsed.success) return fail(parsed.error.issues.map((i) => i.message).join(" "));
     await db((tx, ctx) => updateCalmSettings(tx, ctx.workspaceId, product.id, parsed.data), { reason: "Calm video settings changed" });

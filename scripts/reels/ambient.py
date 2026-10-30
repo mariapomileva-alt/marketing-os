@@ -5,7 +5,7 @@ phrases with long rests, and the density breathes slowly over the piece so it ne
 Fully synthesized (no samples, no licensed tracks).
 
 usage: ambient.py OUT.wav DURATION [SEED] [MOOD] [END_AT]
-MOOD: warm, night, airy, piano. END_AT (optional): a soft resolving chord and bell from that second (the end card).
+MOOD: warm, night, airy, piano, dawn (five pieces of different character, picked at random per video). END_AT (optional): a soft resolving chord and bell from that second (the end card).
 """
 import sys
 import numpy as np
@@ -36,6 +36,9 @@ MOODS = {
     "piano": dict(prog=[[48, 55, 60, 64, 67], [45, 52, 57, 60, 64], [41, 48, 53, 57, 64], [43, 50, 55, 59, 62],
                         [48, 55, 59, 64, 67], [40, 47, 55, 59, 64], [41, 48, 57, 60, 65], [43, 50, 55, 57, 62]],
                   root=36, scale=[64, 67, 69, 72, 74, 76, 79], inst="piano", cutoff=1500, chord=(11, 14)),
+    "dawn": dict(prog=[[43, 50, 55, 59, 62], [40, 47, 52, 55, 59], [36, 43, 48, 52, 55], [38, 45, 50, 54, 57],
+                       [43, 50, 54, 59, 62], [35, 42, 50, 54, 59], [36, 43, 52, 55, 59], [38, 45, 50, 52, 57]],
+                 root=31, scale=[67, 69, 71, 74, 76, 79, 81], inst="kalimba", cutoff=1600, chord=(12, 15)),
 }
 M = MOODS.get(mood, MOODS["night"])
 

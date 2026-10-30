@@ -100,7 +100,7 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
             ["Music", s.own_music ? <Status key="m" tone="green">Our own music, written for each video (slow and meditative for long videos, the Reels sound for shorts)</Status> : d.library.music ? <Status key="m" tone="green">{`Your Creative Library: ${d.library.music} track${d.library.music === 1 ? "" : "s"} tagged calm, used in turn`}</Status> : "Our own generated music (no library tracks tagged calm)."],
             ["YouTube", d.yt?.status === "connected" ? <Status key="y" tone="green">{`Uploads as private to ${d.yt.account_label}`}</Status> : <Status key="y" tone="red">Connect the YouTube channel in Connections</Status>],
             ["Renderer (GitHub)", s.renderer_token_hash ? (rendererSeen ? <Status key="r" tone="green">{`Last checked in ${rendererSeen}`}</Status> : <Status key="r" tone="amber">Key created; waiting for the first check-in</Status>) : <Status key="r" tone="amber">Create a renderer key below and add it to GitHub</Status>],
-            ["Automatic videos", s.enabled ? <Status key="a" tone="green">{`On: two in the pipeline, published ${s.publish_days.map((x) => DAYS[x - 1]).join(" and ")} at ${s.publish_hour_utc}:00 UTC after your approval`}</Status> : <Status key="a">Off (Settings below)</Status>],
+            ["Automatic videos", s.enabled ? <Status key="a" tone="green">{`On: ${s.pipeline} kept ready, published ${s.publish_days.map((x) => DAYS[x - 1]).join(" and ")} at ${s.publish_hour_utc}:00 UTC after your approval`}</Status> : <Status key="a">Off (Settings below)</Status>],
           ]}
         />
         <div className="mt-4 rounded-[var(--radius-panel)] border border-line bg-surface p-4 text-[13.5px]">
@@ -219,6 +219,9 @@ export default async function CalmPage({ params }: PageProps<"/p/[product]/calm"
               <label className="flex items-center gap-1.5"><input type="checkbox" name="auto_shorts_targets" value="tiktok" defaultChecked={s.auto_shorts_targets.includes("tiktok")} /> TikTok</label>
             </div>
           </fieldset>
+          <Field label="Shorts from each video" htmlFor="calm-per" hint="Spread over the video; half go to YouTube Shorts, half to Instagram Reels + TikTok, at random"><Input id="calm-per" name="shorts_per_video" type="number" min={1} max={15} defaultValue={s.shorts_per_video} /></Field>
+          <Field label="Short times a day (UTC)" htmlFor="calm-slots" hint="Each platform gets one short at each time, mixed by look. 06:30 UTC = 08:30 Riga"><Input id="calm-slots" name="short_slots" defaultValue={s.short_slots.join(", ")} /></Field>
+          <Field label="Long videos kept ready" htmlFor="calm-pipe" hint="Waiting for you or scheduled; one new video a day at most"><Input id="calm-pipe" name="pipeline" type="number" min={1} max={7} defaultValue={s.pipeline} /></Field>
           <Field label="Topics, one per line (used in turn)" htmlFor="calm-topics" className="md:col-span-3"><Textarea id="calm-topics" name="topics" rows={8} defaultValue={s.topics.join("\n")} /></Field>
         </ActionForm>
       </Section>

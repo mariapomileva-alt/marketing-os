@@ -20,7 +20,7 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 const HERE = path.dirname(new URL(import.meta.url).pathname);
-const MOODS = ["night", "piano", "warm", "airy"];
+const MOODS = ["night", "piano", "warm", "airy", "dawn"]; // five music variants, picked per video
 const hashOf = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
 /**

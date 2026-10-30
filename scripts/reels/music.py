@@ -2,7 +2,8 @@
 resolving chord with a bell on the end card. Fully synthesized (no samples, no licensed tracks).
 
 usage: music.py OUT.wav DURATION END_AT [SEED] [MOOD]
-MOOD: warm (D major, kalimba), night (low A minor, soft felt piano), airy (E major, bells), piano (C major, piano).
+MOOD: warm (D major, kalimba), night (low A minor, soft felt piano), airy (E major, bells), piano (C major, piano),
+dawn (G major, slow kalimba).
 Each seed gives a different melody, so no two Reels sound the same.
 """
 import sys
@@ -34,6 +35,10 @@ MOODS = {
     "piano": dict(chords=[[48, 55, 59, 62, 64], [45, 52, 55, 59, 60], [41, 48, 52, 55, 57], [43, 50, 52, 55, 59]],
                   resolve=[48, 55, 60, 64, 67], scale=[67, 69, 72, 74, 76, 79], inst="piano", gaps=[0.8, 1.2, 1.6, 2.0],
                   cutoff=1600, bells=(79, 72, 76, 84)),
+    # Dawn: G major, slow harp-like kalimba over open fifths, a little brighter than warm.
+    "dawn": dict(chords=[[43, 50, 55, 59, 62], [40, 47, 52, 55, 59], [36, 43, 48, 52, 55], [38, 45, 50, 54, 57]],
+                 resolve=[43, 50, 55, 59, 67], scale=[71, 74, 76, 79, 81, 83], inst="kalimba", gaps=[1.1, 1.4, 1.8, 2.2],
+                 cutoff=2000, bells=(83, 79, 74, 86)),
 }
 M = MOODS.get(mood, MOODS["warm"])
 

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ blog, calm: await dailyCalm() });
 }
 
-/** Calm videos: keep two in the pipeline (one new script per day at most). Each still needs the owner's approval. */
+/** Calm videos: keep the set number in the pipeline (one new script per day at most). Each still needs the owner's approval. */
 async function dailyCalm() {
   const products = await withContext({ userId: null, role: "service", actorType: "system" }, (tx) =>
     tx.query<{ product_id: string; workspace_id: string; owner_id: string; slug: string }>(
@@ -34,7 +34,8 @@ async function dailyCalm() {
   for (const p of products) {
     try {
       const r = await withContext({ userId: p.owner_id, role: "service", actorType: "ai", reason: "daily calm video" }, async (tx) => {
-        if ((await videosInPipeline(tx, p.product_id)) >= 2) return { skipped: "two videos already in the pipeline" };
+        const want = (await tx.maybeOne<{ n: number }>("select pipeline n from calm_settings where product_id = $1", [p.product_id]))?.n ?? 3;
+        if ((await videosInPipeline(tx, p.product_id)) >= want) return { skipped: `${want} videos already in the pipeline` };
         return createCalmVideo(tx, { workspaceId: p.workspace_id, userId: p.owner_id }, p.product_id, await liveCalmMedia(p.workspace_id));
       });
       out.push({ product: p.slug, ...r });

@@ -1,6 +1,6 @@
 import type { Tx } from "@/server/db/client";
 import type { Actor } from "./content";
-import { nextSlot, type CalmClip, type Scheduler } from "./calm";
+import type { CalmClip, Scheduler } from "./calm";
 import { defaultTikTokCaption, type TikTokChoice } from "./tiktok";
 import { isIgPermissionError } from "@/server/instagram/errors";
 
@@ -32,19 +32,55 @@ export function groupLines(lines: Array<{ text: string; pause: number }>, max = 
   return groups.slice(0, max);
 }
 
+/** `n` pieces spread evenly over the video (beginning, middle and end), in order. */
+export function pickSpread<T>(groups: T[], n: number) {
+  if (groups.length <= n) return groups;
+  return Array.from({ length: n }, (_, i) => groups[Math.round((i * (groups.length - 1)) / Math.max(1, n - 1))]);
+}
+
+/** Half the pieces to YouTube Shorts, half to Instagram Reels + TikTok, at random (so each platform gets different ones). */
+export function splitLanes(n: number, random: () => number = Math.random): Array<"youtube" | "social"> {
+  const lanes = Array.from({ length: n }, (_, i) => (i < Math.ceil(n / 2) ? "youtube" : "social") as "youtube" | "social");
+  for (let i = lanes.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [lanes[i], lanes[j]] = [lanes[j], lanes[i]];
+  }
+  return lanes;
+}
+
 export async function planShorts(tx: Tx, productId: string, videoId: string) {
   const exists = await tx.maybeOne("select 1 from calm_shorts where video_id = $1 limit 1", [videoId]);
   if (exists) return 0;
   const v = await tx.one<{ workspace_id: string; lines: Array<{ text: string; pause: number }> }>("select workspace_id, lines from calm_videos where id = $1 and product_id = $2", [videoId, productId]);
-  const groups = groupLines(v.lines);
+  const per = (await tx.maybeOne<{ n: number }>("select shorts_per_video n from calm_settings where product_id = $1", [productId]))?.n ?? 6;
+  const groups = pickSpread(groupLines(v.lines), per);
+  const lanes = splitLanes(groups.length);
   for (const [i, g] of groups.entries()) {
     const first = v.lines[g.from].text.replace(/^\[MOCK\]\s*/, "").replace(/[.…]+$/, "");
     await tx.query(
-      "insert into calm_shorts (workspace_id, product_id, video_id, idx, line_from, line_to, title) values ($1,$2,$3,$4,$5,$6,$7) on conflict (video_id, idx) do nothing",
-      [v.workspace_id, productId, videoId, i + 1, g.from, g.to, `${first} · 1 minute of calm`.slice(0, 90)],
+      "insert into calm_shorts (workspace_id, product_id, video_id, idx, line_from, line_to, title, lane) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (video_id, idx) do nothing",
+      [v.workspace_id, productId, videoId, i + 1, g.from, g.to, `${first} · 1 minute of calm`.slice(0, 90), lanes[i]],
     );
   }
   return groups.length;
+}
+
+/**
+ * Next free time for a short: the daily short slots (UTC "HH:MM"), at least 3 hours ahead, one short per slot and
+ * platform (a short taking YouTube and one taking Instagram can share a time; two on YouTube cannot).
+ */
+export function nextShortSlot(slots: string[], taken: Date[], now = new Date()): Date {
+  const times = slots.map((x) => /^(\d{1,2}):(\d{2})$/.exec(x.trim())).filter((m): m is RegExpExecArray => Boolean(m)).map((m) => [Number(m[1]), Number(m[2])] as const);
+  const list = times.length ? times : [[16, 0] as const];
+  for (let d = 0; d < 90; d++) {
+    for (const [h, m] of [...list].sort((a, b) => a[0] * 60 + a[1] - (b[0] * 60 + b[1]))) {
+      const at = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + d, h, m, 0));
+      if (at.getTime() < now.getTime() + 3 * 3_600_000) continue;
+      if (taken.some((t) => Math.abs(t.getTime() - at.getTime()) < 20 * 60_000)) continue;
+      return at;
+    }
+  }
+  return new Date(now.getTime() + 86_400_000);
 }
 
 /** The owner's ticks: which shorts to make and where. Unticked ones stay planned. */
@@ -113,9 +149,11 @@ export async function finishShortRender(tx: Tx, productId: string, id: string, r
 export async function approveShort(tx: Tx, actor: Actor, productId: string, id: string, yt: Scheduler | null, tiktok?: { caption?: string; choice: TikTokChoice }) {
   const s = await tx.one<{ status: string; youtube_video_id: string | null; targets: string[]; title: string }>("select status, youtube_video_id, targets, title from calm_shorts where id = $1 and product_id = $2", [id, productId]);
   if (s.status !== "review") throw new Error("Only a rendered short waiting for review can be approved.");
-  const hour = (await tx.maybeOne<{ h: number }>("select publish_hour_utc h from calm_settings where product_id = $1", [productId]))?.h ?? 16;
-  const taken = (await tx.query<{ publish_at: string }>("select publish_at::text from calm_shorts where product_id = $1 and status in ('scheduled', 'published') and publish_at > now()", [productId])).map((r) => new Date(r.publish_at));
-  const at = nextSlot([1, 2, 3, 4, 5, 6, 7], hour, taken);
+  const slots = (await tx.maybeOne<{ s: string[] }>("select short_slots s from calm_settings where product_id = $1", [productId]))?.s ?? ["16:00"];
+  // Times already used on any of this short's platforms (YouTube and Instagram/TikTok fill their slots separately).
+  const taken = (await tx.query<{ publish_at: string }>(
+    "select publish_at::text from calm_shorts where product_id = $1 and status in ('scheduled', 'published') and publish_at > now() and targets && $2", [productId, s.targets])).map((r) => new Date(r.publish_at));
+  const at = nextShortSlot(slots, taken);
   if (s.targets.includes("youtube") && s.youtube_video_id) {
     if (!yt) throw new Error("The YouTube channel is not connected.");
     await yt.schedule(s.youtube_video_id, at);
