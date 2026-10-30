@@ -1,5 +1,5 @@
 import { db, getAppContext, getProduct } from "@/server/context";
-import { createSpaceAction, inviteAction, revokeInviteAction, switchSpaceAction } from "@/app/actions/team";
+import { createSpaceAction, inviteAction, resendInviteAction, revokeInviteAction, switchSpaceAction } from "@/app/actions/team";
 import { ActionForm } from "@/components/ui/action-form";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
@@ -59,6 +59,7 @@ export default async function TeamPage({ params }: PageProps<"/p/[product]/team"
               <li key={i.id} className="flex flex-wrap items-center gap-3">
                 <span>{i.email}</span><span className="text-muted">{i.role}</span>
                 <span className="text-faint">{i.accepted_at ? `joined ${formatDateTime(i.accepted_at)}` : `invited ${formatDateTime(i.created_at)}, not signed in yet`}</span>
+                {owner && !i.accepted_at ? <ActionForm action={resendInviteAction.bind(null, slug, i.id)} submitLabel="Send the invitation email" pendingLabel="Sending…" submitVariant="secondary" className="flex flex-wrap items-center gap-2 [&_p]:text-[12.5px]"><span className="sr-only">Send the invitation email again</span></ActionForm> : null}
                 {owner ? <form action={revokeInviteAction.bind(null, slug, i.id)}><Button size="sm" variant="ghost">{i.accepted_at ? "Remove from space" : "Take back"}</Button></form> : null}
               </li>
             ))}

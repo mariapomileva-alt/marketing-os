@@ -5,6 +5,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db, getAppContext, requireOwner, SPACE_COOKIE } from "@/server/context";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
+import { sendInviteEmail } from "@/server/auth/invite";
+import { appUrl } from "@/server/notify/telegram";
+
+async function inviteEmail(email: string) {
+  const r = await sendInviteEmail(email, appUrl("/login")).catch((e: Error) => ({ sent: false, reason: e.message }));
+  if (r.sent) return `An invitation email went to ${email} (from Supabase; ask them to check Spam too). The link in it signs them in; they see only this space.`;
+  return `No email was sent (${r.reason}). Ask ${email} to open ${appUrl("/login")} and press “Send sign-in link” with this address. They will see only this space.`;
+}
 
 const msg = (x: unknown) => (x as Error).message;
 
@@ -37,7 +45,19 @@ export async function inviteAction(slug: string, _: ActionResult | null, data: F
       await tx.query("insert into workspace_invites (workspace_id, email, role, invited_by) values ($1,$2,$3,$4)", [ctx.workspaceId, email, role, ctx.user.id]);
     }, { reason: `Invited ${email} to the space as ${role}` });
     revalidatePath(`/p/${slug}/team`);
-    return ok(`Invited. Ask ${email} to open God of Marketing and sign in with “Email me a link” using this address. They will see only this space.`);
+    return ok(`Invited. ${await inviteEmail(email)}`);
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+/** Sends the invitation email again to someone invited who has not signed in yet. */
+export async function resendInviteAction(slug: string, id: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const ctx = await requireOwner();
+    const inv = await db((tx) => tx.maybeOne<{ email: string }>("select email from workspace_invites where id = $1 and workspace_id = $2 and revoked_at is null and accepted_at is null", [id, ctx.workspaceId]));
+    if (!inv) return fail("This invitation is already used or taken back.");
+    return ok(await inviteEmail(inv.email));
   } catch (e) {
     return toFailure(e, msg);
   }
