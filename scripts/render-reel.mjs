@@ -206,6 +206,8 @@ export async function renderReel(spec, outFile, seed = 1) {
     const cdp = await ctx.newCDPSession(p);
     const frames = [];
     cdp.on("Page.screencastFrame", async (f) => { frames.push({ t: f.metadata.timestamp, data: f.data }); await cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {}); });
+    // Explainers open straight on the first drawing (also the cover frame): set it up before recording starts.
+    if ((spec.format ?? "scenes") === "explain") await p.evaluate(() => { window.noIntro(); window.panel("explain"); window.hook(true); });
     await cdp.send("Page.startScreencast", { format: "png", everyNthFrame: 1, maxWidth: 1080, maxHeight: 1920 });
     const t0 = Date.now();
     const at = async (s) => { const w = t0 + s * 1000 - Date.now(); if (w > 0) await p.waitForTimeout(w); };
