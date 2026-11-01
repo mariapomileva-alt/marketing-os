@@ -81,9 +81,9 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
               {planned.slice(0, 40).map((x) => (
                 <li key={x.id} className="flex items-center gap-4 px-4 py-2.5 text-[13px]">
                   <span className="num w-[132px] shrink-0 text-green">{x.published_at ? when(x.published_at) : x.scheduled_for ? when(x.scheduled_for) : "—"}</span>
-                  <span className="w-[72px] shrink-0 text-[12px] text-faint">{KIND[x.kind]}</span>
+                  <span className="w-[72px] shrink-0 text-[12px] text-faint">{x.kind === "reel" && x.reel?.format === "explain" ? "Explainer" : KIND[x.kind]}</span>
                   <span className="min-w-0 flex-1 truncate">{x.title}</span>
-                  {x.external_url ? <a href={x.external_url} target="_blank" rel="noreferrer noopener" className="text-[12px] underline">open</a> : <span className="text-[12px] text-muted">{x.status === "published" ? "published" : x.kind === "article" ? "planned" : "scheduled"}</span>}
+                  {x.external_url ? <a href={x.external_url} target="_blank" rel="noreferrer noopener" className="text-[12px] underline">open</a> : <span className="text-[12px] text-muted">{x.status === "published" ? "published" : x.kind === "article" ? "planned" : x.status === "approved" && !x.scheduled_for ? (x.kind === "reel" && x.render_status !== "ready" ? "approved · video being made" : "approved · time comes next") : "scheduled"}</span>}
                 </li>
               ))}
             </ol>
