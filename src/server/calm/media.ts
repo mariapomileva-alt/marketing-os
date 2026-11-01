@@ -15,11 +15,11 @@ export const EXPLAIN_VOICE_INSTRUCTIONS =
 export const BRIEF_VOICE_INSTRUCTIONS =
   "A calm, warm colleague giving a short morning update over coffee. Clear and friendly, unhurried, lightly encouraging. Natural pauses between topics.";
 
-export async function speak(apiKey: string, text: string, voice: string, f: Fetch = fetch, instructions = CALM_VOICE_INSTRUCTIONS): Promise<Uint8Array> {
+export async function speak(apiKey: string, text: string, voice: string, f: Fetch = fetch, instructions = CALM_VOICE_INSTRUCTIONS, speed = 1): Promise<Uint8Array> {
   const res = await f("https://api.openai.com/v1/audio/speech", {
     method: "POST",
     headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: "gpt-4o-mini-tts", voice, input: text, instructions, response_format: "mp3" }),
+    body: JSON.stringify({ model: "gpt-4o-mini-tts", voice, input: text, instructions, response_format: "mp3", ...(speed !== 1 ? { speed } : {}) }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };

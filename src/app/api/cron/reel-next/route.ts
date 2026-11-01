@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         voice_urls = [];
         for (const [i, text] of texts.entries()) {
           const k = r.job.storageKey.replace(/\.mp4$/, `-voice-${i}.mp3`);
-          await store.put(k, await speak(key, text, r.ctx.voice ?? "sage", fetch, EXPLAIN_VOICE_INSTRUCTIONS), "audio/mpeg");
+          await store.put(k, await speak(key, text, r.ctx.voice ?? "sage", fetch, EXPLAIN_VOICE_INSTRUCTIONS, 1.12), "audio/mpeg");
           voice_urls.push((await store.signedUrl(k, 3 * 3600))!);
         }
       } catch {
