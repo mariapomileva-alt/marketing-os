@@ -1,5 +1,5 @@
 import type { Tx } from "@/server/db/client";
-import { deskTimesFor } from "./even-plan";
+import { deskTimesFor, evenDesk } from "./even-plan";
 import type { MarketingBrief } from "@/domain/brief";
 import { productBrief } from "./marketing-brief";
 import { IG_PERMISSION_NOTE } from "./calm-shorts";
@@ -568,8 +568,11 @@ export async function finishReelRender(tx: Tx, productId: string, id: string, re
     [d.workspace_id, productId, d.title.slice(0, 200), result.storageKey],
   );
   await tx.query("update content_desk_items set render_status = 'ready', video_asset_id = $2, render_error = null where content_item_id = $1", [id, a.id]);
-  // Approved before its video existed: now it can take its time on the calendar.
+  // Approved before its video existed: now it can take its time on the calendar. An explainer goes ahead of the
+  // other desk Reels (it takes the next daily Reel time; the rest move one day on).
   await scheduleApprovedDeskItems(tx, d.workspace_id, productId).catch(() => undefined);
+  const explain = await tx.maybeOne("select 1 from content_desk_items where content_item_id = $1 and reel->>'format' = 'explain'", [id]);
+  if (explain) await evenDesk(tx, productId).catch(() => undefined);
   return true;
 }
 
