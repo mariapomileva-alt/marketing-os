@@ -10,7 +10,8 @@ import { mixShorts, type MixDeps } from "./shorts-mix";
  * Order is kept (what was planned first goes first); then shorts are mixed so one look does not repeat on a day.
  * Only items not sent anywhere yet and more than two hours away move; YouTube gets the new times too.
  */
-export const DAILY_CAPS = { youtube: 3, instagram: 2, tiktok: 3 } as const;
+// Calm shorts a day; the day's explainer adds one more YouTube Short and one more Reel (3 of each in all).
+export const DAILY_CAPS = { youtube: 2, instagram: 2, tiktok: 3 } as const;
 
 const rigaDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Riga", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
@@ -34,7 +35,7 @@ export async function evenDesk(tx: Tx, productId: string, now = new Date()) {
     `select i.id, i.format, i.scheduled_for::text from content_items i join content_desk_items d on d.content_item_id = i.id
       where i.product_id = $1 and i.channel = 'instagram' and i.status = 'scheduled' and i.published_at is null
         and (i.scheduled_for is null or i.scheduled_for > $2::timestamptz + interval '2 hours' or i.scheduled_for < $2::timestamptz)
-        and d.ig_container_id is null
+        and d.ig_container_id is null and coalesce(d.youtube_status, '') <> 'uploaded'
       order by i.scheduled_for nulls last, i.created_at`,
     [productId, now.toISOString()],
   );

@@ -38,9 +38,12 @@ export function pickSpread<T>(groups: T[], n: number) {
   return Array.from({ length: n }, (_, i) => groups[Math.round((i * (groups.length - 1)) / Math.max(1, n - 1))]);
 }
 
-/** Half the pieces to YouTube Shorts, half to Instagram Reels + TikTok, at random (so each platform gets different ones). */
-export function splitLanes(n: number, random: () => number = Math.random): Array<"youtube" | "social"> {
-  const lanes = Array.from({ length: n }, (_, i) => (i < Math.ceil(n / 2) ? "youtube" : "social") as "youtube" | "social");
+/**
+ * A third of the pieces to YouTube Shorts (2 of 6; the day's explainer is the third Short), the rest to Instagram Reels +
+ * TikTok, at random (so each platform gets different ones).
+ */
+export function splitLanes(n: number, random: () => number = Math.random, youtube = Math.max(1, Math.round(n / 3))): Array<"youtube" | "social"> {
+  const lanes = Array.from({ length: n }, (_, i) => (i < youtube ? "youtube" : "social") as "youtube" | "social");
   for (let i = lanes.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
     [lanes[i], lanes[j]] = [lanes[j], lanes[i]];

@@ -9,10 +9,10 @@ describe("daily shorts plan", () => {
     expect(pickSpread([1, 2], 6)).toEqual([1, 2]);
   });
 
-  it("splits pieces half to YouTube, half to Instagram + TikTok", () => {
+  it("splits pieces: 2 of 6 to YouTube, the rest to Instagram + TikTok", () => {
     const lanes = splitLanes(6);
-    expect(lanes.filter((l) => l === "youtube")).toHaveLength(3);
-    expect(lanes.filter((l) => l === "social")).toHaveLength(3);
+    expect(lanes.filter((l) => l === "youtube")).toHaveLength(2);
+    expect(lanes.filter((l) => l === "social")).toHaveLength(4);
   });
 
   it("fills three times a day, skipping taken times and times too close", () => {

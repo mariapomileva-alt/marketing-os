@@ -14,7 +14,10 @@ import { instagramContainerStatus, instagramCreateReel, instagramPublish, instag
 import { publishDueTikToks, tiktokAccess, tiktokConnection } from "@/server/services/tiktok";
 import { publishDueInstagramPosts } from "@/server/services/content-desk";
 import { instagramCreateCarousel, instagramCreateImage, instagramPermalink } from "@/server/instagram/api";
-import { publishingEnabled } from "@/server/services/youtube-publish";
+import { publishingEnabled, refreshTokenFor, youtubeConnection } from "@/server/services/youtube-publish";
+import { queueExplainersForYoutube, uploadNextExplainer } from "@/server/services/explainer-youtube";
+import { accessToken, createUploadSession, scheduleVideo } from "@/server/youtube/write";
+import { taggedUrl } from "@/domain/traffic";
 import { tiktokDirectPostEnabled, tiktokRefresh, tiktokStatus, tiktokUpload } from "@/server/tiktok/api";
 
 /**
@@ -23,7 +26,7 @@ import { tiktokDirectPostEnabled, tiktokRefresh, tiktokStatus, tiktokUpload } fr
  * Threads posts whose scheduled time has come. Nothing unapproved is ever
  * posted: the queue only contains texts the owner approved, and the gate re-checks the approval hash.
  */
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function authorized(request: NextRequest) {
   const given = request.headers.get("authorization") ?? "";
@@ -90,7 +93,27 @@ export async function GET(request: NextRequest) {
       const studioStats = new Date().getUTCMinutes() < 5
         ? await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "Threads reactions" }, (tx) => refreshStudioStatsLive(tx, p.product_id, 15)).catch((e) => ({ error: (e as Error).message }))
         : null;
-      results.push({ product: p.product_id, ...r, posts, reels, igPosts, tiktok, studioStats });
+      // Approved explainer Reels also go to YouTube Shorts at the same time (one upload per call, YouTube's quota).
+      const explainer = await withContext({ userId: p.owner_id, role: "service", actorType: "system", reason: "explainer Reel to YouTube Shorts (approved only)" }, async (tx) => {
+        const conn = await youtubeConnection(tx, p.product_id);
+        if (!conn?.secret_id || conn.status !== "connected") return null;
+        await queueExplainersForYoutube(tx, p.product_id);
+        const domain = (await tx.maybeOne<{ domain: string | null }>("select domain from site_settings where product_id = $1", [p.product_id]))?.domain;
+        const link = domain ? taggedUrl(`https://${domain}/`, { source: "youtube", medium: "short", key: "explainer" }) : "";
+        const token = async () => accessToken(await refreshTokenFor(conn.secret_id!));
+        return uploadNextExplainer(tx, p.product_id, {
+          read: (path) => fileStore().get(path),
+          upload: async (meta, bytes) => {
+            const session = await createUploadSession(await token(), meta);
+            const res = await fetch(session, { method: "PUT", headers: { "content-type": "video/mp4", "content-length": String(bytes.length) }, body: Buffer.from(bytes) });
+            const json = (await res.json().catch(() => ({}))) as { id?: string; error?: { message?: string } };
+            if (!res.ok || !json.id) throw new Error(`YouTube upload ${res.status}: ${json.error?.message ?? "no video id"}`);
+            return json.id;
+          },
+          schedule: async (id, at) => void (await scheduleVideo(await token(), id, at)),
+        }, link);
+      }).catch((e) => ({ error: (e as Error).message }));
+      results.push({ product: p.product_id, ...r, posts, reels, igPosts, tiktok, studioStats, explainer });
     } catch (e) {
       results.push({ product: p.product_id, error: (e as Error).message });
     }
