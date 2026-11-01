@@ -544,7 +544,8 @@ export async function claimReelJob(tx: Tx, productId: string) {
     `select d.content_item_id id, d.workspace_id, d.reel, i.title from content_desk_items d join content_items i on i.id = d.content_item_id
       where d.product_id = $1 and d.kind = 'reel' and i.status not in ('rejected', 'published', 'archived')
         and (d.render_status = 'waiting' or (d.render_status = 'rendering' and d.render_started_at < now() - interval '1 hour'))
-      order by (i.scheduled_for is null), i.scheduled_for, d.created_at desc limit 1 for update of d skip locked`,
+      order by (i.status = 'approved' and i.scheduled_for is null) desc, (d.reel->>'format' = 'explain') desc, (i.scheduled_for is null), i.scheduled_for, d.created_at desc
+      limit 1 for update of d skip locked`,
     [productId],
   );
   if (!r) return null;
