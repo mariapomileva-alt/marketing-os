@@ -36,7 +36,7 @@ export default async function CreativesPage({ params }: PageProps<"/p/[product]/
             {assets.map((a) => (
               <li key={a.id} className="overflow-hidden rounded-[var(--radius-panel)] border border-line bg-surface">
                 {a.kind === "video" ? (
-                  <video src={`/p/${slug}/creatives/${a.id}`} className="aspect-square w-full bg-paper object-cover" muted loop playsInline preload="metadata" controls />
+                  <video src={`/p/${slug}/creatives/${a.id}`} className="aspect-square w-full bg-ink object-contain" loop playsInline preload="metadata" controls />
                 ) : a.kind === "audio" ? (
                   <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-sage-tint p-3">
                     <span className="text-[12px] text-muted">Music</span>

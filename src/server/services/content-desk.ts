@@ -474,6 +474,20 @@ export async function rerenderReel(tx: Tx, productId: string, itemId: string, re
   if (!r.length) throw new Error("Only a Reel that is not approved yet can be changed.");
 }
 
+/**
+ * Reels that are not out yet are made again in the current style (sound, voice, pacing). An approved Reel keeps its
+ * time and its current file until the new one is ready, so nothing goes out without a video.
+ */
+export async function remakeUpcomingReels(tx: Tx, productId: string) {
+  const r = await tx.query(
+    `update content_desk_items d set render_status = 'waiting', render_error = null
+       from content_items i where i.id = d.content_item_id and d.product_id = $1 and d.kind = 'reel'
+        and i.status not in ('rejected', 'published', 'archived') and d.render_status in ('ready', 'failed')
+        and (i.scheduled_for is null or i.scheduled_for > now() + interval '1 hour')
+     returning d.content_item_id`, [productId]);
+  return r.length;
+}
+
 /** The renderer takes the next Reel to make (a stuck one is retried after an hour). */
 export async function claimReelJob(tx: Tx, productId: string) {
   const r = await tx.maybeOne<{ id: string; workspace_id: string; reel: ReelSpec; title: string }>(

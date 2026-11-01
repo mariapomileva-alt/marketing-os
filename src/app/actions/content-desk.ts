@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
-import { addOwnReel, approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
+import { addOwnReel, approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, remakeUpcomingReels, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
 import type { ReelSpec } from "@/domain/ai/schemas";
 import { liveDeskMedia } from "@/server/desk/live";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -135,6 +135,18 @@ export async function rerenderReelAction(slug: string, itemId: string, _: Action
     await db((tx) => rerenderReel(tx, product.id, itemId, spec), { reason: "Reel text changed, made again" });
     revalidatePath(path(slug));
     return ok("Saved. The Reel is being made again (usually within two hours).");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+/** Every Reel that is not out yet is made again in the current style; approved ones keep their time. */
+export async function remakeReelsAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const n = await db((tx) => remakeUpcomingReels(tx, product.id), { reason: "Upcoming Reels made again in the current style" });
+    revalidatePath(path(slug));
+    return ok(n ? `${n} Reel(s) will be made again in the current style (within about two hours). Approved ones keep their time.` : "No upcoming Reels to remake.");
   } catch (e) {
     return toFailure(e, msg);
   }

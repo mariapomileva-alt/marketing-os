@@ -4,7 +4,7 @@ is kept below the speech range, so the voice always stays clear on top. Fully sy
 
 usage: ambient_voice.py OUT.wav DURATION [SEED] [VARIANT]
 VARIANT: drift (warm D major, slow tape-like pads), tide (A minor 9 with a soft sea swell), glow (E major, airy and light),
-tender (F major, sweet, with a very soft felt-piano arpeggio; for explainers).
+tender (F major, sweet and warm; for explainers).
 """
 import sys
 import wave
@@ -27,7 +27,7 @@ VARIANTS = {
                  drone=21, length=(16, 22), cutoff=(600, 950), sea=0.11),
     # Tender: F major, warm and sweet, with a very soft felt-piano arpeggio (for explainers and gentle Reels).
     "tender": dict(prog=[[41, 53, 57, 60, 64, 67], [38, 50, 53, 57, 60, 65], [34, 46, 50, 53, 57, 62], [36, 48, 52, 55, 60, 64]],
-                   drone=29, length=(8, 10), cutoff=(1000, 1400), sea=0.0, arp=True),
+                   drone=29, length=(8, 10), cutoff=(900, 1300), sea=0.0, arp=False),
     "glow": dict(prog=[[40, 52, 56, 59, 63, 66], [37, 49, 52, 56, 59, 64], [33, 45, 49, 52, 56, 61], [35, 47, 51, 54, 56, 61]],
                  drone=28, length=(13, 18), cutoff=(900, 1400), sea=0.0),
 }

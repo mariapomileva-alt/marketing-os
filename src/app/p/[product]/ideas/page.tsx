@@ -7,7 +7,7 @@ import { EmptyState, PageHeader, Section, Table } from "@/components/ui/layout";
 import { Status } from "@/components/ui/status";
 import { formatDate } from "@/lib/format";
 import { deskItems, getDeskSettings } from "@/server/services/content-desk";
-import { addOwnReelAction, generateDeskAction, saveDeskSettingsAction } from "@/app/actions/content-desk";
+import { addOwnReelAction, generateDeskAction, remakeReelsAction, saveDeskSettingsAction } from "@/app/actions/content-desk";
 import { channelConnection, publishingEnabled } from "@/server/services/youtube-publish";
 import { DeskCard, type DeskCardData } from "./desk-card";
 import { FORMATS, MUSIC, SHOTS } from "./reel-options";
@@ -65,6 +65,7 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
       >
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <ActionForm action={generateDeskAction.bind(null, slug)} submitLabel="Research and prepare now" pendingLabel="Researching and drawing, 1–2 minutes…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Prepare the desk now</span></ActionForm>
+          <ActionForm action={remakeReelsAction.bind(null, slug)} submitLabel="Remake upcoming Reels in the new style" pendingLabel="Queuing…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Remake upcoming Reels</span></ActionForm>
         </div>
         {waiting.length ? (
           <div className="grid gap-4 xl:grid-cols-2">{waiting.map((x) => <DeskCard key={x.id} slug={slug} d={card(x)} />)}</div>

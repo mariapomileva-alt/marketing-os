@@ -114,20 +114,20 @@ function page(spec) {
   .bc { position: absolute; left: 0; right: 0; top: 12%; text-align: center; font-size: 20px; letter-spacing: 2px; opacity: .6; }
   .dark .bc { color: #d7e0d5; } .light .bc { color: #65736c; }
   #explain { background: #f6f1e7; }
-  .ex { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 120px 44px 0; box-sizing: border-box; opacity: 0; transition: opacity .6s; }
+  .ex { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 120px 44px 0; box-sizing: border-box; opacity: 0; transition: opacity .35s; }
   .ex.in { opacity: 1; }
   .exn { font-size: 20px; letter-spacing: 1px; color: #6f6a60; margin-bottom: 20px; }
   .exs { width: 452px; height: 340px; fill: none; stroke: ${INK}; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
   .exs .d { stroke-dasharray: 1; stroke-dashoffset: 1; }
-  .ex.in .d { transition: stroke-dashoffset 1.6s cubic-bezier(.45,.05,.4,1); stroke-dashoffset: 0; }
+  .ex.in .d { transition: stroke-dashoffset .9s cubic-bezier(.45,.05,.4,1); stroke-dashoffset: 0; }
   .exs .mover { opacity: 0; } .ex.in .mover { opacity: 1; }
-  .exs .fade, .exs .pop { opacity: 0; } .ex.in .fade { transition: opacity 1s 1.2s; opacity: 1; }
+  .exs .fade, .exs .pop { opacity: 0; } .ex.in .fade { transition: opacity .7s .6s; opacity: 1; }
   .ex.in .pop { animation: pop .5s forwards; } @keyframes pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   .ex h2 { font-family: Fraunces, serif; font-weight: 600; font-size: 42px; line-height: 1.1; color: ${INK}; text-align: center; margin: 34px 0 0; letter-spacing: -.5px;
-           opacity: 0; transform: translateY(10px); transition: opacity .5s .9s, transform .5s .9s; }
-  .ex p { font-size: 25px; line-height: 1.42; color: #4f4a42; text-align: center; margin: 18px 6px 0; opacity: 0; transition: opacity .6s 1.6s; }
+           opacity: 0; transform: translateY(10px); transition: opacity .4s .3s, transform .4s .3s; }
+  .ex p { font-size: 25px; line-height: 1.42; color: #4f4a42; text-align: center; margin: 18px 6px 0; opacity: 0; transition: opacity .5s .65s; }
   .ex.in h2 { opacity: 1; transform: none; } .ex.in p { opacity: 1; }
-  .ex.in .exs { animation: floaty 4.2s ease-in-out 1.7s infinite; } @keyframes floaty { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-9px) rotate(-1deg); } }
+  .ex.in .exs { animation: floaty 4.2s ease-in-out 1s infinite; } @keyframes floaty { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-9px) rotate(-1deg); } }
   #hook { position: absolute; left: 34px; right: 34px; top: 46px; z-index: 6; padding: 18px 22px; border-radius: 22px; background: rgba(43,43,43,.88); color: #fffdf7;
           font-family: Fraunces, serif; font-weight: 600; font-size: 30px; line-height: 1.15; text-align: center; opacity: 0; transform: translateY(-10px); transition: opacity .4s, transform .4s; }
   #hook.in { opacity: 1; transform: none; }
@@ -224,23 +224,21 @@ export async function renderReel(spec, outFile, seed = 1) {
       }
       t += 0.6;
     } else if (format === "explain") {
-      // No intro card: the first drawing starts at once, with the hook on top while the voice reads it.
-      const vd = spec._voice ?? [];
+      // No intro card: the first drawing starts at once with the hook on top; the voice reads the steps.
       const steps = spec.steps ?? [];
-      t = 0.15;
+      const all = spec._voice ?? [];
+      const vd = all.length === steps.length + 1 ? all.slice(1) : all; // older jobs also voiced the hook
+      t = 0;
       await p.evaluate(() => { window.noIntro(); window.panel("explain"); window.step(0); window.hook(true); });
-      cues.push({ at: 0.35, file: vd[0]?.file });
-      const hookSecs = vd[0] ? vd[0].secs + 0.45 : 2.4;
       for (const [i, st] of steps.entries()) {
-        const voice = vd[i + 1];
-        const start = i === 0 ? t + hookSecs : t;
-        if (i === 0) { await at(start - 0.2); await p.evaluate(() => window.hook(false)); }
-        else { await at(start); await p.evaluate((i) => window.step(i), i); whoosh.push(start); }
-        cues.push({ at: start + (i === 0 ? 0.1 : 0.55), file: voice?.file });
-        const secs = voice ? voice.secs + (i === 0 ? 0.45 : 0.75) : Math.min(6, Math.max(4.4, 3 + ((st.title?.length ?? 0) + (st.text?.length ?? 0)) * 0.028));
-        t = start + secs;
+        const voice = vd[i];
+        if (i > 0) { await at(t); await p.evaluate((i) => window.step(i), i); whoosh.push(t); }
+        cues.push({ at: t + (i === 0 ? 0.5 : 0.35), file: voice?.file });
+        const secs = voice ? voice.secs + (i === 0 ? 0.9 : 0.6) : Math.min(5.5, Math.max(3.8, 2.6 + ((st.title?.length ?? 0) + (st.text?.length ?? 0)) * 0.026));
+        if (i === 0) { await at(Math.min(2.4, secs - 0.4)); await p.evaluate(() => window.hook(false)); }
+        t += secs;
       }
-      t += 0.3;
+      t += 0.2;
     } else if (format === "breathe_along") {
       await p.evaluate(() => window.panel("breath"));
       await at(t - 0.5); await p.evaluate(() => window.lift());
@@ -296,16 +294,17 @@ export async function renderReel(spec, outFile, seed = 1) {
       voiced.forEach((c) => audioIn.push("-i", c.file));
       const sw = path.join(dir, "whoosh.wav");
       execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=color=pink:duration=0.7:amplitude=0.5:sample_rate=48000",
-        "-af", "highpass=f=300,lowpass=f=2200,afade=t=in:d=0.35,afade=t=out:st=0.35:d=0.35,volume=0.16,aformat=channel_layouts=stereo", sw]);
+        "-af", "highpass=f=250,lowpass=f=1600,afade=t=in:d=0.35,afade=t=out:st=0.35:d=0.35,volume=0.07,aformat=channel_layouts=stereo", sw]);
       whoosh.forEach(() => audioIn.push("-i", sw));
       const parts = [];
-      voiced.forEach((c, i) => { filt.push(`[${i + 2}:a]aformat=sample_rates=48000:channel_layouts=stereo,adelay=${Math.round(c.at * 1000)}:all=1,volume=1.0[v${i}]`); parts.push(`[v${i}]`); });
+      voiced.forEach((c, i) => { filt.push(`[${i + 2}:a]aformat=sample_rates=48000:channel_layouts=stereo,loudnorm=I=-16:TP=-1.5,adelay=${Math.round(c.at * 1000)}:all=1[v${i}]`); parts.push(`[v${i}]`); });
       const wBase = voiced.length + 2;
       const wParts = whoosh.map((w, j) => { filt.push(`[${wBase + j}:a]adelay=${Math.round(Math.max(0, w - 0.3) * 1000)}:all=1[w${j}]`); return `[w${j}]`; });
-      filt.push(`[1:a]volume=${voiced.length ? 0.3 : 0.9}[bed]`);
+      // Music well under the voice (about 16 dB), and it dips further while the voice speaks.
+      filt.push(`[1:a]volume=${voiced.length ? 0.19 : 0.9}[bed]`);
       if (voiced.length) {
         filt.push(`${parts.join("")}amix=inputs=${parts.length}:normalize=0,apad,asplit=2[voice][side]`);
-        filt.push(`[bed][side]sidechaincompress=threshold=0.03:ratio=4:attack=40:release=700[duck]`);
+        filt.push(`[bed][side]sidechaincompress=threshold=0.02:ratio=8:attack=30:release=600[duck]`);
         filt.push(`[duck][voice]${wParts.join("")}amix=inputs=${2 + wParts.length}:normalize=0,alimiter=limit=0.95,loudnorm=I=-15:TP=-1.5:LRA=9[aout]`);
       } else {
         filt.push(`[bed]${wParts.join("")}amix=inputs=${1 + wParts.length}:normalize=0[aout]`);

@@ -8,8 +8,8 @@ import { EXPLAIN_VOICE_INSTRUCTIONS, speak } from "@/server/calm/media";
 
 /**
  * The GitHub renderer asks for the next Reel to make (Bearer = the renderer key from Calm Videos). Returns the Reel's
- * script and a one-time upload link for the finished file; for an explainer Reel also the voice (the hook, then each
- * step, read by the calm-video voice). Nothing here publishes anything.
+ * script and a one-time upload link for the finished file; for an explainer Reel also the voice (each step, read by
+ * the calm-video voice). Nothing here publishes anything.
  */
 export const maxDuration = 120;
 
@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
     const key = await openaiKey(r.ctx.workspace_id).catch(() => null);
     if (key) {
       try {
-        const texts = [(spec.intro_lines ?? []).join(" "), ...(spec.steps ?? []).map((s) => `${s.title}. ${s.text ?? ""}`.trim())];
+        // The hook is on screen; the voice reads the steps (title and sentence), so the first picture moves on quickly.
+        const texts = (spec.steps ?? []).map((s) => `${s.title}. ${s.text ?? ""}`.trim());
         voice_urls = [];
         for (const [i, text] of texts.entries()) {
           const k = r.job.storageKey.replace(/\.mp4$/, `-voice-${i}.mp3`);
