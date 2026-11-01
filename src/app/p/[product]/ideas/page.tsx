@@ -78,7 +78,7 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
           <>
             <h3 className="mt-8 text-[15px] font-medium">On the calendar</h3>
             <ol className="mt-2 flex flex-col divide-y divide-line overflow-hidden rounded-[8px] border border-line bg-surface">
-              {planned.slice(0, 20).map((x) => (
+              {planned.slice(0, 40).map((x) => (
                 <li key={x.id} className="flex items-center gap-4 px-4 py-2.5 text-[13px]">
                   <span className="num w-[132px] shrink-0 text-green">{x.published_at ? when(x.published_at) : x.scheduled_for ? when(x.scheduled_for) : "—"}</span>
                   <span className="w-[72px] shrink-0 text-[12px] text-faint">{KIND[x.kind]}</span>

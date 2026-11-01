@@ -31,8 +31,8 @@ async function rigaAt(tx: Tx, day: number, time: string, now: Date) {
 /** Instagram feed pieces from the desk: re-spread, oldest first, 2 posts + 1 Reel a day. Overdue ones move forward. */
 export async function evenDesk(tx: Tx, productId: string, now = new Date()) {
   const slots = (await tx.maybeOne<{ slots: string[] }>("select slots from content_desk_settings where product_id = $1", [productId]))?.slots ?? ["10:30", "15:30", "21:00"];
-  const items = await tx.query<{ id: string; format: string; scheduled_for: string }>(
-    `select i.id, i.format, i.scheduled_for::text from content_items i join content_desk_items d on d.content_item_id = i.id
+  const items = await tx.query<{ id: string; format: string; scheduled_for: string; explain: boolean }>(
+    `select i.id, i.format, i.scheduled_for::text, coalesce(d.reel->>'format' = 'explain', false) explain from content_items i join content_desk_items d on d.content_item_id = i.id
       where i.product_id = $1 and i.channel = 'instagram' and i.status = 'scheduled' and i.published_at is null
         and (i.scheduled_for is null or i.scheduled_for > $2::timestamptz + interval '2 hours' or i.scheduled_for < $2::timestamptz)
         and d.ig_container_id is null and coalesce(d.youtube_status, '') <> 'uploaded'
@@ -43,7 +43,9 @@ export async function evenDesk(tx: Tx, productId: string, now = new Date()) {
     `select to_char(scheduled_for at time zone 'Europe/Riga', 'YYYY-MM-DD HH24:MI') k from content_items
       where product_id = $1 and channel = 'instagram' and status in ('scheduled', 'published') and scheduled_for between $2::timestamptz and $2::timestamptz + interval '2 hours'`,
     [productId, now.toISOString()])).map((r) => r.k));
-  const queues = { reel: items.filter((i) => i.format === "reels_script"), post: items.filter((i) => i.format !== "reels_script") };
+  // Explainer Reels (animated drawings with a voice) take the daily Reel time first; other desk Reels follow after them.
+  const reels = items.filter((i) => i.format === "reels_script");
+  const queues = { reel: [...reels.filter((r) => r.explain), ...reels.filter((r) => !r.explain)], post: items.filter((i) => i.format !== "reels_script") };
   let moved = 0;
   for (const kind of ["post", "reel"] as const) {
     const times = deskTimesFor(kind, slots);
