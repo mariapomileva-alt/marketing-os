@@ -1,5 +1,6 @@
 "use server";
 
+import { scheduleApprovedDeskItems } from "@/server/services/content-desk";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db, getProduct } from "@/server/context";
@@ -140,7 +141,11 @@ export async function decideApprovalAction(slug: string, approvalId: string, _: 
     if (!["approved", "rejected", "changes_requested"].includes(decision)) return fail("Choose a decision.");
     const note = str(data.get("note"));
     if (decision !== "approved" && !note) return fail("Add a short note so the reason is visible later.");
-    await db((tx, ctx) => decideApproval(tx, actorOf(ctx), product.id, approvalId, decision, note), { reason: `approval: ${decision}` });
+    await db(async (tx, ctx) => {
+      await decideApproval(tx, actorOf(ctx), product.id, approvalId, decision, note);
+      // A content-desk piece approved here goes on the calendar at the desk's next free time, as on Ideas & hooks.
+      if (decision === "approved") await scheduleApprovedDeskItems(tx, ctx.workspaceId, product.id);
+    }, { reason: `approval: ${decision}` });
     revalidatePath(`/p/${slug}`, "layout");
     return ok(decision === "approved" ? "Approved." : decision === "rejected" ? "Rejected." : "Sent back for changes.");
   } catch (e) {

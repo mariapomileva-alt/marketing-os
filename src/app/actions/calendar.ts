@@ -8,6 +8,7 @@ import { fail, ok, toFailure, type ActionResult } from "@/lib/action-result";
 import { mixShorts } from "@/server/services/shorts-mix";
 import { youtubeMover } from "@/server/services/shorts-mix-live";
 import { evenDesk, evenShorts } from "@/server/services/even-plan";
+import { scheduleApprovedDeskItems } from "@/server/services/content-desk";
 
 const msg = (x: unknown) => (x instanceof Error && !("code" in x) ? x.message : describeDbError(x));
 
@@ -61,6 +62,7 @@ export async function evenPlanAction(slug: string, _: ActionResult | null): Prom
     const product = await getProduct(slug);
     const r = await db(async (tx, ctx) => {
       await syncCalendarLive(tx, ctx.workspaceId, product.id).catch(() => undefined);
+      await scheduleApprovedDeskItems(tx, ctx.workspaceId, product.id);
       const desk = await evenDesk(tx, product.id);
       const shorts = await evenShorts(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, await youtubeMover(tx, product.id));
       return { desk, shorts };

@@ -373,6 +373,21 @@ export async function nextDeskSlot(tx: Tx, productId: string, kind: DeskKind, s:
   throw new Error("No free publishing time in the next 60 days.");
 }
 
+/**
+ * Desk pieces approved outside Ideas & hooks (the Approve page) have no time yet: each gets the desk's next free
+ * time, so it actually goes out. A Reel still waiting for its video is left until it is made.
+ */
+export async function scheduleApprovedDeskItems(tx: Tx, workspaceId: string, productId: string) {
+  const s = await getDeskSettings(tx, workspaceId, productId);
+  const items = await tx.query<{ id: string; kind: DeskKind }>(
+    `select i.id, d.kind from content_items i join content_desk_items d on d.content_item_id = i.id
+      where i.product_id = $1 and i.status = 'approved' and i.scheduled_for is null and d.kind <> 'article'
+        and (d.kind <> 'reel' or (d.render_status = 'ready' and d.video_asset_id is not null))
+      order by i.created_at`, [productId]);
+  for (const it of items) await scheduleItem(tx, productId, it.id, await nextDeskSlot(tx, productId, it.kind, s));
+  return items.length;
+}
+
 export interface DeskEdits {
   caption?: string;
   hookIndex?: number;
@@ -552,6 +567,8 @@ export async function finishReelRender(tx: Tx, productId: string, id: string, re
     [d.workspace_id, productId, d.title.slice(0, 200), result.storageKey],
   );
   await tx.query("update content_desk_items set render_status = 'ready', video_asset_id = $2, render_error = null where content_item_id = $1", [id, a.id]);
+  // Approved before its video existed: now it can take its time on the calendar.
+  await scheduleApprovedDeskItems(tx, d.workspace_id, productId).catch(() => undefined);
   return true;
 }
 
