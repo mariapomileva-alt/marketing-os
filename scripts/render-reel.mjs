@@ -190,7 +190,9 @@ export async function renderReel(spec, outFile, seed = 1) {
     list.push(`file '${String(frames.length - 1).padStart(5, "0")}.png'`);
     writeFileSync(path.join(dir, "list.txt"), list.join("\n"));
     const music = path.join(dir, "music.wav");
-    execFileSync("python3", [path.join(ASSETS, "music.py"), music, String(total), String(endAt), String(seed), spec.music]);
+    // Soft ambient bed in the Reel's mood (no bells or melody): warm/piano → drift, night → tide, airy → glow.
+    const bed = { warm: "drift", piano: "drift", night: "tide", airy: "glow" }[spec.music] ?? "drift";
+    execFileSync("python3", [path.join(ASSETS, "ambient_voice.py"), music, String(total), String(seed), bed]);
     execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", music, "-af", "loudnorm=I=-16:TP=-1.5:LRA=7", "-ar", "48000", path.join(dir, "music-n.wav")]);
     execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", path.join(dir, "list.txt"), "-i", path.join(dir, "music-n.wav"),
       "-vf", "fps=30,scale=1080:1920:flags=lanczos,format=yuv420p", "-c:v", "libx264", "-profile:v", "high", "-crf", "18", "-preset", "medium",
