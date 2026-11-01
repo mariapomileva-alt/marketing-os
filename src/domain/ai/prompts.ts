@@ -412,8 +412,11 @@ hooks[chosen_hook] must equal the intro lines joined with spaces. The end card (
 - "scenes" (about 14 s): 2–3 scenes from SHOTS, each with a caption under 48 characters that says what the viewer
   sees and why it matters. Shows the product honestly. text_lines empty.
 - "explain" (about 20–28 s, the most watched to the end): a real, practical answer to one of the questions people ask
-  most (QUESTIONS, research), drawn as a short animated explainer: 3–5 steps, each an animated hand-drawn picture with
-  a title under 42 characters and one plain sentence under 110. visual per step, one of: wave (panic rises, peaks and
+  most (QUESTIONS, research), drawn as a short animated explainer with a warm voice reading it: 3–4 steps (18–25
+  seconds in all), each an animated hand-drawn picture with a title under 34 characters and one plain sentence under
+  75 characters. The voice reads the intro lines, then each title and sentence, so write them to be said aloud. The
+  intro lines are a statement, never a question about the viewer ("What's actually happening when your heart races
+  on a bus"). visual per step, one of: wave (panic rises, peaks and
   falls), alarm (the body's alarm going off too easily), ground (feet on the floor), heart (a fast heartbeat that is
   not danger), moon (3am thoughts), breath (a longer out-breath), five_things (name things you can see), bus (being
   out somewhere: a bus, a queue, a shop). Kind, concrete, a little warm humour is welcome; no promises it will stop,

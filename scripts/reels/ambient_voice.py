@@ -3,7 +3,8 @@ only slow, warm chords that melt into each other, a quiet low drone and (for "ti
 is kept below the speech range, so the voice always stays clear on top. Fully synthesized (no samples or licences).
 
 usage: ambient_voice.py OUT.wav DURATION [SEED] [VARIANT]
-VARIANT: drift (warm D major, slow tape-like pads), tide (A minor 9 with a soft sea swell), glow (E major, airy and light).
+VARIANT: drift (warm D major, slow tape-like pads), tide (A minor 9 with a soft sea swell), glow (E major, airy and light),
+tender (F major, sweet, with a very soft felt-piano arpeggio; for explainers).
 """
 import sys
 import wave
@@ -24,6 +25,9 @@ VARIANTS = {
                   drone=26, length=(15, 20), cutoff=(700, 1100), sea=0.0),
     "tide": dict(prog=[[33, 45, 48, 52, 55, 59], [29, 41, 45, 48, 52, 55], [36, 48, 52, 55, 59, 62], [31, 43, 47, 50, 52, 57]],
                  drone=21, length=(16, 22), cutoff=(600, 950), sea=0.11),
+    # Tender: F major, warm and sweet, with a very soft felt-piano arpeggio (for explainers and gentle Reels).
+    "tender": dict(prog=[[41, 53, 57, 60, 64, 67], [38, 50, 53, 57, 60, 65], [34, 46, 50, 53, 57, 62], [36, 48, 52, 55, 60, 64]],
+                   drone=29, length=(8, 10), cutoff=(1000, 1400), sea=0.0, arp=True),
     "glow": dict(prog=[[40, 52, 56, 59, 63, 66], [37, 49, 52, 56, 59, 64], [33, 45, 49, 52, 56, 61], [35, 47, 51, 54, 56, 61]],
                  drone=28, length=(13, 18), cutoff=(900, 1400), sea=0.0),
 }
@@ -71,11 +75,36 @@ def pad(notes, length, cutoff):
 # 1. Chords, each one fading in while the last fades out.
 t = 0.0
 k = int(rng.integers(0, 4))
+plan = []  # (start, end, chord): the arpeggio follows the chord that is sounding
 while t < dur:
     length = float(rng.uniform(*V["length"]))
     add(pad(V["prog"][k % 4], length, float(rng.uniform(*V["cutoff"]))), t, pan=float(rng.uniform(-0.2, 0.2)))
+    plan.append((t, t + length, V["prog"][k % 4]))
     t += length
     k += int(rng.choice([1, 1, 1, 2, -1]))
+
+# 1b. Tender: a slow, quiet felt-piano arpeggio over each chord (soft attack, low-passed, never a bell).
+def felt(m, length=3.2):
+    n = int(length * SR)
+    tt = np.arange(n) / SR
+    f = hz(m)
+    x = np.zeros(n)
+    for k, amp, dec in ((1, 1.0, 1.5), (2, 0.25, 0.8), (3, 0.06, 0.4)):
+        x += amp * np.sin(2 * np.pi * f * k * tt) * np.exp(-tt / dec)
+    x *= np.minimum(1, tt / 0.03)
+    return lowpass(x, 1500) * 0.16
+
+
+if V.get("arp"):
+    t = 1.5
+    k = 0
+    pattern = [0, 2, 3, 4, 3, 2]
+    while t < dur - 2:
+        chord = next((c for a, b, c in plan if a <= t < b), plan[-1][2])
+        note_m = chord[1 + pattern[k % 6] % (len(chord) - 1)] + 12
+        add(felt(note_m), t, pan=float(rng.uniform(-0.35, 0.35)), gain=float(rng.uniform(0.55, 0.8)))
+        t += 1.5
+        k += 1
 
 # 2. Low drone: the floor under everything, felt more than heard.
 td = np.arange(N) / SR

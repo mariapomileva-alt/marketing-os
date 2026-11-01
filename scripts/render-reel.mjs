@@ -127,11 +127,15 @@ function page(spec) {
            opacity: 0; transform: translateY(10px); transition: opacity .5s .9s, transform .5s .9s; }
   .ex p { font-size: 25px; line-height: 1.42; color: #4f4a42; text-align: center; margin: 18px 6px 0; opacity: 0; transition: opacity .6s 1.6s; }
   .ex.in h2 { opacity: 1; transform: none; } .ex.in p { opacity: 1; }
+  .ex.in .exs { animation: floaty 4.2s ease-in-out 1.7s infinite; } @keyframes floaty { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-9px) rotate(-1deg); } }
+  #hook { position: absolute; left: 34px; right: 34px; top: 46px; z-index: 6; padding: 18px 22px; border-radius: 22px; background: rgba(43,43,43,.88); color: #fffdf7;
+          font-family: Fraunces, serif; font-weight: 600; font-size: 30px; line-height: 1.15; text-align: center; opacity: 0; transform: translateY(-10px); transition: opacity .4s, transform .4s; }
+  #hook.in { opacity: 1; transform: none; }
 </style></head><body>
   <div id="cap" class="out"></div>
   <div id="stage"><div id="phone">${vids}</div></div>
   <div id="read" class="panel ${tone}"><div class="glow"></div>${calm}</div>
-  <div id="explain" class="panel">${explainHtml(spec.steps ?? [], "#bb8a52")}</div>
+  <div id="explain" class="panel">${explainHtml(spec.steps ?? [], "#bb8a52")}<div id="hook">${esc((spec.intro_lines ?? []).join(" "))}</div></div>
   <div id="breath" class="panel ${tone}"><div class="bc" id="bcount"></div><div id="circle"></div><div class="bl" id="blabel"></div><div class="bn" id="bnote"></div></div>
   <div id="intro" class="card ${spec.intro_style === "light" ? "light" : "dark"}"><div class="brand"><div class="dot"></div>Back</div><h1>${lines}</h1></div>
   <div id="end" class="card dark hidden"><div class="brand"><div class="dot"></div>Back</div><h1>Back: Panic Attack Help</h1><p style="color:#d7e0d5">Free on iPhone. Opens in one tap.</p><div class="badge">Get it free on the App Store</div><p class="fine">A self-help tool, not therapy or an emergency service.</p></div>
@@ -153,6 +157,9 @@ function page(spec) {
     document.getElementById('bcount').textContent = n + ' / ' + total;
     if (inhale) { const b = document.getElementById('bnote'); b.style.opacity = 0; setTimeout(() => { b.textContent = note || ''; b.style.opacity = .8; }, 500); }
   };
+  window.hook = (on) => document.getElementById('hook').classList.toggle('in', on);
+  window.noIntro = () => { const e = document.getElementById('intro'); e.style.transition = 'none'; e.style.display = 'none'; };
+  window.endOff = () => document.getElementById('end').classList.add('hidden');
   window.step = (i) => {
     document.querySelectorAll('.ex').forEach((e) => e.classList.remove('in'));
     const e = document.getElementById('ex' + i); if (!e) return;
@@ -179,6 +186,10 @@ function serve(spec) {
 
 export async function renderReel(spec, outFile, seed = 1) {
   spec = { format: "scenes", music: "warm", scenes: [], text_lines: [], steps: [], ...spec };
+  // Voice clips (explainers): local files with their lengths, so each step lasts as long as it is spoken.
+  spec._voice = (spec.voice_files ?? []).map((file) => ({
+    file, secs: Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString().trim()) || 2,
+  }));
   const { chromium } = await import("playwright");
   const server = await serve(spec);
   const port = server.address().port;
@@ -199,8 +210,10 @@ export async function renderReel(spec, outFile, seed = 1) {
     const t0 = Date.now();
     const at = async (s) => { const w = t0 + s * 1000 - Date.now(); if (w > 0) await p.waitForTimeout(w); };
     const introSecs = Math.max(2.4, 0.7 + spec.intro_lines.length * 0.48);
+    const cues = []; // voice clips: { at, file }
+    const whoosh = []; // soft transition sounds (seconds)
     const format = spec.format ?? "scenes";
-    await p.evaluate(() => window.lines());
+    if (format !== "explain") await p.evaluate(() => window.lines());
     let t = introSecs;
     if (format === "read_slowly") {
       await p.evaluate(() => window.panel("read"));
@@ -211,13 +224,23 @@ export async function renderReel(spec, outFile, seed = 1) {
       }
       t += 0.6;
     } else if (format === "explain") {
-      await p.evaluate(() => window.panel("explain"));
-      await at(t - 0.5); await p.evaluate(() => window.lift());
-      for (const [i, st] of (spec.steps ?? []).entries()) {
-        await at(t); await p.evaluate((i) => window.step(i), i);
-        t += Math.min(8, Math.max(5.6, 3.8 + ((st.title?.length ?? 0) + (st.text?.length ?? 0)) * 0.03));
+      // No intro card: the first drawing starts at once, with the hook on top while the voice reads it.
+      const vd = spec._voice ?? [];
+      const steps = spec.steps ?? [];
+      t = 0.15;
+      await p.evaluate(() => { window.noIntro(); window.panel("explain"); window.step(0); window.hook(true); });
+      cues.push({ at: 0.35, file: vd[0]?.file });
+      const hookSecs = vd[0] ? vd[0].secs + 0.45 : 2.4;
+      for (const [i, st] of steps.entries()) {
+        const voice = vd[i + 1];
+        const start = i === 0 ? t + hookSecs : t;
+        if (i === 0) { await at(start - 0.2); await p.evaluate(() => window.hook(false)); }
+        else { await at(start); await p.evaluate((i) => window.step(i), i); whoosh.push(start); }
+        cues.push({ at: start + (i === 0 ? 0.1 : 0.55), file: voice?.file });
+        const secs = voice ? voice.secs + (i === 0 ? 0.45 : 0.75) : Math.min(6, Math.max(4.4, 3 + ((st.title?.length ?? 0) + (st.text?.length ?? 0)) * 0.028));
+        t = start + secs;
       }
-      t += 0.4;
+      t += 0.3;
     } else if (format === "breathe_along") {
       await p.evaluate(() => window.panel("breath"));
       await at(t - 0.5); await p.evaluate(() => window.lift());
@@ -240,7 +263,13 @@ export async function renderReel(spec, outFile, seed = 1) {
     }
     const endAt = t;
     await at(endAt); await p.evaluate(() => window.endCard());
-    const total = endAt + 2.8;
+    let total = endAt + 2.8;
+    if (format === "explain") {
+      // Back to the first drawing, so the end flows into the start when the Reel loops.
+      total = endAt + 2.3;
+      await at(endAt + 1.7); await p.evaluate(() => { window.step(0); window.endOff(); });
+      whoosh.push(endAt + 1.7);
+    }
     await at(total);
     await cdp.send("Page.stopScreencast");
     await p.waitForTimeout(300);
@@ -255,10 +284,37 @@ export async function renderReel(spec, outFile, seed = 1) {
     writeFileSync(path.join(dir, "list.txt"), list.join("\n"));
     const music = path.join(dir, "music.wav");
     // Soft ambient bed in the Reel's mood (no bells or melody): warm/piano → drift, night → tide, airy → glow.
-    const bed = { warm: "drift", piano: "drift", night: "tide", airy: "glow" }[spec.music] ?? "drift";
+    const bed = format === "explain" ? "tender" : ({ warm: "drift", piano: "drift", night: "tide", airy: "glow" }[spec.music] ?? "drift");
     execFileSync("python3", [path.join(ASSETS, "ambient_voice.py"), music, String(total), String(seed), bed]);
     execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", music, "-af", "loudnorm=I=-16:TP=-1.5:LRA=7", "-ar", "48000", path.join(dir, "music-n.wav")]);
-    execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", path.join(dir, "list.txt"), "-i", path.join(dir, "music-n.wav"),
+    const voiced = cues.filter((c) => c.file);
+    const audioIn = ["-i", path.join(dir, "music-n.wav")];
+    const filt = [];
+    let audioOut = "1:a";
+    if (voiced.length || whoosh.length) {
+      // Voice on top; a soft breath-like whoosh at each new step; the music ducks under the voice.
+      voiced.forEach((c) => audioIn.push("-i", c.file));
+      const sw = path.join(dir, "whoosh.wav");
+      execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=color=pink:duration=0.7:amplitude=0.5:sample_rate=48000",
+        "-af", "highpass=f=300,lowpass=f=2200,afade=t=in:d=0.35,afade=t=out:st=0.35:d=0.35,volume=0.16,aformat=channel_layouts=stereo", sw]);
+      whoosh.forEach(() => audioIn.push("-i", sw));
+      const parts = [];
+      voiced.forEach((c, i) => { filt.push(`[${i + 2}:a]aformat=sample_rates=48000:channel_layouts=stereo,adelay=${Math.round(c.at * 1000)}:all=1,volume=1.0[v${i}]`); parts.push(`[v${i}]`); });
+      const wBase = voiced.length + 2;
+      const wParts = whoosh.map((w, j) => { filt.push(`[${wBase + j}:a]adelay=${Math.round(Math.max(0, w - 0.3) * 1000)}:all=1[w${j}]`); return `[w${j}]`; });
+      filt.push(`[1:a]volume=${voiced.length ? 0.3 : 0.9}[bed]`);
+      if (voiced.length) {
+        filt.push(`${parts.join("")}amix=inputs=${parts.length}:normalize=0,apad,asplit=2[voice][side]`);
+        filt.push(`[bed][side]sidechaincompress=threshold=0.03:ratio=4:attack=40:release=700[duck]`);
+        filt.push(`[duck][voice]${wParts.join("")}amix=inputs=${2 + wParts.length}:normalize=0,alimiter=limit=0.95,loudnorm=I=-15:TP=-1.5:LRA=9[aout]`);
+      } else {
+        filt.push(`[bed]${wParts.join("")}amix=inputs=${1 + wParts.length}:normalize=0[aout]`);
+      }
+      audioOut = "[aout]";
+    }
+    if (process.env.REEL_DEBUG) console.log(JSON.stringify({ cues: voiced, whoosh, filt }, null, 1));
+    execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", path.join(dir, "list.txt"), ...audioIn,
+      ...(filt.length ? ["-filter_complex", filt.join(";")] : []), "-map", "0:v", "-map", audioOut,
       "-vf", "fps=30,scale=1080:1920:flags=lanczos,format=yuv420p", "-c:v", "libx264", "-profile:v", "high", "-crf", "18", "-preset", "medium",
       "-c:a", "aac", "-b:a", "192k", "-t", String(total), "-movflags", "+faststart", outFile]);
     return { seconds: total };
@@ -293,6 +349,16 @@ async function main() {
     if (!job) { console.log("No Reels waiting."); return; }
     const out = path.join(WORK, `${job.id}.mp4`);
     try {
+      if (job.voice_urls?.length) {
+        job.spec.voice_files = [];
+        for (const [i, u] of job.voice_urls.entries()) {
+          const f = path.join(WORK, `${job.id}-voice-${i}.mp3`);
+          const res = await fetch(u);
+          if (!res.ok) throw new Error(`Voice download failed ${res.status}`);
+          writeFileSync(f, Buffer.from(await res.arrayBuffer()));
+          job.spec.voice_files.push(f);
+        }
+      }
       const r = await renderReel(job.spec, out, Number(job.spec.seed) || (Date.now() % 97) + 1);
       const size = statSync(out).size;
       const up = await fetch(job.upload_url, { method: "PUT", headers: { "content-type": "video/mp4", "content-length": String(size) }, body: createReadStream(out), duplex: "half" });

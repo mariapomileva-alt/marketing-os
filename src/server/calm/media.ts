@@ -9,6 +9,9 @@ type Fetch = typeof fetch;
 export const CALM_VOICE_INSTRUCTIONS =
   "Speak slowly, softly and warmly, like a calm friend sitting next to someone at night. Low energy, gentle, unhurried. Leave natural space at commas. Never sound like an announcer.";
 
+export const EXPLAIN_VOICE_INSTRUCTIONS =
+  "A kind, warm friend explaining something simple and reassuring, with a gentle smile in the voice. Soft and tender, a natural conversational pace (not slow), a little lighter than a meditation. Never an announcer, never salesy.";
+
 export const BRIEF_VOICE_INSTRUCTIONS =
   "A calm, warm colleague giving a short morning update over coffee. Clear and friendly, unhurried, lightly encouraging. Natural pauses between topics.";
 
