@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { db, getProduct } from "@/server/context";
 import { calendarItems, lastCalendarSync, CAL_CHANNELS, type CalChannel, type CalCount, type CalItem } from "@/server/services/calendar";
-import { mixShortsAction, syncCalendarAction } from "@/app/actions/calendar";
+import { evenPlanAction, mixShortsAction, syncCalendarAction } from "@/app/actions/calendar";
 import { ActionForm } from "@/components/ui/action-form";
 import { cn } from "@/lib/cn";
 
 export const metadata = { title: "Calendar" };
+export const maxDuration = 300;
 
 const TZ = "Europe/Riga";
 const dayKey = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -95,6 +96,11 @@ export default async function CalendarPage({ params, searchParams }: PageProps<"
           </ActionForm>
         </div>
       </header>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-line bg-surface px-4 py-3 text-[13px]">
+        <p className="max-w-[80ch] text-muted">Every day: 2 Instagram posts and 1 explainer Reel, 2 calm Reels, 3 YouTube Shorts, 3 TikToks and 1 long video. If some days are crowded and others empty, spread what is approved evenly (order kept, nothing less than two hours away moves).</p>
+        <ActionForm action={evenPlanAction.bind(null, slug)} submitLabel="Spread evenly" pendingLabel="Spreading and mixing…" submitVariant="secondary" className="flex flex-wrap items-center gap-2 [&_p]:basis-full [&_p]:text-[12.5px]"><span className="sr-only">Spread approved content evenly</span></ActionForm>
+      </div>
 
       <details className="rounded-[10px] border border-line bg-surface">
         <summary className="cursor-pointer px-4 py-3 text-[13.5px] font-medium">Mix shorts by look</summary>

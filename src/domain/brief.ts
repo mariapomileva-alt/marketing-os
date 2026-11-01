@@ -32,6 +32,7 @@ export interface MarketingBrief {
   brief_tone: string;           // one line for the morning brief: what the product does and the tone
   patterns?: string;            // the product's approved core lines, message patterns and content themes
   emergency_line?: string;      // exact safety line required when a piece touches danger or an emergency
+  topic_range?: string;         // the rows of topics the feed rotates through (one bullet per row)
 }
 
 export const BACK_BRIEF: MarketingBrief = {
@@ -66,6 +67,16 @@ export const BACK_BRIEF: MarketingBrief = {
   colors: { dark: "#0c3b2e", light: "#f3ede1", ink: "#153c32", muted: "#65736c", pale: "#d7e0d5", accent: "#6d9773", accent2: "#bb8a52" },
   reels: true,
   brief_tone: "The product helps people through panic attacks; keep the tone calm.",
+  topic_range: [
+    "- the first minutes: small, concrete things to do when it starts (at most one piece in three)",
+    "- how the anxious body works, told simply and kindly (the overprotective alarm, why the heart races, adrenaline wearing off, tingling and yawning)",
+    "- the funny-true side of an anxious brain: gentle humour, everyday scenes (the 3am committee meeting, rehearsing a phone call five times, checking the door twice); laugh with people, never at them",
+    "- good things: small wins, the first calm morning after a hard week, going back to the place you avoided, sleep, walks, light, music, pets, a friend's text; hope without promises",
+    "- for the people who love someone with panic: what to say, what helps, what not to take personally",
+    "- nights and sleep: wind-down rituals, what to do at 3am, the bed is not a battlefield",
+    "- seasonal and everyday life: darker evenings, holidays, travel, exams, a new job, the dentist, crowded shops",
+    "- myths, gently busted, and questions people actually ask (QUESTIONS, research)",
+  ].join("\n"),
 };
 
 /** A sensible brief from the product's basic facts, for a product whose brief has not been written yet. */
@@ -126,6 +137,7 @@ export function fillPrompt(text: string, b: MarketingBrief) {
     CLOSING_TEXT: b.closing_text,
     END_CARD: `${b.end_card_title}${b.end_card_text ? ` · ${b.end_card_text}` : ""}`,
     BRIEF_TONE: b.brief_tone,
+    TOPIC_RANGE: b.topic_range?.trim() ? b.topic_range.trim() : "- the product's main themes (PATTERNS), practical tips, people's real questions, small good things, behind the scenes, seasonal moments",
     PATTERNS: b.patterns?.trim() ? b.patterns.trim() : "none written yet: use PRODUCT FACTS and KNOWLEDGE",
     SAFETY: b.sensitive
       ? `If an item mentions danger, an emergency, calling for help, suicide or self-harm (on a slide, in the video or in the caption), its caption ends with exactly this line, word for word: "${b.emergency_line ?? "In danger right now? Call your local emergency number."}"`

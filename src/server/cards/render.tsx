@@ -106,6 +106,12 @@ const SOFT = [
   { bg: "#EFD6DC", ink: "#4A2333", sub: "#7F5363" },
   { bg: "#EDE3CC", ink: "#3E3420", sub: "#6F6448" },
   { bg: "#26304A", ink: "#F3EDE1", sub: "#B9C0D3" },
+  { bg: "#E3DDF0", ink: "#2E2547", sub: "#5F5679" },
+  { bg: "#D7EDE6", ink: "#1C3D35", sub: "#4C6E64" },
+  { bg: "#F6E7B8", ink: "#45391A", sub: "#7A6A3E" },
+  { bg: "#4A5D4F", ink: "#F6F1E7", sub: "#CBD8CC" },
+  { bg: "#F3E1D3", ink: "#4A3022", sub: "#7E5F4C" },
+  { bg: "#5B4B6E", ink: "#F6F1F8", sub: "#D3C8DE" },
 ];
 
 function Mark({ b, color }: { b: CardBrand; color: string }) {

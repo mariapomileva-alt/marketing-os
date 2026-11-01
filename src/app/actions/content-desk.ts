@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
-import { addOwnReel, approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, remakeUpcomingReels, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
+import { addOwnReel, approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, remakeUpcomingReels, restyleUpcomingPosts, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
 import type { ReelSpec } from "@/domain/ai/schemas";
 import { liveDeskMedia } from "@/server/desk/live";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -147,6 +147,18 @@ export async function remakeReelsAction(slug: string, _: ActionResult | null): P
     const n = await db((tx) => remakeUpcomingReels(tx, product.id), { reason: "Upcoming Reels made again in the current style" });
     revalidatePath(path(slug));
     return ok(n ? `${n} Reel(s) will be made again in the current style (within about two hours). Approved ones keep their time.` : "No upcoming Reels to remake.");
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+/** Posts and carousels not out yet are drawn again in varied looks. */
+export async function restylePostsAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const n = await db((tx) => restyleUpcomingPosts(tx, product.id, liveDeskMedia()), { reason: "Upcoming posts drawn again in varied looks" });
+    revalidatePath(path(slug));
+    return ok(n ? `${n} post(s) and carousel(s) drawn again in varied looks; approved ones keep their time.` : "No upcoming posts to redraw.");
   } catch (e) {
     return toFailure(e, msg);
   }

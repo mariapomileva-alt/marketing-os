@@ -1,4 +1,5 @@
 import type { Tx } from "@/server/db/client";
+import { deskTimesFor } from "./even-plan";
 import type { MarketingBrief } from "@/domain/brief";
 import { productBrief } from "./marketing-brief";
 import { IG_PERMISSION_NOTE } from "./calm-shorts";
@@ -347,7 +348,8 @@ export async function addOwnReel(tx: Tx, actor: Actor, productId: string, input:
  */
 export async function nextDeskSlot(tx: Tx, productId: string, kind: DeskKind, s: Pick<DeskSettings, "slots">, now = new Date()) {
   const ig = kind !== "article";
-  const times = ig ? parseSlots(s.slots) : ["15:00"];
+  // The explainer Reel takes the middle time of the day, posts the others (2 posts + 1 Reel a day).
+  const times = ig ? deskTimesFor(kind === "reel" ? "reel" : "post", parseSlots(s.slots)) : ["15:00"];
   const taken = new Set((await tx.query<{ k: string }>(
     `select to_char(scheduled_for at time zone 'Europe/Riga', ${ig ? "'YYYY-MM-DD HH24:MI'" : "'YYYY-MM-DD'"}) k from content_items
       where product_id = $1 and status in ('scheduled', 'published') and scheduled_for > $2
@@ -472,6 +474,38 @@ export async function rerenderReel(tx: Tx, productId: string, itemId: string, re
     [itemId, productId, JSON.stringify(spec)],
   );
   if (!r.length) throw new Error("Only a Reel that is not approved yet can be changed.");
+}
+
+const ILLUSTRATION_WORDS: Array<[RegExp, string]> = [
+  [/heart|pulse|racing/i, "heart"], [/breath|exhale|inhale/i, "breath"], [/night|3 ?am|sleep|bed|awake/i, "moon"],
+  [/wave|peak|pass/i, "wave"], [/feet|floor|ground/i, "ground"],
+];
+const PHOTO_QUERIES = ["morning light window", "forest path fog", "calm sea horizon", "tea cup window rain", "soft clouds sky", "autumn leaves sunlight", "lake reflection calm"];
+
+/** Posts and carousels not out yet are drawn again in varied looks (no two in a row alike). */
+export async function restyleUpcomingPosts(tx: Tx, productId: string, media: DeskMedia) {
+  const items = await tx.query<{ id: string; kind: "post" | "carousel"; topic: string; title: string; body: ContentBody }>(
+    `select i.id, d.kind, d.topic, i.title, v.body from content_items i join content_desk_items d on d.content_item_id = i.id
+       join content_versions v on v.id = i.current_version_id
+      where i.product_id = $1 and d.kind in ('post', 'carousel') and i.status not in ('published', 'rejected', 'archived') and d.ig_container_id is null
+      order by coalesce(i.scheduled_for, i.created_at)`, [productId]);
+  const used: string[] = [];
+  let n = 0;
+  for (const it of items) {
+    const slides = (it.body.slides ?? []).map((x) => ({ title: x.title, text: x.text ?? "" }));
+    const words = `${it.topic} ${it.title} ${slides.map((x) => x.title).join(" ")}`;
+    const illustration = ILLUSTRATION_WORDS.find(([re]) => re.test(words))?.[1] ?? "alarm";
+    const photo_query = PHOTO_QUERIES[n % PHOTO_QUERIES.length];
+    const order = ["sketch", "note", "rainbow", "photo", "color", "chat"];
+    const want = order[n % order.length];
+    const look = pickLook({ kind: it.kind, look: want as DeskOutItem["look"], slides, photo_query, illustration: illustration as DeskOutItem["illustration"] }, used.slice(-2));
+    used.push(look);
+    await tx.query("update content_desk_items set craft = coalesce(craft, '{}'::jsonb) || $2::jsonb where content_item_id = $1",
+      [it.id, JSON.stringify({ look, illustration, photo_query })]);
+    await drawCards(tx, productId, it.id, media);
+    n++;
+  }
+  return n;
 }
 
 /**

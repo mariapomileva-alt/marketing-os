@@ -360,6 +360,11 @@ wakes up anxious", "saved to open on the train"). If there is no concrete answer
 The product's own core lines, message patterns and content themes (use the ideas, vary the words, never paste a
 line as a slogan in every piece): {{PATTERNS}}
 
+Range of topics (the feed must never be one subject in every piece). Rotate across these, and never put two pieces
+from the same row into one desk; RECENT shows what we covered lately:
+{{TOPIC_RANGE}}
+Hooks can be warm, curious or funny as well as practical: a good hook is a true, specific moment people recognise.
+
 RULES are exactly what every piece is checked against after you write it (word lists, claims never to make, required
 lines). A piece that breaks one is stopped and thrown away, so before you answer, check each piece (hooks, slides,
 on-screen lines, caption) against every rule and claim and fix it. Pick ideas that fit the rules naturally; never write
