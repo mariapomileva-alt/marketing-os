@@ -411,6 +411,14 @@ awake."), never a question about the viewer's health ("Do you have panic attacks
 hooks[chosen_hook] must equal the intro lines joined with spaces. The end card ({{END_CARD}}) is added automatically; do not write it. Slides empty. Choose reel.format:
 - "scenes" (about 14 s): 2–3 scenes from SHOTS, each with a caption under 48 characters that says what the viewer
   sees and why it matters. Shows the product honestly. text_lines empty.
+- "explain" (about 20–28 s, the most watched to the end): a real, practical answer to one of the questions people ask
+  most (QUESTIONS, research), drawn as a short animated explainer: 3–5 steps, each an animated hand-drawn picture with
+  a title under 42 characters and one plain sentence under 110. visual per step, one of: wave (panic rises, peaks and
+  falls), alarm (the body's alarm going off too easily), ground (feet on the floor), heart (a fast heartbeat that is
+  not danger), moon (3am thoughts), breath (a longer out-breath), five_things (name things you can see), bus (being
+  out somewhere: a bus, a queue, a shop). Kind, concrete, a little warm humour is welcome; no promises it will stop,
+  no diagnosis, no medical advice. text_lines and scenes empty. Every desk with Reels has at least one "explain"
+  Reel (our calm meditations already come from the calm videos, so the desk's first Reel is the explainer).
 - "read_slowly" (about 20–30 s, high saves and sends): 3–8 text_lines under 60 characters each, shown one at a
   time on a calm background, read at the pace of a slow breath: grounding, gentle and true ("Your heart is fast."
   / "That is your body trying to help." / "Feel your feet on the floor."). No promises that it will stop, no

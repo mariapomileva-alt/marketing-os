@@ -169,7 +169,9 @@ export const DESK_HOOK_MECHANISMS = [...HOOK_MECHANISMS, "curiosity", "contraria
  *  read_slowly   hook card, then 3–8 calm lines shown one at a time (the "read this slowly" format, saved and sent);
  *  breathe_along hook card, then a breathing circle to follow for three slow breaths (a tool people come back to).
  */
-export const REEL_FORMATS = ["scenes", "read_slowly", "breathe_along"] as const;
+export const REEL_FORMATS = ["scenes", "read_slowly", "breathe_along", "explain"] as const;
+/** Animated hand-drawn pictures for "explain" Reels (a small library the renderer draws and animates). */
+export const EXPLAIN_VISUALS = ["wave", "alarm", "ground", "heart", "moon", "breath", "five_things", "bus"] as const;
 /** Moods of the original music the renderer composes for each Reel (no licensed or trending tracks). */
 export const REEL_MUSIC = ["warm", "night", "airy", "piano"] as const;
 export const reelSpecSchema = z
@@ -180,10 +182,16 @@ export const reelSpecSchema = z
     intro_lines: z.array(z.string().min(1).max(28)).min(1).max(4).describe("The hook as 1–4 short lines shown one by one in the first two seconds"),
     scenes: z.array(z.object({ shot: z.enum(REEL_SHOTS), caption: z.string().max(48).default("") })).max(3).default([]),
     text_lines: z.array(z.string().min(1).max(60)).max(8).default([]).describe("read_slowly: the calm lines; breathe_along: up to 3 short lines, one per breath"),
+    steps: z
+      .array(z.object({ visual: z.enum(EXPLAIN_VISUALS), title: z.string().min(2).max(42), text: z.string().max(110).default("") }))
+      .max(5)
+      .default([])
+      .describe("explain: 3–5 steps, each an animated drawing with a short title and one plain sentence"),
   })
   .superRefine((r, ctx) => {
     if (r.format === "scenes" && r.scenes.length < 2) ctx.addIssue({ code: "custom", path: ["scenes"], message: "A scenes Reel needs 2 or 3 scenes." });
     if (r.format === "read_slowly" && r.text_lines.length < 3) ctx.addIssue({ code: "custom", path: ["text_lines"], message: "A read-slowly Reel needs 3 to 8 lines." });
+    if (r.format === "explain" && r.steps.length < 3) ctx.addIssue({ code: "custom", path: ["steps"], message: "An explain Reel needs 3 to 5 steps." });
     if (r.format === "breathe_along" && r.text_lines.length > 3) ctx.addIssue({ code: "custom", path: ["text_lines"], message: "A breathe-along Reel has at most 3 lines." });
   });
 export type ReelSpec = z.infer<typeof reelSpecSchema>;
