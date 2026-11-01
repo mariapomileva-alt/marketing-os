@@ -15,6 +15,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { explainCss, explainHtml, themeFor } from "./reels/explain-art.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, "reels");
@@ -34,43 +35,10 @@ const SCENES = {
 };
 
 
-// "explain" Reels: hand-drawn pictures that draw themselves (one line weight, round ends) and move a little.
-const INK = "#2b2b2b";
-const EX_BG = ["#dce6d6", "#f1d9c8", "#d5e2ec", "#efd6dc", "#ede3cc"];
-const figure = (x, y) => `<circle class="d" pathLength="1" cx="${x}" cy="${y}" r="16"/><path class="d" pathLength="1" d="M${x} ${y + 16} L${x} ${y + 70} M${x} ${y + 34} L${x - 26} ${y + 58} M${x} ${y + 34} L${x + 26} ${y + 58} M${x} ${y + 70} L${x - 20} ${y + 108} M${x} ${y + 70} L${x + 20} ${y + 108}"/>`;
-const DRAW = {
-  wave: (a) => `<path class="d" pathLength="1" d="M20 250 C 110 250, 140 90, 200 90 S 290 250, 380 250" stroke="${a}" stroke-width="9"/>
-    <path class="d" pathLength="1" d="M20 270 L380 270" stroke-width="4"/>
-    <g class="mover"><animateMotion begin="indefinite" class="go" dur="4.5s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines=".45 .05 .55 .95" path="M20 250 C 110 250, 140 90, 200 90 S 290 250, 380 250"/>${figure(0, -112)}</g>`,
-  alarm: (a) => `<circle class="d" pathLength="1" cx="200" cy="150" r="80"/><circle cx="200" cy="150" r="16" fill="${a}"/>
-    <g stroke="${a}"><path class="d" pathLength="1" d="M90 70 L55 40 M310 70 L345 40 M80 150 L35 150 M320 150 L365 150 M90 230 L55 260 M310 230 L345 260"/>
-    <animate attributeName="opacity" values="1;0.15;1" dur="0.7s" repeatCount="4" begin="indefinite" class="go" fill="freeze"/></g>`,
-  ground: (a) => `${figure(200, 40)}<path class="d" pathLength="1" d="M60 170 L340 170"/>
-    <g stroke="${a}"><path class="d" pathLength="1" d="M170 190 L170 250 M155 235 L170 250 L185 235 M230 190 L230 250 M215 235 L230 250 L245 235"/>
-    <animateTransform attributeName="transform" type="translate" values="0 0;0 10;0 0" dur="1.6s" repeatCount="3" begin="indefinite" class="go"/></g>`,
-  heart: (a) => `<g transform="translate(200 150)"><g><path class="d" pathLength="1" d="M0 95 C -150 10, -110 -90, -40 -76 C -12 -70, -3 -50, 0 -40 C 3 -50, 12 -70, 40 -76 C 110 -90, 150 10, 0 95 Z"/>
-    <animateTransform attributeName="transform" type="scale" values="1;1.12;1;1.12;1;1.06;1" keyTimes="0;.12;.24;.36;.6;.8;1" dur="3.6s" begin="indefinite" class="go" fill="freeze"/></g></g>
-    <path class="d" pathLength="1" d="M10 260 L90 260 L110 230 L130 290 L150 260 L250 260 L265 245 L280 275 L295 260 L390 260" stroke="${a}"/>`,
-  moon: (a) => `<path class="d" pathLength="1" d="M300 40 C 240 55, 220 150, 290 195 C 220 215, 140 160, 155 90 C 165 45, 240 10, 300 40 Z" stroke="${a}"/>
-    <rect class="d" pathLength="1" x="70" y="110" width="110" height="170" rx="18"/><text x="125" y="205" text-anchor="middle" font-family="Outfit" font-size="30" stroke="none" fill="${INK}" class="fade">3:04</text>
-    <text x="330" y="250" font-family="Fraunces" font-size="34" stroke="none" fill="${a}" class="fade">z z</text>`,
-  breath: (a) => `<g transform="translate(200 150)"><circle class="d" pathLength="1" r="110" stroke-width="4"/><circle r="55" fill="${a}" opacity=".85">
-    <animate attributeName="r" values="55;105;105;55" keyTimes="0;.4;.5;1" dur="8s" begin="indefinite" class="go" fill="freeze"/></circle></g>`,
-  five_things: (a) => `<path class="d" pathLength="1" d="M60 150 C 120 60, 280 60, 340 150 C 280 240, 120 240, 60 150 Z"/><circle cx="200" cy="150" r="34" fill="${a}"/>
-    ${[1, 2, 3, 4, 5].map((n, i) => `<text x="${50 + i * 75}" y="290" font-family="Fraunces" font-size="40" fill="${INK}" stroke="none" class="pop" style="animation-delay:${0.6 + i * 0.45}s">${n}</text>`).join("")}`,
-  bus: (a) => `<g><rect class="d" pathLength="1" x="40" y="60" width="300" height="150" rx="26"/><path class="d" pathLength="1" d="M60 100 L320 100 M40 170 L340 170"/>
-    <circle class="d" pathLength="1" cx="110" cy="220" r="24"/><circle class="d" pathLength="1" cx="270" cy="220" r="24"/>
-    <animateTransform attributeName="transform" type="translate" values="0 0;0 3;0 0" dur=".5s" repeatCount="6" begin="indefinite" class="go"/></g>
-    <path class="d" pathLength="1" d="M20 260 L380 260" stroke="${a}"/>`,
-};
-const explainHtml = (steps, accent) => steps.map((st, i) => `<div class="ex" id="ex${i}" style="background:${EX_BG[i % EX_BG.length]}">
-    <div class="exn">${i + 1} / ${steps.length}</div>
-    <svg viewBox="0 -50 400 350" class="exs" overflow="visible">${(DRAW[st.visual] ?? DRAW.wave)(accent)}</svg>
-    <h2>${esc(st.title)}</h2><p>${esc(st.text ?? "")}</p></div>`).join("");
-
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 function page(spec) {
+  const theme = spec.theme ?? themeFor((spec.intro_lines ?? []).join(" ") + (spec.steps?.[0]?.title ?? ""));
   const lines = spec.intro_lines.map((l) => `<span class="l">${esc(l)}</span>`).join("");
   const tone = spec.intro_style === "light" ? "light" : "dark";
   const calm = (spec.text_lines ?? []).map((l, i) => `<p class="rl" id="rl${i}">${esc(l)}</p>`).join("");
@@ -113,29 +81,15 @@ function page(spec) {
   .bn { position: absolute; left: 50px; right: 50px; top: 78%; text-align: center; font-size: 26px; line-height: 1.35; opacity: .8; transition: opacity .6s; }
   .bc { position: absolute; left: 0; right: 0; top: 12%; text-align: center; font-size: 20px; letter-spacing: 2px; opacity: .6; }
   .dark .bc { color: #d7e0d5; } .light .bc { color: #65736c; }
-  #explain { background: #f6f1e7; }
-  .ex { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 120px 44px 0; box-sizing: border-box; opacity: 0; transition: opacity .35s; }
-  .ex.in { opacity: 1; }
-  .exn { font-size: 20px; letter-spacing: 1px; color: #6f6a60; margin-bottom: 20px; }
-  .exs { width: 452px; height: 340px; fill: none; stroke: ${INK}; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
-  .exs .d { stroke-dasharray: 1; stroke-dashoffset: 1; }
-  .ex.in .d { transition: stroke-dashoffset .9s cubic-bezier(.45,.05,.4,1); stroke-dashoffset: 0; }
-  .exs .mover { opacity: 0; } .ex.in .mover { opacity: 1; }
-  .exs .fade, .exs .pop { opacity: 0; } .ex.in .fade { transition: opacity .7s .6s; opacity: 1; }
-  .ex.in .pop { animation: pop .5s forwards; } @keyframes pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  .ex h2 { font-family: Fraunces, serif; font-weight: 600; font-size: 42px; line-height: 1.1; color: ${INK}; text-align: center; margin: 34px 0 0; letter-spacing: -.5px;
-           opacity: 0; transform: translateY(10px); transition: opacity .4s .3s, transform .4s .3s; }
-  .ex p { font-size: 25px; line-height: 1.42; color: #4f4a42; text-align: center; margin: 18px 6px 0; opacity: 0; transition: opacity .5s .65s; }
-  .ex.in h2 { opacity: 1; transform: none; } .ex.in p { opacity: 1; }
-  .ex.in .exs { animation: floaty 4.2s ease-in-out 1s infinite; } @keyframes floaty { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-9px) rotate(-1deg); } }
   #hook { position: absolute; left: 34px; right: 34px; top: 46px; z-index: 6; padding: 18px 22px; border-radius: 22px; background: rgba(43,43,43,.88); color: #fffdf7;
           font-family: Fraunces, serif; font-weight: 600; font-size: 30px; line-height: 1.15; text-align: center; opacity: 0; transform: translateY(-10px); transition: opacity .4s, transform .4s; }
   #hook.in { opacity: 1; transform: none; }
+${spec.format === "explain" ? explainCss(theme) : ""}
 </style></head><body>
   <div id="cap" class="out"></div>
   <div id="stage"><div id="phone">${vids}</div></div>
   <div id="read" class="panel ${tone}"><div class="glow"></div>${calm}</div>
-  <div id="explain" class="panel">${explainHtml(spec.steps ?? [], "#bb8a52")}<div id="hook">${esc((spec.intro_lines ?? []).join(" "))}</div></div>
+  <div id="explain" class="panel">${explainHtml(spec.steps ?? [], theme, esc)}<div id="hook">${esc((spec.intro_lines ?? []).join(" "))}</div></div>
   <div id="breath" class="panel ${tone}"><div class="bc" id="bcount"></div><div id="circle"></div><div class="bl" id="blabel"></div><div class="bn" id="bnote"></div></div>
   <div id="intro" class="card ${spec.intro_style === "light" ? "light" : "dark"}"><div class="brand"><div class="dot"></div>Back</div><h1>${lines}</h1></div>
   <div id="end" class="card dark hidden"><div class="brand"><div class="dot"></div>Back</div><h1>Back: Panic Attack Help</h1><p style="color:#d7e0d5">Free on iPhone. Opens in one tap.</p><div class="badge">Get it free on the App Store</div><p class="fine">A self-help tool, not therapy or an emergency service.</p></div>

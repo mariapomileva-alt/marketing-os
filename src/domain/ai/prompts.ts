@@ -423,8 +423,13 @@ hooks[chosen_hook] must equal the intro lines joined with spaces. The end card (
   intro lines are a statement, never a question about the viewer ("What's actually happening when your heart races
   on a bus"). visual per step, one of: wave (panic rises, peaks and
   falls), alarm (the body's alarm going off too easily), ground (feet on the floor), heart (a fast heartbeat that is
-  not danger), moon (3am thoughts), breath (a longer out-breath), five_things (name things you can see), bus (being
-  out somewhere: a bus, a queue, a shop). Kind, concrete, a little warm humour is welcome; no promises it will stop,
+  not danger), moon (3am thoughts), breath (a longer out-breath), five_things (name things you can see), bus (out
+  somewhere), phone (a call or message), clock (time, waiting, "it passes"), cup (a warm drink, a pause), door (a
+  place you avoid, going out), hands (shaky hands, touch), two_people (helping someone, being together), brain (the
+  anxious brain, overthinking), rain (a heavy mood), sun (a good day, light), checklist (small steps, done), battery
+  (energy coming back), plant (slow growth, recovery), chat (texting a friend), path (a way forward, progress), bed
+  (sleep), stairs (step by step), thought (a loud thought bubble). Use a different drawing for every step, and do not
+  start every Reel with the same one. Kind, concrete, a little warm humour is welcome; no promises it will stop,
   no diagnosis, no medical advice. text_lines and scenes empty.
   What makes an explainer watched to the end (the craft of the best calm/wellbeing accounts, adapted, never copied):
   * The hook names a moment people instantly recognise or a surprising true thing, and the first step pays it off

@@ -171,7 +171,8 @@ export const DESK_HOOK_MECHANISMS = [...HOOK_MECHANISMS, "curiosity", "contraria
  */
 export const REEL_FORMATS = ["scenes", "read_slowly", "breathe_along", "explain"] as const;
 /** Animated hand-drawn pictures for "explain" Reels (a small library the renderer draws and animates). */
-export const EXPLAIN_VISUALS = ["wave", "alarm", "ground", "heart", "moon", "breath", "five_things", "bus"] as const;
+export const EXPLAIN_VISUALS = ["wave", "alarm", "ground", "heart", "moon", "breath", "five_things", "bus", "phone", "clock", "cup", "door", "hands",
+  "two_people", "brain", "rain", "sun", "checklist", "battery", "plant", "chat", "path", "bed", "stairs", "thought"] as const;
 /** Moods of the original music the renderer composes for each Reel (no licensed or trending tracks). */
 export const REEL_MUSIC = ["warm", "night", "airy", "piano"] as const;
 export const reelSpecSchema = z
