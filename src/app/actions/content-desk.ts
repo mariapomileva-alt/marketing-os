@@ -163,3 +163,18 @@ export async function restylePostsAction(slug: string, _: ActionResult | null): 
     return toFailure(e, msg);
   }
 }
+
+/** A batch of explainer Reels (animated drawings with a voice), e.g. a week's worth; each waits for approval. */
+export async function makeExplainersAction(slug: string, _: ActionResult | null, data: FormData): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const n = Math.max(1, Math.min(7, Number(data.get("count") ?? 6) || 6));
+    const r = await db((tx, ctx) => generateDesk(tx, actorOf(ctx), product.id, liveDeskMedia(), { posts: 0, carousels: 0, articles: 0, reels: n }, "explain"),
+      { reason: `${n} explainer Reels prepared`, actorType: "ai" });
+    revalidatePath(path(slug));
+    const waiting = r.created.filter((c) => c.status === "waiting").length;
+    return ok(`${waiting} explainer Reel(s) written; the renderer draws and voices them within about two hours, then they wait for your approval.${r.created.length > waiting ? ` ${r.created.length - waiting} stopped by the safety rules.` : ""}`);
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}

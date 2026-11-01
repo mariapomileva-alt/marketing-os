@@ -198,7 +198,7 @@ async function fixDeskItem(tx: Tx, actor: Actor, productId: string, itemId: stri
   return runReviews(tx, actor, productId, itemId, wfId);
 }
 
-export async function generateDesk(tx: Tx, actor: Actor, productId: string, media: DeskMedia, counts?: { posts: number; carousels: number; articles: number; reels?: number }) {
+export async function generateDesk(tx: Tx, actor: Actor, productId: string, media: DeskMedia, counts?: { posts: number; carousels: number; articles: number; reels?: number }, onlyReelFormat?: "explain") {
   const s = await getDeskSettings(tx, actor.workspaceId, productId);
   const k = { reels: 0, ...(counts ?? (await deskCounts(tx, productId, s))) };
   if (!k.posts && !k.carousels && !k.articles && !k.reels) return { created: [], isMock: false };
@@ -231,6 +231,7 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
       order by created_at desc limit 6`, [productId])).map((x) => x.look);
   const input = {
     COUNTS: k,
+    ...(onlyReelFormat ? { ONLY_REEL_FORMAT: onlyReelFormat } : {}),
     WEB_SEARCH_ALLOWED: s.web_research,
     ARTICLES: articles,
     RECENT: recent.map((r) => `${r.kind} · ${r.topic} · ${r.hook}`),

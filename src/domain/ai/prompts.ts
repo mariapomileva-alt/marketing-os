@@ -425,7 +425,18 @@ hooks[chosen_hook] must equal the intro lines joined with spaces. The end card (
   falls), alarm (the body's alarm going off too easily), ground (feet on the floor), heart (a fast heartbeat that is
   not danger), moon (3am thoughts), breath (a longer out-breath), five_things (name things you can see), bus (being
   out somewhere: a bus, a queue, a shop). Kind, concrete, a little warm humour is welcome; no promises it will stop,
-  no diagnosis, no medical advice. text_lines and scenes empty. Every desk with Reels has at least one "explain"
+  no diagnosis, no medical advice. text_lines and scenes empty.
+  What makes an explainer watched to the end (the craft of the best calm/wellbeing accounts, adapted, never copied):
+  * The hook names a moment people instantly recognise or a surprising true thing, and the first step pays it off
+    within three seconds ("Your heart is fast because your body thinks it's helping" after "Why your heart races at
+    the worst moment").
+  * One small idea, told as a tiny story with a turn: the problem as people feel it, why it happens (simple body
+    science, kindly), what to do, and a last step that leaves a line worth sending to a friend.
+  * Each step adds something new; no step repeats the hook; titles are spoken, warm, a little playful when it fits.
+  * Range: not only panic. Sleep and 3am thoughts, the funny-true anxious brain, helping someone you love, small
+    wins and good days, everyday places (a queue, the dentist, a meeting), gently busted myths.
+  * Use different drawings across the steps, matched to the meaning.
+  When ONLY_REEL_FORMAT is given, every Reel in this desk uses that format, and no two of them share a topic row. Every desk with Reels has at least one "explain"
   Reel (our calm meditations already come from the calm videos, so the desk's first Reel is the explainer).
 - "read_slowly" (about 20–30 s, high saves and sends): 3–8 text_lines under 60 characters each, shown one at a
   time on a calm background, read at the pace of a slow breath: grounding, gentle and true ("Your heart is fast."
