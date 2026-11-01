@@ -36,11 +36,6 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
           pip install --quiet --break-system-packages numpy scipy
-      - name: Render waiting videos
-        env:
-          MOS_URL: ${{ vars.MOS_URL }}
-          MOS_RENDER_TOKEN: ${{ secrets.MOS_RENDER_TOKEN }}
-        run: node scripts/render-calm.mjs
       - name: Prepare the Reel renderer (headless browser, music)
         if: ${{ !cancelled() }}
         run: |
@@ -52,6 +47,12 @@ jobs:
           MOS_URL: ${{ vars.MOS_URL }}
           MOS_RENDER_TOKEN: ${{ secrets.MOS_RENDER_TOKEN }}
         run: node scripts/render-reel.mjs
+      - name: Render waiting videos
+        if: ${{ !cancelled() }}
+        env:
+          MOS_URL: ${{ vars.MOS_URL }}
+          MOS_RENDER_TOKEN: ${{ secrets.MOS_RENDER_TOKEN }}
+        run: node scripts/render-calm.mjs
       - name: Keep the video files (download from the run page)
         if: always()
         uses: actions/upload-artifact@v4
