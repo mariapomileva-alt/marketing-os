@@ -343,7 +343,7 @@ async function main() {
     return;
   }
   if (!process.env.MOS_URL || !process.env.MOS_RENDER_TOKEN) throw new Error("MOS_URL and MOS_RENDER_TOKEN are required.");
-  for (let n = 0; n < 6; n++) {
+  for (let n = 0; n < 15; n++) {
     const job = await api("/api/cron/reel-next");
     if (!job) { console.log("No Reels waiting."); return; }
     const out = path.join(WORK, `${job.id}.mp4`);
