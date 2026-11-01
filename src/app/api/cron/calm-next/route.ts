@@ -26,18 +26,22 @@ export async function POST(request: NextRequest) {
       conn: await youtubeConnection(tx, claimed.productId),
       domain: (await tx.maybeOne<{ domain: string | null }>("select domain from site_settings where product_id = $1", [claimed.productId]))?.domain ?? null,
     }));
-    if (!conn?.secret_id || conn.status !== "connected") throw new Error("The YouTube channel is not connected (Connections → Connect YouTube channel).");
+    const ytReady = Boolean(conn?.secret_id && conn.status === "connected");
+    // New music for a short that also goes to Instagram/TikTok does not need YouTube: without it, YouTube keeps its version.
+    const remixSocial = "remix" in job && job.remix && job.kind === "short" && job.targets.some((t) => t !== "youtube");
+    if (!ytReady && !remixSocial) throw new Error("The YouTube channel is not connected (Connections → Connect YouTube channel).");
     const link = domain ? taggedUrl(`https://${domain}/`, { source: "youtube", medium: job.kind === "short" ? "short" : "video", key: job.kind === "short" ? "calm_short" : "calm_video" }) : "";
     const stock = job.clips.filter((c) => c.source === "pexels");
     const credits = [...new Set(stock.map((c) => c.author))].slice(0, 6).join(", ");
     const site = stock.some((c) => c.source_url.includes("pixabay")) ? "Pixabay" : "Pexels";
     const footer = `${credits ? `\n\nFootage: ${credits} (${site}).` : ""}\nVoice: AI-generated.`;
     const isShort = job.kind === "short";
-    const skipYoutube = "skip_youtube" in job && job.skip_youtube;
+    const skipYoutube = ("skip_youtube" in job && job.skip_youtube) || !ytReady;
+    if (!ytReady && remixSocial) await withContext({ userId: null, role: "service", actorType: "system" }, (tx) => tx.query("update calm_shorts set remix_skip_youtube = true where id = $1", [job.id]));
     const wantsYoutube = (!isShort || job.targets.includes("youtube")) && !skipYoutube;
     let uploadUrl: string | null = null;
     if (wantsYoutube) try {
-      const yt = await accessToken(await refreshTokenFor(conn.secret_id));
+      const yt = await accessToken(await refreshTokenFor(conn!.secret_id!));
       uploadUrl = isShort
         ? await createUploadSession(yt, {
             title: `${job.title.replace(/ · 1 minute of calm$/, "")} #shorts`.slice(0, 100),
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       // YouTube's daily limit reached while giving a short new music: Instagram and TikTok still get the new sound.
       const social = isShort && job.targets.some((t) => t !== "youtube");
-      if (!("remix" in job && job.remix) || !social || !/quota/i.test((e as Error).message)) throw e;
+      if (!("remix" in job && job.remix) || !social || !/quota|expired|revoked|invalid_grant/i.test((e as Error).message)) throw e;
       await withContext({ userId: null, role: "service", actorType: "system" }, (tx) => tx.query("update calm_shorts set remix_skip_youtube = true where id = $1", [job.id]));
     }
     const store = fileStore();

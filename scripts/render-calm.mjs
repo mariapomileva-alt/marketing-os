@@ -271,8 +271,18 @@ async function main() {
   }
   // Keep taking work while there is time left in this run (Shorts are a few minutes each; a long video ~40).
   const started = Date.now();
+  let failures = 0;
   for (let i = 0; Date.now() - started < 75 * 60_000; i++) {
-    const job = await api("/api/cron/calm-next");
+    // A job that cannot start (Marketing OS marks it failed and says why) must not stop the rest of the queue.
+    let job;
+    try {
+      job = await api("/api/cron/calm-next");
+      failures = 0;
+    } catch (e) {
+      console.error(`Could not start a job: ${e.message}`);
+      if (++failures >= 5) throw new Error("Five jobs in a row could not start; stopping this run.");
+      continue;
+    }
     if (!job) {
       console.log(i ? "No more jobs." : "No calm video waiting to be rendered.");
       return;
