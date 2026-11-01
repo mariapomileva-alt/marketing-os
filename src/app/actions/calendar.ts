@@ -63,8 +63,9 @@ export async function evenPlanAction(slug: string, _: ActionResult | null): Prom
     const r = await db(async (tx, ctx) => {
       await syncCalendarLive(tx, ctx.workspaceId, product.id).catch(() => undefined);
       await scheduleApprovedDeskItems(tx, ctx.workspaceId, product.id);
-      const desk = await evenDesk(tx, product.id);
-      const shorts = await evenShorts(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, await youtubeMover(tx, product.id));
+      const mover = await youtubeMover(tx, product.id);
+      const desk = await evenDesk(tx, product.id, new Date(), mover);
+      const shorts = await evenShorts(tx, { workspaceId: ctx.workspaceId, userId: ctx.user.id }, product.id, mover);
       return { desk, shorts };
     }, { reason: "Approved posts, Reels and shorts spread evenly over the coming days" });
     revalidatePath(`/p/${slug}/calendar`);

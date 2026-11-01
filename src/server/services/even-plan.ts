@@ -29,15 +29,17 @@ async function rigaAt(tx: Tx, day: number, time: string, now: Date) {
 }
 
 /** Instagram feed pieces from the desk: re-spread, oldest first, 2 posts + 1 Reel a day. Overdue ones move forward. */
-export async function evenDesk(tx: Tx, productId: string, now = new Date()) {
+export async function evenDesk(tx: Tx, productId: string, now = new Date(), mover: MixDeps | null = null) {
   const slots = (await tx.maybeOne<{ slots: string[] }>("select slots from content_desk_settings where product_id = $1", [productId]))?.slots ?? ["10:30", "15:30", "21:00"];
-  const items = await tx.query<{ id: string; format: string; scheduled_for: string; explain: boolean }>(
-    `select i.id, i.format, i.scheduled_for::text, coalesce(d.reel->>'format' = 'explain', false) explain from content_items i join content_desk_items d on d.content_item_id = i.id
+  const items = await tx.query<{ id: string; format: string; scheduled_for: string; explain: boolean; youtube_video_id: string | null }>(
+    `select i.id, i.format, i.scheduled_for::text, coalesce(d.reel->>'format' = 'explain', false) explain,
+            case when d.youtube_status = 'uploaded' then d.youtube_video_id end youtube_video_id
+       from content_items i join content_desk_items d on d.content_item_id = i.id
       where i.product_id = $1 and i.channel = 'instagram' and i.status = 'scheduled' and i.published_at is null
         and (i.scheduled_for is null or i.scheduled_for > $2::timestamptz + interval '2 hours' or i.scheduled_for < $2::timestamptz)
-        and d.ig_container_id is null and coalesce(d.youtube_status, '') <> 'uploaded'
+        and d.ig_container_id is null and ($3 or coalesce(d.youtube_status, '') <> 'uploaded')
       order by i.scheduled_for nulls last, i.created_at`,
-    [productId, now.toISOString()],
+    [productId, now.toISOString(), Boolean(mover)],
   );
   const fixed = new Set((await tx.query<{ k: string }>(
     `select to_char(scheduled_for at time zone 'Europe/Riga', 'YYYY-MM-DD HH24:MI') k from content_items
@@ -59,6 +61,8 @@ export async function evenDesk(tx: Tx, productId: string, now = new Date()) {
         ti++;
         if (at.getTime() < now.getTime() + 2.5 * 3_600_000 || fixed.has(key)) continue;
         if (!it.scheduled_for || new Date(it.scheduled_for).getTime() !== at.getTime()) {
+          // An explainer already scheduled on YouTube Shorts moves there too (same time as on Instagram).
+          if (it.youtube_video_id && mover) await mover.move(it.youtube_video_id, at);
           await tx.query("update content_items set scheduled_for = $2 where id = $1", [it.id, at.toISOString()]);
           moved++;
         }
