@@ -33,3 +33,17 @@ describe("daily shorts plan", () => {
     expect(new Set(times).size).toBe(times.length);
   });
 });
+
+import { pickLook } from "@/server/services/content-desk";
+describe("post looks", () => {
+  const base = { kind: "post" as const, slides: [{ title: "x", text: "" }], photo_query: "", illustration: null };
+  it("keeps the writer's look unless it repeats the last two", () => {
+    expect(pickLook({ ...base, look: "sketch" }, ["note", "color"])).toBe("sketch");
+    expect(pickLook({ ...base, look: "note" }, ["note", "color"])).toBe("sketch");
+  });
+  it("uses chat only for a dialogue and photo only with a query", () => {
+    expect(pickLook({ ...base, look: "chat" }, [])).toBe("sketch");
+    expect(pickLook({ ...base, look: "chat", slides: [{ title: "3am", text: "Brain: what if\nMe: we're ok" }] }, [])).toBe("chat");
+    expect(pickLook({ ...base, look: "photo" }, ["sketch"])).toBe("note");
+  });
+});

@@ -77,22 +77,26 @@ const FORMAT: Record<DeskKind, { channel: string; format: string }> = {
   reel: { channel: "instagram", format: "reels_script" },
 };
 
+export interface CardLook { look: string; seed?: number; illustration?: string | null; photo_query?: string }
 export interface DeskMedia {
-  render(format: "static_concept" | "carousel", slides: Slide[], brand?: { brand: string; footer: string; note: string; colors: MarketingBrief["colors"] }): Promise<Uint8Array[]>;
+  render(format: "static_concept" | "carousel", slides: Slide[], brand?: { brand: string; footer: string; note: string; colors: MarketingBrief["colors"] }, look?: CardLook): Promise<Uint8Array[]>;
   store(key: string, bytes: Uint8Array): Promise<void>;
 }
 
 /** Draws the cards for the item's current version and keeps them as creative assets. */
 async function drawCards(tx: Tx, productId: string, itemId: string, media: DeskMedia) {
-  const it = await tx.one<{ workspace_id: string; format: string; title: string; current_version_id: string; body: ContentBody }>(
-    "select i.workspace_id, i.format, i.title, i.current_version_id, v.body from content_items i join content_versions v on v.id = i.current_version_id where i.id = $1",
+  const it = await tx.one<{ workspace_id: string; format: string; title: string; current_version_id: string; body: ContentBody; craft: Partial<CardLook> | null }>(
+    `select i.workspace_id, i.format, i.title, i.current_version_id, v.body, d.craft from content_items i join content_versions v on v.id = i.current_version_id
+       left join content_desk_items d on d.content_item_id = i.id where i.id = $1`,
     [itemId],
   );
   if (it.format !== "static_concept" && it.format !== "carousel") return;
   const slides = (it.body.slides ?? []).map((s) => ({ title: s.title, text: s.text ?? "" }));
   try {
     const b = await productBrief(tx, productId);
-    const images = await media.render(it.format, it.format === "static_concept" ? slides.slice(0, 1) : slides, { brand: b.card_brand, footer: b.card_footer, note: b.card_note, colors: b.colors });
+    const seed = [...itemId].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+    const look: CardLook = { look: it.craft?.look ?? "brand", seed, illustration: it.craft?.illustration ?? null, photo_query: it.craft?.photo_query ?? "" };
+    const images = await media.render(it.format, it.format === "static_concept" ? slides.slice(0, 1) : slides, { brand: b.card_brand, footer: b.card_footer, note: b.card_note, colors: b.colors }, look);
     const ids: string[] = [];
     for (const [i, bytes] of images.entries()) {
       const key = `${it.workspace_id}/${productId}/desk/${it.current_version_id}-${i + 1}.jpg`;
@@ -122,6 +126,16 @@ export async function deskCounts(tx: Tx, productId: string, s: DeskSettings) {
 }
 
 type DeskOutItem = ContentDeskOutput["items"][number];
+
+const LOOK_ORDER = ["sketch", "chat", "note", "rainbow", "photo", "color", "brand"] as const;
+/** The look a post or carousel is drawn in: the writer's choice unless it repeats a recent look or does not fit. */
+export function pickLook(it: Pick<DeskOutItem, "kind" | "look" | "slides" | "photo_query" | "illustration">, avoid: string[]): string {
+  const dialogue = it.slides.some((sl) => /^(brain|me|you)\s*:/im.test(sl.text ?? ""));
+  const fits = (l: string) =>
+    (l !== "chat" || dialogue) && (l !== "photo" || Boolean(it.photo_query?.trim())) && (l !== "rainbow" || it.kind === "carousel");
+  if (fits(it.look) && !avoid.includes(it.look)) return it.look;
+  return LOOK_ORDER.find((l) => fits(l) && !avoid.includes(l)) ?? (it.kind === "carousel" ? "rainbow" : "color");
+}
 
 /** A desk item from the writer → the content body, Reel spec, title and visual note stored for it. */
 function deskBody(it: DeskOutItem) {
@@ -176,7 +190,7 @@ async function fixDeskItem(tx: Tx, actor: Actor, productId: string, itemId: stri
   );
   await tx.query("update content_items set current_version_id = $1, status = 'draft' where id = $2", [ver.id, itemId]);
   await tx.query(
-    "update content_desk_items set hooks = $2, chosen_hook = $3, reel = $4, render_status = $5, video_asset_id = null, craft = $6 where content_item_id = $1",
+    "update content_desk_items set hooks = $2, chosen_hook = $3, reel = $4, render_status = $5, video_asset_id = null, craft = coalesce(craft, '{}'::jsonb) || $6::jsonb where content_item_id = $1",
     [itemId, JSON.stringify(it.hooks), it.chosen_hook, reel ? JSON.stringify(reel) : null, reel ? "waiting" : null, JSON.stringify({ share_reason: it.share_reason, borrowed_mechanism: it.borrowed_mechanism })],
   );
   await drawCards(tx, productId, itemId, media);
@@ -211,11 +225,15 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
     "insert into workflow_runs (workspace_id, product_id, workflow, input, status, current_step) values ($1,$2,'content_desk',$3,'running','research') returning id",
     [actor.workspaceId, productId, JSON.stringify(k)],
   );
+  const recentLooks = (await tx.query<{ look: string }>(
+    `select craft->>'look' look from content_desk_items where product_id = $1 and kind in ('post', 'carousel') and craft ? 'look'
+      order by created_at desc limit 6`, [productId])).map((x) => x.look);
   const input = {
     COUNTS: k,
     WEB_SEARCH_ALLOWED: s.web_research,
     ARTICLES: articles,
     RECENT: recent.map((r) => `${r.kind} · ${r.topic} · ${r.hook}`),
+    RECENT_LOOKS: recentLooks,
     QUESTIONS: questions.map((q) => q.text),
     PERFORMANCE: { threads: await performanceSummary(tx, productId), instagram_posts: published },
     COMPETITORS: competitors.map((c) => c.name),
@@ -235,8 +253,11 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
     r = await run({ ...input, WEB_SEARCH_ALLOWED: false }, false);
   }
   const created: Array<{ id: string; kind: DeskKind; status: string }> = [];
+  const usedLooks = recentLooks.slice(0, 2);
   for (const it of r.output.items) {
     const { body, reel, title, visual } = deskBody(it);
+    const look = it.kind === "post" || it.kind === "carousel" ? pickLook(it, usedLooks) : null;
+    if (look) usedLooks.push(look);
     const f = FORMAT[it.kind];
     const item = await tx.one<{ id: string }>(
       `insert into content_items (workspace_id, product_id, channel, format, goal, funnel_stage, language, topic, title)
@@ -253,7 +274,8 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
       `insert into content_desk_items (content_item_id, workspace_id, product_id, kind, topic, insight, why_now, sources, hooks, chosen_hook, reel, render_status, craft)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [item.id, actor.workspaceId, productId, it.kind, it.topic, it.insight, it.why_now, JSON.stringify(it.sources), JSON.stringify(it.hooks), it.chosen_hook,
-       reel ? JSON.stringify(reel) : null, reel ? "waiting" : null, JSON.stringify({ share_reason: it.share_reason, borrowed_mechanism: it.borrowed_mechanism })],
+       reel ? JSON.stringify(reel) : null, reel ? "waiting" : null,
+       JSON.stringify({ share_reason: it.share_reason, borrowed_mechanism: it.borrowed_mechanism, ...(look ? { look, illustration: it.illustration, photo_query: it.photo_query } : {}) })],
     );
     await drawCards(tx, productId, item.id, media);
     let review = await runReviews(tx, actor, productId, item.id, wf.id);

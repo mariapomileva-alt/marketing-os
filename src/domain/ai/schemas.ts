@@ -203,6 +203,9 @@ export const contentDeskSchema = z.object({
         borrowed_mechanism: z.string().max(240).default("").describe("The proven format/hook mechanism this borrows from what spreads now (never the wording), and where it was seen"),
         caption: z.string().max(2000).default("").describe("Instagram caption (posts, carousels) or a 2–3 sentence summary (articles)"),
         slides: z.array(z.object({ title: z.string().min(2).max(110), text: z.string().max(240).default("") })).max(8).default([]),
+        look: z.enum(["brand", "color", "rainbow", "note", "chat", "photo", "sketch"]).default("brand").describe("How the cards are drawn (posts and carousels)"),
+        illustration: z.enum(["wave", "alarm", "ground", "heart", "moon", "breath"]).nullable().default(null).describe("For look sketch: the drawing on the first card"),
+        photo_query: z.string().max(80).default("").describe("For look photo: 2–4 plain words for a calm stock photo, no people's faces"),
         reel: reelSpecSchema.nullable().default(null),
         article: z
           .object({
