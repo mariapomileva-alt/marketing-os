@@ -10,16 +10,19 @@ import { mixShorts, type MixDeps } from "./shorts-mix";
  * Order is kept (what was planned first goes first); then shorts are mixed so one look does not repeat on a day.
  * Only items not sent anywhere yet and more than two hours away move; YouTube gets the new times too.
  */
-// Calm shorts a day; the day's explainer adds one more YouTube Short and one more Reel (3 of each in all).
-export const DAILY_CAPS = { youtube: 2, instagram: 2, tiktok: 3 } as const;
+// Calm shorts a day; the day's 2 explainers add two more YouTube Shorts and two more Reels (3 of each in all).
+export const DAILY_CAPS = { youtube: 1, instagram: 1, tiktok: 3 } as const;
 
 const rigaDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Riga", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
 /** Desk times for a kind: the explainer Reel takes the middle time of the day, posts the others. */
-export function deskTimesFor(kind: "reel" | "post", slots: string[]) {
-  if (slots.length < 2) return slots;
-  const mid = Math.floor(slots.length / 2);
-  return kind === "reel" ? [slots[mid]] : slots.filter((_, i) => i !== mid);
+export function deskTimesFor(kind: "reel" | "post", slots: string[], reelsPerDay = 1) {
+  if (slots.length < 2 || reelsPerDay <= 0) return kind === "reel" ? [] : slots;
+  // Reels take the middle times of the day (afternoon), posts the morning and evening ones.
+  const k = Math.min(reelsPerDay, slots.length - 1);
+  const start = Math.floor((slots.length - k) / 2);
+  const reel = new Set(slots.slice(start, start + k));
+  return kind === "reel" ? slots.filter((t) => reel.has(t)) : slots.filter((t) => !reel.has(t));
 }
 
 async function rigaAt(tx: Tx, day: number, time: string, now: Date) {
@@ -30,7 +33,8 @@ async function rigaAt(tx: Tx, day: number, time: string, now: Date) {
 
 /** Instagram feed pieces from the desk: re-spread, oldest first, 2 posts + 1 Reel a day. Overdue ones move forward. */
 export async function evenDesk(tx: Tx, productId: string, now = new Date(), mover: MixDeps | null = null) {
-  const slots = (await tx.maybeOne<{ slots: string[] }>("select slots from content_desk_settings where product_id = $1", [productId]))?.slots ?? ["10:30", "15:30", "21:00"];
+  const ds = await tx.maybeOne<{ slots: string[]; reels: number }>("select slots, reels_per_day reels from content_desk_settings where product_id = $1", [productId]);
+  const slots = ds?.slots ?? ["10:30", "15:30", "21:00"];
   const items = await tx.query<{ id: string; format: string; scheduled_for: string; explain: boolean; youtube_video_id: string | null }>(
     `select i.id, i.format, i.scheduled_for::text, coalesce(d.reel->>'format' = 'explain', false) explain,
             case when d.youtube_status = 'uploaded' then d.youtube_video_id end youtube_video_id
@@ -50,7 +54,7 @@ export async function evenDesk(tx: Tx, productId: string, now = new Date(), move
   const queues = { reel: [...reels.filter((r) => r.explain), ...reels.filter((r) => !r.explain)], post: items.filter((i) => i.format !== "reels_script") };
   let moved = 0;
   for (const kind of ["post", "reel"] as const) {
-    const times = deskTimesFor(kind, slots);
+    const times = deskTimesFor(kind, slots, Math.max(1, ds?.reels ?? 1));
     let day = 0;
     let ti = 0;
     for (const it of queues[kind]) {

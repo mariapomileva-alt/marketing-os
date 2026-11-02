@@ -230,7 +230,7 @@ export async function finishRender(tx: Tx, token: string, id: string, result: { 
       const yt = targets.filter((t) => t === "youtube");
       const social = targets.filter((t) => t !== "youtube");
       // Only the first few social pieces also go to Instagram (the rest TikTok only), leaving room for the desk's Reels.
-      const reelsPer = (await tx.maybeOne<{ n: number }>("select reels_per_video n from calm_settings where product_id = $1", [s.product_id]))?.n ?? 2;
+      const reelsPer = (await tx.maybeOne<{ n: number }>("select reels_per_video n from calm_settings where product_id = $1", [s.product_id]))?.n ?? 1;
       let reels = 0;
       await selectShorts(tx, s.product_id, planned.map((p) => {
         if (p.lane === "youtube") return { id: p.id, targets: yt.length ? yt : social };

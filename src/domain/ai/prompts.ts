@@ -438,8 +438,10 @@ hooks[chosen_hook] must equal the intro lines joined with spaces. The end card (
   * One small idea, told as a tiny story with a turn: the problem as people feel it, why it happens (simple body
     science, kindly), what to do, and a last step that leaves a line worth sending to a friend.
   * Each step adds something new; no step repeats the hook; titles are spoken, warm, a little playful when it fits.
-  * Range: not only panic. Sleep and 3am thoughts, the funny-true anxious brain, helping someone you love, small
-    wins and good days, everyday places (a queue, the dentist, a meeting), gently busted myths.
+  * Range: not only panic. How the body works (the stress alarm, heartbeat, breathing, sleep, caffeine, a walk, light,
+    hunger and mood, yawning, goosebumps), fear in everyday life (flying, the dentist, speaking up, health worries),
+    healthy everyday habits, sleep and 3am thoughts, the funny-true anxious brain, helping someone you love, small wins
+    and good days, gently busted myths. Useful and true for anyone; general knowledge, never medical advice.
   * Use different drawings across the steps, matched to the meaning.
   When ONLY_REEL_FORMAT is given, every Reel in this desk uses that format, and no two of them share a topic row. Every desk with Reels has at least one "explain"
   Reel (our calm meditations already come from the calm videos, so the desk's first Reel is the explainer).

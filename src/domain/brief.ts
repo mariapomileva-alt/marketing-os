@@ -76,6 +76,8 @@ export const BACK_BRIEF: MarketingBrief = {
     "- nights and sleep: wind-down rituals, what to do at 3am, the bed is not a battlefield",
     "- seasonal and everyday life: darker evenings, holidays, travel, exams, a new job, the dentist, crowded shops",
     "- myths, gently busted, and questions people actually ask (QUESTIONS, research)",
+    "- fear in everyday life, beyond panic: flying, the dentist, public speaking, health worries, phone calls, the dark; what fear is for and how it settles",
+    "- how the body works, for a healthier everyday: sleep and the 3pm slump, caffeine and the jittery heart, why a walk calms you, light in the morning, hunger and mood, stretching a tight jaw or shoulders, hiccups, yawning, goosebumps; simple and kind, general knowledge only, never medical advice or a diagnosis",
   ].join("\n"),
 };
 

@@ -202,6 +202,8 @@ export async function generateDesk(tx: Tx, actor: Actor, productId: string, medi
   const s = await getDeskSettings(tx, actor.workspaceId, productId);
   const k = { reels: 0, ...(counts ?? (await deskCounts(tx, productId, s))) };
   if (!k.posts && !k.carousels && !k.articles && !k.reels) return { created: [], isMock: false };
+  // The desk's Reels are explainers (animated drawings with a voice); calm meditations come from the long videos.
+  onlyReelFormat ??= "explain";
   const articles = await tx.query<{ title: string; url: string }>(
     "select title, url from blog_articles where product_id = $1 and title is not null order by created_at desc limit 30", [productId]);
   const recent = await tx.query<{ kind: string; topic: string; hook: string }>(
@@ -347,10 +349,10 @@ export async function addOwnReel(tx: Tx, actor: Actor, productId: string, input:
  * Next free publishing time (Riga), at least 30 minutes ahead. Instagram pieces (posts, carousels, Reels) share the
  * daily slots: each slot holds one piece, so the feed gets a steady rhythm. Articles: Mon/Wed/Fri 15:00, one a day.
  */
-export async function nextDeskSlot(tx: Tx, productId: string, kind: DeskKind, s: Pick<DeskSettings, "slots">, now = new Date()) {
+export async function nextDeskSlot(tx: Tx, productId: string, kind: DeskKind, s: Pick<DeskSettings, "slots"> & Partial<Pick<DeskSettings, "reels_per_day">>, now = new Date()) {
   const ig = kind !== "article";
-  // The explainer Reel takes the middle time of the day, posts the others (2 posts + 1 Reel a day).
-  const times = ig ? deskTimesFor(kind === "reel" ? "reel" : "post", parseSlots(s.slots)) : ["15:00"];
+  // Explainer Reels take the middle times of the day, posts the morning and evening ones.
+  const times = ig ? deskTimesFor(kind === "reel" ? "reel" : "post", parseSlots(s.slots), Math.max(1, s.reels_per_day ?? 1)) : ["15:00"];
   const taken = new Set((await tx.query<{ k: string }>(
     `select to_char(scheduled_for at time zone 'Europe/Riga', ${ig ? "'YYYY-MM-DD HH24:MI'" : "'YYYY-MM-DD'"}) k from content_items
       where product_id = $1 and status in ('scheduled', 'published') and scheduled_for > $2

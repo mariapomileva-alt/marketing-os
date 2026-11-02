@@ -39,7 +39,7 @@ export function pickSpread<T>(groups: T[], n: number) {
 }
 
 /**
- * A third of the pieces to YouTube Shorts (2 of 6; the day's explainer is the third Short), the rest to Instagram Reels +
+ * Some pieces to YouTube Shorts (1 of 4 by default; the day's 2 explainers are the other Shorts), the rest to Instagram Reels +
  * TikTok, at random (so each platform gets different ones).
  */
 export function splitLanes(n: number, random: () => number = Math.random, youtube = Math.max(1, Math.round(n / 3))): Array<"youtube" | "social"> {
@@ -55,9 +55,9 @@ export async function planShorts(tx: Tx, productId: string, videoId: string) {
   const exists = await tx.maybeOne("select 1 from calm_shorts where video_id = $1 limit 1", [videoId]);
   if (exists) return 0;
   const v = await tx.one<{ workspace_id: string; lines: Array<{ text: string; pause: number }> }>("select workspace_id, lines from calm_videos where id = $1 and product_id = $2", [videoId, productId]);
-  const per = (await tx.maybeOne<{ n: number }>("select shorts_per_video n from calm_settings where product_id = $1", [productId]))?.n ?? 6;
-  const groups = pickSpread(groupLines(v.lines), per);
-  const lanes = splitLanes(groups.length);
+  const cfg = await tx.maybeOne<{ n: number; yt: number }>("select shorts_per_video n, youtube_per_video yt from calm_settings where product_id = $1", [productId]);
+  const groups = pickSpread(groupLines(v.lines), cfg?.n ?? 4);
+  const lanes = splitLanes(groups.length, Math.random, Math.min(groups.length, cfg?.yt ?? 1));
   for (const [i, g] of groups.entries()) {
     const first = v.lines[g.from].text.replace(/^\[MOCK\]\s*/, "").replace(/[.…]+$/, "");
     await tx.query(
