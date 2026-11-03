@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, getProduct } from "@/server/context";
 import { describeDbError } from "@/server/db/client";
-import { addOwnReel, approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, remakeUpcomingReels, restyleUpcomingPosts, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
+import { addOwnReel, approveDeskItem, generateDesk, rejectDeskItem, rerenderReel, remakeUpcomingReels, restyleUpcomingPosts, reissueBurstReels, updateDeskSettings, type DeskEdits } from "@/server/services/content-desk";
 import type { ReelSpec } from "@/domain/ai/schemas";
 import { liveDeskMedia } from "@/server/desk/live";
 import { fail, ok, str, toFailure, type ActionResult } from "@/lib/action-result";
@@ -174,6 +174,19 @@ export async function makeExplainersAction(slug: string, _: ActionResult | null,
     revalidatePath(path(slug));
     const waiting = r.created.filter((c) => c.status === "waiting").length;
     return ok(`${waiting} explainer Reel(s) written; the renderer draws and voices them within about two hours, then they wait for your approval.${r.created.length > waiting ? ` ${r.created.length - waiting} stopped by the safety rules.` : ""}`);
+  } catch (e) {
+    return toFailure(e, msg);
+  }
+}
+
+/** Explainer Reels that went out together today come back as copies for approval, to go out 2 a day. */
+export async function reissueBurstAction(slug: string, _: ActionResult | null): Promise<ActionResult> {
+  try {
+    const product = await getProduct(slug);
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Riga", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const n = await db((tx, ctx) => reissueBurstReels(tx, actorOf(ctx), product.id, day), { reason: "Explainer Reels that went out together are offered again, 2 a day" });
+    revalidatePath(path(slug));
+    return ok(n ? `${n} explainer Reel(s) from today are back for your approval; once approved they go out 2 a day.` : "No explainer Reels went out today.");
   } catch (e) {
     return toFailure(e, msg);
   }

@@ -7,7 +7,7 @@ import { EmptyState, PageHeader, Section, Table } from "@/components/ui/layout";
 import { Status } from "@/components/ui/status";
 import { formatDate } from "@/lib/format";
 import { deskItems, getDeskSettings } from "@/server/services/content-desk";
-import { addOwnReelAction, generateDeskAction, remakeReelsAction, restylePostsAction, makeExplainersAction, saveDeskSettingsAction } from "@/app/actions/content-desk";
+import { addOwnReelAction, generateDeskAction, remakeReelsAction, restylePostsAction, makeExplainersAction, reissueBurstAction, saveDeskSettingsAction } from "@/app/actions/content-desk";
 import { channelConnection, publishingEnabled } from "@/server/services/youtube-publish";
 import { DeskCard, type DeskCardData } from "./desk-card";
 import { FORMATS, MUSIC, SHOTS } from "./reel-options";
@@ -68,6 +68,7 @@ export default async function IdeasPage({ params }: PageProps<"/p/[product]/idea
           <ActionForm action={remakeReelsAction.bind(null, slug)} submitLabel="Remake upcoming Reels in the new style" pendingLabel="Queuing…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Remake upcoming Reels</span></ActionForm>
           <ActionForm action={restylePostsAction.bind(null, slug)} submitLabel="Redraw upcoming posts in varied looks" pendingLabel="Drawing…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Redraw upcoming posts</span></ActionForm>
           <ActionForm action={makeExplainersAction.bind(null, slug)} submitLabel="Make 6 explainer Reels" pendingLabel="Researching and writing, 2–4 minutes…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><input type="hidden" name="count" value="6" /></ActionForm>
+          <ActionForm action={reissueBurstAction.bind(null, slug)} submitLabel="Offer today's explainers again (2 a day)" pendingLabel="Copying…" submitVariant="secondary" className="flex items-center gap-2 [&_p]:max-w-[360px] [&_p]:text-[12px]"><span className="sr-only">Offer today's explainer Reels again</span></ActionForm>
         </div>
         {waiting.length ? (
           <div className="grid gap-4 xl:grid-cols-2">{waiting.map((x) => <DeskCard key={x.id} slug={slug} d={card(x)} />)}</div>

@@ -45,10 +45,14 @@ export async function evenDesk(tx: Tx, productId: string, now = new Date(), move
       order by i.scheduled_for nulls last, i.created_at`,
     [productId, now.toISOString(), Boolean(mover)],
   );
+  // Every Instagram time already held by something that is not being moved here (about to go out, already sent to
+  // Instagram, or uploaded to YouTube when YouTube cannot be moved now) stays taken, so nothing lands on top of it.
+  const moving = items.map((i) => i.id);
   const fixed = new Set((await tx.query<{ k: string }>(
     `select to_char(scheduled_for at time zone 'Europe/Riga', 'YYYY-MM-DD HH24:MI') k from content_items
-      where product_id = $1 and channel = 'instagram' and status in ('scheduled', 'published') and scheduled_for between $2::timestamptz and $2::timestamptz + interval '2 hours'`,
-    [productId, now.toISOString()])).map((r) => r.k));
+      where product_id = $1 and channel = 'instagram' and status in ('scheduled', 'published') and scheduled_for >= $2::timestamptz - interval '1 day'
+        and not (id = any($3))`,
+    [productId, now.toISOString(), moving])).map((r) => r.k));
   // Explainer Reels (animated drawings with a voice) take the daily Reel time first; other desk Reels follow after them.
   const reels = items.filter((i) => i.format === "reels_script");
   const queues = { reel: [...reels.filter((r) => r.explain), ...reels.filter((r) => !r.explain)], post: items.filter((i) => i.format !== "reels_script") };

@@ -77,3 +77,32 @@ describe("explainer Reels on YouTube Shorts", () => {
     expect((await as((tx) => tx.one<{ s: string }>("select youtube_status s from content_desk_items where content_item_id = $1", [id]))).s).toBe("uploaded");
   });
 });
+
+import { evenDesk } from "@/server/services/even-plan";
+describe("desk spread never double-books a time", () => {
+  it("keeps the time of a Reel it cannot move (already on YouTube) and puts others elsewhere", async () => {
+    await as((tx) => tx.query("insert into content_desk_settings (product_id, workspace_id, slots, reels_per_day) values ($1,$2,'{10:30,13:30,17:30,21:00}',2) on conflict (product_id) do update set slots = excluded.slots, reels_per_day = excluded.reels_per_day", [productId, owner.workspaceId]));
+    const mk = async (title: string, yt: string | null) => as(async (tx) => {
+      const i = await tx.one<{ id: string }>("insert into content_items (workspace_id, product_id, channel, format, goal, funnel_stage, language, topic, title) values ($1,$2,'instagram','reels_script','awareness','awareness','en','x',$3) returning id", [owner.workspaceId, productId, title]);
+      await tx.query(`insert into content_desk_items (content_item_id, workspace_id, product_id, kind, topic, insight, why_now, sources, hooks, chosen_hook, reel, render_status, youtube_status, youtube_video_id)
+        values ($1,$2,$3,'reel','x','insight here','now','[]','[{"text":"Hook here","mechanism":"statement"}]',0,'{"format":"explain"}','ready',$4,$5)`,
+        [i.id, owner.workspaceId, productId, yt ? "uploaded" : null, yt]);
+      return i.id;
+    });
+    const held = await mk("held", "ytHELD0001");
+    const a = await mk("a", null);
+    const b = await mk("b", null);
+    const day = new Date(Date.now() + 3 * 86_400_000);
+    const c = await pool().connect();
+    try {
+      await c.query("begin; set local session_replication_role = replica");
+      for (const id of [held, a, b]) await c.query("update content_items set status = 'scheduled', scheduled_for = $2 where id = $1", [id, day.toISOString()]);
+      await c.query("commit");
+    } finally { c.release(); }
+    await as((tx) => evenDesk(tx, productId)); // no YouTube mover: the uploaded one stays put
+    const rows = await as((tx) => tx.query<{ id: string; at: string }>("select id, scheduled_for::text at from content_items where id = any($1)", [[held, a, b]]));
+    const times = rows.map((r) => new Date(r.at).getTime());
+    expect(new Set(times).size).toBe(3);
+    expect(rows.find((r) => r.id === held)!.at).toBe(rows.find((r) => r.id === held)!.at);
+  });
+});

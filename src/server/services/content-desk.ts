@@ -377,6 +377,38 @@ export async function nextDeskSlot(tx: Tx, productId: string, kind: DeskKind, s:
 }
 
 /**
+ * Explainer Reels that went out in a burst (on one day, minutes apart) are offered again as copies: the same video and
+ * caption, waiting for the owner's approval, then spread 2 a day. The published originals are archived here (the
+ * owner deletes them on Instagram). YouTube is left alone: there they already went out at their own times.
+ */
+export async function reissueBurstReels(tx: Tx, actor: Actor, productId: string, day: string) {
+  const items = await tx.query<{ id: string; current_version_id: string }>(
+    `select i.id, i.current_version_id from content_items i join content_desk_items d on d.content_item_id = i.id
+      where i.product_id = $1 and d.kind = 'reel' and i.status = 'published' and d.reel->>'format' = 'explain'
+        and to_char(i.published_at at time zone 'Europe/Riga', 'YYYY-MM-DD') = $2`, [productId, day]);
+  let n = 0;
+  for (const o of items) {
+    const c = await tx.one<{ id: string }>(
+      `insert into content_items (workspace_id, product_id, channel, format, goal, funnel_stage, language, topic, title)
+       select workspace_id, product_id, channel, format, goal, funnel_stage, language, topic, title from content_items where id = $1 returning id`, [o.id]);
+    const v = await tx.one<{ id: string }>(
+      `insert into content_versions (workspace_id, product_id, content_item_id, version, body, visual_concept, rationale, evidence, author_type, edit_note)
+       select workspace_id, product_id, $2, 1, body, visual_concept, rationale, evidence, 'human', 'Copy of a Reel that went out in a burst, to post again on its own day'
+         from content_versions where id = $1 returning id`, [o.current_version_id, c.id]);
+    await tx.query("update content_items set current_version_id = $1 where id = $2", [v.id, c.id]);
+    await tx.query(
+      `insert into content_desk_items (content_item_id, workspace_id, product_id, kind, topic, insight, why_now, sources, hooks, chosen_hook, reel, render_status, video_asset_id, craft, youtube_status)
+       select $2, workspace_id, product_id, kind, topic, insight, why_now, sources, hooks, chosen_hook, reel, 'ready', video_asset_id, craft, 'skipped'
+         from content_desk_items where content_item_id = $1`, [o.id, c.id]);
+    const review = await runReviews(tx, actor, productId, c.id);
+    if (review.outcome !== "block") await submitForApproval(tx, actor, productId, c.id);
+    await tx.query("update content_items set status = 'archived' where id = $1 and status = 'published'", [o.id]);
+    n++;
+  }
+  return n;
+}
+
+/**
  * Desk pieces approved outside Ideas & hooks (the Approve page) have no time yet: each gets the desk's next free
  * time, so it actually goes out. A Reel still waiting for its video is left until it is made.
  */
@@ -661,6 +693,18 @@ export async function publishDueInstagramPosts(tx: Tx, actor: Actor, productId: 
     const isReel = it.format === "reels_script";
     if (isReel ? !it.video_asset_id : it.rendered_version_id !== it.current_version_id || !it.image_asset_ids.length) { out.push({ id: it.id, result: isReel ? "video missing" : "images missing" }); continue; }
     if (!api.enabled) { out.push({ id: it.id, result: "posting switched off (INSTAGRAM_PUBLISHING_ENABLED)" }); continue; }
+    // Never two feed pieces back to back: if another one went out in the last 90 minutes, this one takes the next free time.
+    const recent = await tx.maybeOne(
+      `select 1 from content_items where product_id = $1 and channel = 'instagram' and id <> $2 and status = 'published' and published_at > $3::timestamptz - interval '90 minutes'`,
+      [productId, it.id, now.toISOString()]);
+    if (recent && !it.ig_container_id) {
+      const kind: DeskKind = it.format === "reels_script" ? "reel" : it.format === "carousel" ? "carousel" : "post";
+      const s = await tx.one<{ workspace_id: string }>("select workspace_id from content_items where id = $1", [it.id]);
+      const next = await nextDeskSlot(tx, productId, kind, await getDeskSettings(tx, s.workspace_id, productId), now);
+      await tx.query("update content_items set scheduled_for = $2 where id = $1", [it.id, next.toISOString()]);
+      out.push({ id: it.id, result: `moved to ${next.toISOString()} (another piece went out less than 90 minutes ago)` });
+      continue;
+    }
     const key = `ig-post:${it.current_version_id}`;
     if (await tx.maybeOne("select 1 from outbound_actions where product_id = $1 and dedupe_key = $2 and result = 'executed'", [productId, key])) continue;
     const ids = isReel ? [it.video_asset_id!] : it.image_asset_ids;
